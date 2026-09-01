@@ -5,8 +5,9 @@ import {
   StyleSheet,
   TouchableOpacity,
   Platform,
+  useWindowDimensions,
 } from 'react-native';
-import { Activity, ChevronRight, Play, Square, Trash2 } from 'lucide-react-native';
+import { Activity, Play, Square, Trash2 } from 'lucide-react-native';
 import { LuxPulse } from '@/components/aura';
 import { authColors } from '@/constants/auth-layout';
 import { type } from '@/constants/typography';
@@ -42,77 +43,65 @@ export function HomeWorkspaceHero({
   onRemove,
 }: Props) {
   const { theme } = useTheme();
+  const { width } = useWindowDimensions();
   const accent = theme.colors.accent;
   const ownerLabel = ((ownerName || '').trim() || 'Mentor').toUpperCase();
+  const logoSize = Math.min(176, Math.max(132, Math.round(width * 0.38)));
 
   return (
     <View style={styles.wrap}>
-      <View style={styles.pageHead}>
-        <View>
-          <Text style={[styles.eyebrow, { color: accent }]}>Workspace</Text>
-          <Text style={[styles.pageTitle, { color: theme.colors.textPrimary }]}>
-            Your automation
-          </Text>
-        </View>
-        <View style={[styles.statusPill, { borderColor: authColors.cardBorder, backgroundColor: authColors.card }]}>
-          <LuxPulse
-            active={isBotActive}
-            tone={isBotActive ? 'success' : 'muted'}
+      <View style={styles.heroTop}>
+        <TouchableOpacity
+          style={[styles.logoFrame, { width: logoSize, height: logoSize, borderColor: `${accent}44` }]}
+          onPress={onLogoTap}
+          activeOpacity={0.9}
+          accessibilityRole="button"
+          accessibilityLabel="Automation logo, triple-tap to change theme"
+        >
+          <EABrandProfileMedia
+            fillParent
+            brandImageUrl={imageUrl}
+            photoUnavailable={logoError}
+            preferLoopingVideo={false}
+            contentFit="cover"
+            fallbackContentFit="cover"
+            mediaStyle={styles.logoMedia}
+            onPhotoError={onPhotoError}
+            fallbackSource={require('@/assets/images/icon.png')}
+            testIDPhoto="ea-logo-hero-fade"
+            testIDVideo="ea-logo-hero-video"
           />
+        </TouchableOpacity>
+
+        <View style={[styles.statusPill, { borderColor: authColors.cardBorder, backgroundColor: authColors.card }]}>
+          <LuxPulse active={isBotActive} tone={isBotActive ? 'success' : 'muted'} />
           <Text style={[styles.statusText, { color: theme.colors.textPrimary }]}>
             {isBotActive ? 'Running' : 'Standby'}
           </Text>
         </View>
+
+        <Text testID="ea-title" style={[styles.botName, { color: theme.colors.textPrimary }]} numberOfLines={2}>
+          {name}
+        </Text>
+        <View
+          style={[
+            styles.ownerBadge,
+            {
+              backgroundColor: `${theme.colors.success}12`,
+              borderColor: `${theme.colors.success}35`,
+            },
+          ]}
+        >
+          <Text style={[styles.ownerBadgeText, { color: theme.colors.success }]} numberOfLines={1}>
+            {ownerLabel}
+          </Text>
+        </View>
+        <Text style={[styles.subtitle, { color: theme.colors.textMuted }]}>
+          Autonomous execution
+        </Text>
       </View>
 
       <View style={[styles.mainCard, { borderColor: authColors.cardBorder, backgroundColor: authColors.card }]}>
-        <TouchableOpacity
-          style={styles.identityRow}
-          onPress={onLogoTap}
-          activeOpacity={0.85}
-          accessibilityRole="button"
-          accessibilityLabel="Automation profile, triple-tap to change theme"
-        >
-          <View style={[styles.avatarFrame, { borderColor: `${accent}55` }]}>
-            <EABrandProfileMedia
-              fillParent
-              brandImageUrl={imageUrl}
-              photoUnavailable={logoError}
-              preferLoopingVideo={false}
-              contentFit="cover"
-              fallbackContentFit="cover"
-              mediaStyle={styles.avatarMedia}
-              onPhotoError={onPhotoError}
-              fallbackSource={require('@/assets/images/icon.png')}
-              testIDPhoto="ea-logo-hero-fade"
-              testIDVideo="ea-logo-hero-video"
-            />
-          </View>
-          <View style={styles.identityCopy}>
-            <Text testID="ea-title" style={[styles.botName, { color: theme.colors.textPrimary }]} numberOfLines={2}>
-              {name}
-            </Text>
-            <View
-              style={[
-                styles.ownerBadge,
-                {
-                  backgroundColor: `${theme.colors.success}12`,
-                  borderColor: `${theme.colors.success}35`,
-                },
-              ]}
-            >
-              <Text style={[styles.ownerBadgeText, { color: theme.colors.success }]} numberOfLines={1}>
-                {ownerLabel}
-              </Text>
-            </View>
-            <Text style={[styles.subtitle, { color: theme.colors.textMuted }]}>
-              Autonomous execution · tap logo to switch theme
-            </Text>
-          </View>
-        </TouchableOpacity>
-
-        <View style={[styles.divider, { backgroundColor: authColors.cardBorder }]} />
-
         <TouchableOpacity
           testID="action-start"
           style={[
@@ -189,27 +178,36 @@ export function HomeWorkspaceHero({
 const styles = StyleSheet.create({
   wrap: {
     paddingHorizontal: 24,
-    paddingTop: 8,
+    paddingTop: 4,
     maxWidth: 440,
     width: '100%',
     alignSelf: 'center',
     position: 'relative',
   },
-  pageHead: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    marginBottom: 16,
-    gap: 12,
+  heroTop: {
+    alignItems: 'center',
+    marginBottom: 18,
   },
-  eyebrow: {
-    ...type.eyebrow,
-    marginBottom: 6,
+  logoFrame: {
+    borderRadius: 28,
+    overflow: 'hidden',
+    borderWidth: 1,
+    backgroundColor: '#0A0A0B',
+    marginBottom: 14,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 10 },
+        shadowOpacity: 0.35,
+        shadowRadius: 20,
+      },
+      android: { elevation: 8 },
+      default: {},
+    }),
   },
-  pageTitle: {
-    ...type.title,
-    fontSize: 22,
-    letterSpacing: -0.5,
+  logoMedia: {
+    width: '100%',
+    height: '100%',
   },
   statusPill: {
     flexDirection: 'row',
@@ -219,11 +217,37 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     borderRadius: 999,
     borderWidth: 1,
-    marginTop: 4,
+    marginBottom: 12,
   },
   statusText: {
     ...type.caption,
     fontFamily: type.bodyMedium.fontFamily,
+  },
+  botName: {
+    ...type.title,
+    fontSize: 26,
+    lineHeight: 32,
+    letterSpacing: -0.5,
+    textAlign: 'center',
+    paddingHorizontal: 8,
+  },
+  ownerBadge: {
+    marginTop: 10,
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  ownerBadgeText: {
+    ...type.label,
+    fontSize: 10,
+    letterSpacing: 1.4,
+  },
+  subtitle: {
+    ...type.caption,
+    marginTop: 8,
+    lineHeight: 18,
+    textAlign: 'center',
   },
   mainCard: {
     borderWidth: 1,
@@ -239,55 +263,6 @@ const styles = StyleSheet.create({
       android: { elevation: 8 },
       default: {},
     }),
-  },
-  identityRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-  },
-  avatarFrame: {
-    width: 72,
-    height: 72,
-    borderRadius: 20,
-    overflow: 'hidden',
-    borderWidth: 1,
-    backgroundColor: '#0A0A0B',
-  },
-  avatarMedia: {
-    width: '100%',
-    height: '100%',
-  },
-  identityCopy: {
-    flex: 1,
-    minWidth: 0,
-  },
-  botName: {
-    ...type.title,
-    fontSize: 22,
-    lineHeight: 28,
-    letterSpacing: -0.4,
-  },
-  ownerBadge: {
-    alignSelf: 'flex-start',
-    marginTop: 8,
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-    borderRadius: 999,
-    borderWidth: 1,
-  },
-  ownerBadgeText: {
-    ...type.label,
-    fontSize: 10,
-    letterSpacing: 1.4,
-  },
-  subtitle: {
-    ...type.caption,
-    marginTop: 8,
-    lineHeight: 18,
-  },
-  divider: {
-    height: 1,
-    marginVertical: 18,
   },
   primaryCta: {
     height: 52,

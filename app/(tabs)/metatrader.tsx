@@ -2952,13 +2952,14 @@ export default function MetaTraderScreen() {
           )}
         </View>
 
-        <View style={[styles.keyboardAvoidingView, { backgroundColor: pageSurface }]}>
+        <View style={[styles.mtBody, { backgroundColor: pageSurface }]}>
           <ScrollView
             style={[styles.content, { backgroundColor: pageSurface }]}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
             keyboardDismissMode="on-drag"
             automaticallyAdjustKeyboardInsets={false}
+            automaticallyAdjustContentInsets={false}
             contentInsetAdjustmentBehavior="never"
             contentContainerStyle={{ paddingBottom: 120 }}
           >
@@ -3490,7 +3491,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'transparent',
   },
-  keyboardAvoidingView: {
+  mtBody: {
     flex: 1,
   },
   content: {
