@@ -7,11 +7,11 @@
 		<div>
 			<?php if(isset($_GET['ea'])){ ?>
 				<a href="EA.php" class="aura-back"><i class="ti ti-arrow-left"></i> All automations</a>
-				<p class="aura-kicker">Automations</p>
+				<p class="aura-kicker">EAs</p>
 				<h1><?php echo htmlspecialchars(getea(mysqli_real_escape_string($con,$_GET['ea']),get_admin($_SESSION['username'],"id"),"name"), ENT_QUOTES, 'UTF-8'); ?></h1>
 				<p>Secret code, download, and allowed symbols.</p>
 			<?php } else { ?>
-				<p class="aura-kicker">Automations</p>
+				<p class="aura-kicker">EAs</p>
 				<h1>Your automations</h1>
 				<p>Create automations, copy secret codes, and manage trading symbols.</p>
 			<?php } ?>
@@ -52,6 +52,23 @@
 	<section class="aura-panel">
 		<h2 style="margin:0 0 0.35rem;font-family:var(--aura-font-display);font-size:1.15rem;">Trading symbols</h2>
 		<p style="margin:0 0 1rem;color:var(--aura-muted);font-size:0.92rem;">Pairs this automation is allowed to trade.</p>
+
+		<?php if (!empty($_GET['symbol_added'])): ?>
+		<div class="aura-alert" style="margin-bottom:1rem;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.28);color:#86efac;">Symbol added.</div>
+		<?php endif; ?>
+		<?php if (!empty($_GET['symbol_error'])): ?>
+		<div class="aura-alert aura-alert-danger" style="margin-bottom:1rem;">
+			<?php
+			switch ((string) $_GET['symbol_error']) {
+				case 'duplicate': echo 'That symbol is already on this automation.'; break;
+				case 'invalid': echo 'Enter a valid symbol name (e.g. EURUSD, XAUUSD).'; break;
+				case 'forbidden': echo 'You do not have access to this automation.'; break;
+				case 'db': echo 'Could not save the symbol. Try again.'; break;
+				default: echo 'Could not update symbols.';
+			}
+			?>
+		</div>
+		<?php endif; ?>
 
 		<?php
 			$ea = $_GET['ea'];
