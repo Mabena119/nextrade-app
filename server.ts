@@ -23,12 +23,13 @@ declare const Bun: any;
 const DIST_DIR = path.join(process.cwd(), 'dist');
 const PORT = Number(process.env.PORT || 3000);
 /** VPS Bun API — used when Render cannot reach cPanel MySQL (port 3306 closed). */
-const DEFAULT_VPS_API = 'https://nextradeai.io';
-const NEXTRADE_SITE_ORIGIN = DEFAULT_VPS_API;
-/** When set (Render), proxy /api/* to VPS — same-origin web app without remote MySQL. */
+const NEXTRADE_API_ORIGIN = 'http://35.168.213.207';
+const NEXTRADE_SITE_ORIGIN = 'https://nextradeai.io';
+/** When set (Render), proxy /api/* to NexTrade Lightsail PHP API. */
 const API_UPSTREAM = (
   process.env.API_UPSTREAM_URL ||
-  (process.env.RENDER ? DEFAULT_VPS_API : '')
+  process.env.NEXTRADE_API_UPSTREAM_URL ||
+  (process.env.RENDER ? NEXTRADE_API_ORIGIN : '')
 ).replace(/\/$/, '');
 
 /**
@@ -191,18 +192,15 @@ function withCors(request: Request, response: Response): Response {
   });
 }
 
-/** Server-side relay to VPS API (Render → auraai-vps.com). No browser CORS involved. */
+/** Server-side relay to NexTrade cPanel API (Render → Lightsail). No browser CORS. */
 async function proxyApiToUpstream(request: Request): Promise<Response> {
   const url = new URL(request.url);
-  const upstreamBase = API_UPSTREAM.replace(/\/$/, '');
-  const target = `${upstreamBase}${url.pathname}${url.search}`;
+  const target = `${API_UPSTREAM}${url.pathname}${url.search}`;
 
   const headers = new Headers(request.headers);
   headers.delete('host');
   headers.delete('connection');
-  if (/^https?:\/\/\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?$/i.test(upstreamBase)) {
-    headers.set('host', 'nextradeai.io');
-  }
+  headers.set('host', 'nextradeai.io');
 
   const init: RequestInit = {
     method: request.method,

@@ -6,7 +6,6 @@ import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import { isIOSPWA } from '@/utils/pwa-detection';
 import { resolveApiBaseUrl } from '@/utils/api-base-url';
-import { dbApiUrl } from '@/utils/db-api-base-url';
 
 function getApiBase(): string {
   return resolveApiBaseUrl();
@@ -35,7 +34,7 @@ export async function subscribeToPush(licenseKey: string, eaId?: string): Promis
   try {
     let resolvedEaId = eaId;
     if (!resolvedEaId) {
-      const res = await fetch(dbApiUrl(`/api/get-ea-from-license?licenseKey=${encodeURIComponent(licenseKey)}`));
+      const res = await fetch(`${getApiBase()}/api/get-ea-from-license?licenseKey=${encodeURIComponent(licenseKey)}`);
       const data = await res.json();
       resolvedEaId = String(data?.id ?? data?.eaId ?? '');
     }

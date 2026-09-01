@@ -8,7 +8,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as TaskManager from 'expo-task-manager';
 import * as BackgroundTask from 'expo-background-task';
 import * as Notifications from 'expo-notifications';
-import { dbApiUrl } from '@/utils/db-api-base-url';
+import { resolveApiBaseUrl } from '@/utils/api-base-url';
 
 const BACKGROUND_SIGNAL_TASK = 'background-signal-poll';
 const STORAGE_KEY_LICENSE = 'BACKGROUND_SIGNAL_LICENSE_KEY';
@@ -54,7 +54,7 @@ TaskManager.defineTask(BACKGROUND_SIGNAL_TASK, async () => {
     const since = lastPoll || new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
     // Get EA from license
-    const eaUrl = dbApiUrl(`/api/get-ea-from-license?licenseKey=${encodeURIComponent(licenseKey)}`);
+    const eaUrl = `${resolveApiBaseUrl()}/api/get-ea-from-license?licenseKey=${encodeURIComponent(licenseKey)}`;
     const eaRes = await fetch(eaUrl);
     if (!eaRes.ok) return BackgroundTask.BackgroundTaskResult.Failed;
     const eaData = await eaRes.json();
@@ -62,7 +62,7 @@ TaskManager.defineTask(BACKGROUND_SIGNAL_TASK, async () => {
     if (!eaId) return BackgroundTask.BackgroundTaskResult.Success;
 
     // Get new signals
-    const signalsUrl = dbApiUrl(`/api/get-new-signals?eaId=${eaId}&since=${encodeURIComponent(since)}`);
+    const signalsUrl = `${resolveApiBaseUrl()}/api/get-new-signals?eaId=${eaId}&since=${encodeURIComponent(since)}`;
     const signalsRes = await fetch(signalsUrl);
     if (!signalsRes.ok) return BackgroundTask.BackgroundTaskResult.Failed;
     const { signals = [] } = await signalsRes.json();

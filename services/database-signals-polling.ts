@@ -1,10 +1,10 @@
 import { CPANEL_DB } from '../config/database';
 import { Platform } from 'react-native';
-import { dbApiUrl } from '../utils/db-api-base-url';
+import { resolveApiBaseUrl } from '../utils/api-base-url';
 
-/** DB-backed signal routes always hit NexTrade cPanel API. */
+/** DB-backed signal routes via app host (Render proxies to NexTrade). */
 function getApiBaseUrl(): string {
-  return dbApiUrl('').replace(/\/$/, '');
+  return resolveApiBaseUrl();
 }
 
 // Database configuration (cPanel VPS — polling uses API, not direct MySQL)

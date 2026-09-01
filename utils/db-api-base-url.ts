@@ -1,11 +1,12 @@
-import { NEXTRADE_SITE_URL } from '@/config/nextrade-site';
+import { resolveApiBaseUrl } from '@/utils/api-base-url';
 
-/** NexTrade cPanel PHP API — members, licences, signals (not Render-proxied). */
-export function getDbApiBaseUrl(): string {
-  return NEXTRADE_SITE_URL.replace(/\/$/, '');
-}
-
+/**
+ * DB-backed API routes (members, licences, signals).
+ * Always use the app host (Render same-origin on web) — the server proxies to NexTrade.
+ * Never call nextradeai.io from the browser (DNS/CORS failures on many networks).
+ */
 export function dbApiUrl(path: string): string {
+  const base = resolveApiBaseUrl().replace(/\/$/, '');
   const p = path.startsWith('/') ? path : `/${path}`;
-  return `${getDbApiBaseUrl()}${p}`;
+  return `${base}${p}`;
 }
