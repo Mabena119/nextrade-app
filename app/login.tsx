@@ -22,6 +22,7 @@ import { AccessDialog } from '@/components/auth/access-dialog';
 import { AuthHero } from '@/components/auth/auth-hero';
 import { type } from '@/constants/typography';
 import {
+  buildShopPaymentUrl,
   buildPaystackCheckoutUrl,
   confirmPaymentAffiliation,
   getOrCreateVisitorId,
@@ -75,7 +76,8 @@ export default function LoginScreen() {
         if (affiliateRef) await pingAffiliateAttribution(affiliateRef, trimmed);
         setPaymentEmail(trimmed);
         const paystackUrl = buildPaystackCheckoutUrl(trimmed, affiliateRef);
-        setPaymentUrl(paystackUrl);
+        const shopUrl = buildShopPaymentUrl(trimmed, affiliateRef, visitorId);
+        setPaymentUrl(Platform.OS === 'web' ? shopUrl : paystackUrl);
         if (Platform.OS === 'web') {
           setPaymentVisible(true);
         } else {
@@ -234,11 +236,13 @@ export default function LoginScreen() {
               </TouchableOpacity>
             </View>
             {Platform.OS === 'web' ? (
-              <iframe
-                src={paymentUrl}
-                style={{ width: '100%', flex: 1, minHeight: 420, border: 0, borderRadius: 12 } as never}
-                allow="payment *; clipboard-write;"
-              />
+              <View style={styles.payFrame}>
+                <iframe
+                  src={paymentUrl}
+                  style={{ width: '100%', height: '100%', border: 0, borderRadius: 12 } as never}
+                  allow="payment *; clipboard-write;"
+                />
+              </View>
             ) : (
               <View style={styles.payNativeActions}>
                 <TouchableOpacity
@@ -370,6 +374,13 @@ const styles = StyleSheet.create({
     ...type.caption,
     marginTop: 8,
     lineHeight: 18,
+  },
+  payFrame: {
+    flex: 1,
+    minHeight: 420,
+    borderRadius: 12,
+    overflow: 'hidden',
+    backgroundColor: '#000',
   },
   payNativeActions: {
     flex: 1,

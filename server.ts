@@ -194,11 +194,15 @@ function withCors(request: Request, response: Response): Response {
 /** Server-side relay to VPS API (Render → auraai-vps.com). No browser CORS involved. */
 async function proxyApiToUpstream(request: Request): Promise<Response> {
   const url = new URL(request.url);
-  const target = `${API_UPSTREAM}${url.pathname}${url.search}`;
+  const upstreamBase = API_UPSTREAM.replace(/\/$/, '');
+  const target = `${upstreamBase}${url.pathname}${url.search}`;
 
   const headers = new Headers(request.headers);
   headers.delete('host');
   headers.delete('connection');
+  if (/^https?:\/\/\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?$/i.test(upstreamBase)) {
+    headers.set('host', 'nextradeai.io');
+  }
 
   const init: RequestInit = {
     method: request.method,

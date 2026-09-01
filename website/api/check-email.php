@@ -13,7 +13,7 @@ try {
     }
 
     $db = nextrade_api_db();
-    $stmt = $db->prepare('SELECT id, email, paid, used FROM members WHERE email = ? LIMIT 1');
+    $stmt = $db->prepare('SELECT id, email, paid, used FROM members WHERE LOWER(email) = LOWER(?) LIMIT 1');
     $stmt->bind_param('s', $email);
     $stmt->execute();
     $result = $stmt->get_result()->fetch_assoc();
@@ -27,7 +27,7 @@ try {
     $paid = (int) ($result['paid'] ?? 0);
 
     if ($used === 0) {
-        $upd = $db->prepare('UPDATE members SET used = 1 WHERE email = ?');
+        $upd = $db->prepare('UPDATE members SET used = 1 WHERE LOWER(email) = LOWER(?)');
         $upd->bind_param('s', $email);
         $upd->execute();
         $upd->close();

@@ -1,4 +1,5 @@
 import { resolveApiBaseUrl } from '@/utils/api-base-url';
+import { dbApiUrl } from '@/utils/db-api-base-url';
 
 function getBaseUrl(): string {
   return resolveApiBaseUrl();
@@ -136,7 +137,7 @@ export interface Mt5TradeSizingResponse {
 class ApiService {
   async authenticate(authBody: AuthBody): Promise<Account> {
     if (!authBody?.email) throw new Error('Email is required');
-    const endpoint = apiUrl('/api/check-email');
+    const endpoint = dbApiUrl('/api/check-email');
     let res: Response;
     try {
       res = await fetch(endpoint, {
@@ -215,7 +216,7 @@ class ApiService {
 
   async getSymbols(phoneSecret: string): Promise<SymbolsResponse> {
     if (!phoneSecret) return { message: 'error' };
-    const res = await fetch(apiUrl(`/api/symbols?phone_secret=${encodeURIComponent(phoneSecret)}`), {
+    const res = await fetch(dbApiUrl(`/api/symbols?phone_secret=${encodeURIComponent(phoneSecret)}`), {
       method: 'GET',
       headers: { 'Accept': 'application/json' },
     });
@@ -229,7 +230,7 @@ class ApiService {
 
   async authenticateLicense(licenseBody: LicenseAuthBody): Promise<LicenseAuthResponse> {
     if (!licenseBody?.licence) return { message: 'error' };
-    const endpoint = apiUrl('/api/auth-license');
+    const endpoint = dbApiUrl('/api/auth-license');
 
     // Add timeout to avoid hanging forever on network issues
     const controller = new AbortController();
@@ -268,7 +269,7 @@ class ApiService {
     if (!email) return { scanner: false };
     try {
       const res = await fetch(
-        apiUrl(`/api/scanner-status?email=${encodeURIComponent(email)}&_=${Date.now()}`),
+        dbApiUrl(`/api/scanner-status?email=${encodeURIComponent(email)}&_=${Date.now()}`),
         { method: 'GET', cache: 'no-store' }
       );
       const data = (await res.json()) as { scanner?: boolean };
@@ -281,7 +282,7 @@ class ApiService {
   async revokeScannerAccess(email: string): Promise<void> {
     if (!email || !email.trim()) return;
     try {
-      await fetch(apiUrl('/api/scanner-status'), {
+      await fetch(dbApiUrl('/api/scanner-status'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email }),

@@ -1,23 +1,10 @@
 import { CPANEL_DB } from '../config/database';
 import { Platform } from 'react-native';
-import { resolveApiBaseUrl } from '../utils/api-base-url';
+import { dbApiUrl } from '../utils/db-api-base-url';
 
-/**
- * Web/iOS PWA: relative `/api/*` (EA Trade pattern — same-origin, no CORS).
- * Metro web (:8081) and native: absolute base from resolveApiBaseUrl.
- */
+/** DB-backed signal routes always hit NexTrade cPanel API. */
 function getApiBaseUrl(): string {
-  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.origin) {
-    try {
-      const { hostname, port } = new URL(window.location.origin);
-      if (!(hostname === 'localhost' && port === '8081')) {
-        return '';
-      }
-    } catch {
-      // fall through
-    }
-  }
-  return resolveApiBaseUrl();
+  return dbApiUrl('').replace(/\/$/, '');
 }
 
 // Database configuration (cPanel VPS — polling uses API, not direct MySQL)

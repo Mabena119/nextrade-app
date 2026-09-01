@@ -19,7 +19,7 @@ services:
       - key: EXPO_PUBLIC_CHART_WARMUP_ENABLED
         value: "false"
       - key: API_UPSTREAM_URL
-        value: "https://nextradeai.io"
+        value: "http://35.168.213.207"
       - key: GOOGLE_AI_API_KEY
         sync: false
       - key: GMAIL_USER
