@@ -2,7 +2,7 @@ import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, Dimensions, AppState, Modal, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Notifications from 'expo-notifications';
-import { Plus } from 'lucide-react-native';
+import { Plus, ChevronRight } from 'lucide-react-native';
 import { router } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -13,7 +13,6 @@ import { FirstTimeWelcome } from '@/components/aura/FirstTimeWelcome';
 import { HomeWorkspaceHero } from '@/components/aura/HomeWorkspaceHero';
 import { getHeroCardMinHeight } from '@/utils/app-viewport';
 import { BotModuleCard } from '@/components/aura/BotModuleCard';
-import { AuraAtmosphere } from '@/components/aura';
 import { authColors } from '@/constants/auth-layout';
 import { type } from '@/constants/typography';
 import { overlayService } from '@/services/overlay-service';
@@ -279,101 +278,90 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView
-      style={[styles.container, { backgroundColor: safeScreenBg }]}
+      style={[styles.container, { backgroundColor: authColors.bg }]}
       edges={['top', 'right', 'bottom', 'left']}
     >
-      <AuraAtmosphere />
-
-      <View style={styles.content}>
-          <HomeWorkspaceHero
-            name={primaryEA.name}
-            ownerName={
-              (primaryEA.userData?.owner as { name?: string } | undefined)?.name ||
-              primaryEA.description ||
-              null
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        bounces
+      >
+        <HomeWorkspaceHero
+          name={primaryEA.name}
+          ownerName={
+            (primaryEA.userData?.owner as { name?: string } | undefined)?.name ||
+            primaryEA.description ||
+            null
+          }
+          imageUrl={primaryEAImage}
+          logoError={logoError}
+          onPhotoError={() => setLogoError(true)}
+          isBotActive={isBotActive}
+          licenseExpired={licenseExpired}
+          onLogoTap={handleLogoTap}
+          onToggleBot={() => {
+            try {
+              setBotActive(!isBotActive);
+            } catch (error) {
+              console.error('Error changing bot state:', error);
             }
-            imageUrl={primaryEAImage}
-            logoError={logoError}
-            onPhotoError={() => setLogoError(true)}
-            isBotActive={isBotActive}
-            licenseExpired={licenseExpired}
-            onLogoTap={handleLogoTap}
-            onToggleBot={() => {
-              try {
-                setBotActive(!isBotActive);
-              } catch (error) {
-                console.error('Error changing bot state:', error);
-              }
-            }}
-            onQuotes={handleQuotes}
-            onRemove={handleRemoveActiveBot}
-          />
+          }}
+          onQuotes={handleQuotes}
+          onRemove={handleRemoveActiveBot}
+        />
 
-          <View style={styles.connectedBotsWrapper}>
-            <ScrollView
-              style={styles.connectedBotsScrollView}
-              contentContainerStyle={styles.connectedBotsScrollContent}
-              showsVerticalScrollIndicator={false}
-              bounces
-            >
-              <View style={styles.connectedBotsSection}>
-                {otherEAs.length > 0 && (
-                  <>
-                    <View testID="connected-bots-header" style={styles.sectionHeader}>
-                      <Text style={styles.sectionTitle}>Automations</Text>
-                      <View testID="connected-bots-count" style={styles.sectionBadge}>
-                        <Text style={styles.sectionBadgeText}>{eas.length}</Text>
-                      </View>
-                    </View>
-                    {otherEAs.map((ea, index) => (
-                      <BotModuleCard
-                        key={`${ea.id}-${index}`}
-                        testID={`ea-module-${index}`}
-                        name={ea.name}
-                        imageUri={getEAImageUrl(ea as unknown as EA)}
-                        ownerName={
-                          (ea.userData?.owner as { name?: string } | undefined)?.name ||
-                          ea.description ||
-                          null
-                        }
-                        index={index}
-                        onPress={async () => {
-                          try {
-                            await setActiveEA(ea.id);
-                          } catch (error) {
-                            console.error('Failed to switch active EA:', error);
-                          }
-                        }}
-                      />
-                    ))}
-                  </>
-                )}
-
-                <TouchableOpacity
-                  style={[
-                    styles.addEAButton,
-                    {
-                      borderColor: theme.colors.borderColor,
-                      backgroundColor: authColors.card,
-                    },
-                  ]}
-                  onPress={handleAddNewEA}
-                  activeOpacity={0.75}
-                >
-                  <Plus color={theme.colors.accent} size={20} strokeWidth={1.8} />
-                  <View style={styles.addEATextContainer}>
-                    <Text style={[styles.addEATitle, { color: theme.colors.textPrimary }]}>
-                      Link automation
-                    </Text>
-                    <Text style={[styles.addEASubtitle, { color: theme.colors.textMuted }]}>
-                      Add another automation key
-                    </Text>
-                  </View>
-                </TouchableOpacity>
+        <View style={styles.listSection}>
+          {otherEAs.length > 0 && (
+            <>
+              <View testID="connected-bots-header" style={styles.sectionHeader}>
+                <Text style={[styles.sectionTitle, { color: theme.colors.textMuted }]}>Switch automation</Text>
+                <View testID="connected-bots-count" style={[styles.sectionBadge, { borderColor: authColors.cardBorder }]}>
+                  <Text style={[styles.sectionBadgeText, { color: theme.colors.textPrimary }]}>{eas.length}</Text>
+                </View>
               </View>
-            </ScrollView>
-          </View>
+              {otherEAs.map((ea, index) => (
+                <BotModuleCard
+                  key={`${ea.id}-${index}`}
+                  testID={`ea-module-${index}`}
+                  name={ea.name}
+                  imageUri={getEAImageUrl(ea as unknown as EA)}
+                  ownerName={
+                    (ea.userData?.owner as { name?: string } | undefined)?.name ||
+                    ea.description ||
+                    null
+                  }
+                  index={index}
+                  onPress={async () => {
+                    try {
+                      await setActiveEA(ea.id);
+                    } catch (error) {
+                      console.error('Failed to switch active EA:', error);
+                    }
+                  }}
+                />
+              ))}
+            </>
+          )}
+
+          <TouchableOpacity
+            style={[styles.addEAButton, { borderColor: authColors.cardBorder, backgroundColor: authColors.card }]}
+            onPress={handleAddNewEA}
+            activeOpacity={0.75}
+          >
+            <View style={[styles.addIconWrap, { backgroundColor: `${theme.colors.accent}18` }]}>
+              <Plus color={theme.colors.accent} size={18} strokeWidth={2.2} />
+            </View>
+            <View style={styles.addEATextContainer}>
+              <Text style={[styles.addEATitle, { color: theme.colors.textPrimary }]}>Link automation</Text>
+              <Text style={[styles.addEASubtitle, { color: theme.colors.textMuted }]}>
+                Add another automation key
+              </Text>
+            </View>
+            <ChevronRight color={theme.colors.textMuted} size={18} strokeWidth={1.8} />
+          </TouchableOpacity>
         </View>
+      </ScrollView>
 
       <Modal
         visible={removeConfirmVisible}
@@ -517,8 +505,21 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
-    backgroundColor: 'transparent',
+    backgroundColor: authColors.bg,
     position: 'relative',
+  },
+  scroll: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: 110,
+    maxWidth: 440,
+    width: '100%',
+    alignSelf: 'center',
+  },
+  listSection: {
+    paddingHorizontal: 24,
+    paddingTop: 4,
   },
   glassHomeVideo: {
     width: '100%',
@@ -825,13 +826,14 @@ const styles = StyleSheet.create({
     backgroundColor: authColors.card,
   },
   removeModalTitle: {
+    ...type.title,
     fontSize: 20,
-    fontWeight: '700',
     marginBottom: 10,
     textAlign: 'center',
     color: '#FFFFFF',
   },
   removeModalMessage: {
+    ...type.body,
     fontSize: 14,
     lineHeight: 21,
     textAlign: 'center',
@@ -963,26 +965,20 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   sectionTitle: {
-    color: '#FFFFFF',
-    fontSize: 13,
-    fontWeight: '600',
-    letterSpacing: 1.4,
-    textTransform: 'uppercase',
+    ...type.label,
   },
   sectionBadge: {
-    paddingHorizontal: 12,
-    paddingVertical: 5,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    backgroundColor: 'rgba(255,255,255,0.04)',
+    backgroundColor: authColors.inputBg,
     minWidth: 32,
     alignItems: 'center',
   },
   sectionBadgeText: {
-    color: '#9AA7B5',
-    fontSize: 12,
-    fontWeight: '600',
+    ...type.caption,
+    fontFamily: type.bodyMedium.fontFamily,
   },
   botCard: {
     borderRadius: 20,
@@ -1042,15 +1038,22 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
   addEAButton: {
-    borderRadius: 20,
+    borderRadius: 18,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 18,
+    paddingVertical: 14,
+    paddingHorizontal: 14,
     marginBottom: 24,
-    marginTop: 8,
+    marginTop: 16,
     borderWidth: 1,
-    gap: 14,
+    gap: 12,
+  },
+  addIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   addEAGradientBackground: {
     display: 'none',
