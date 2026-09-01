@@ -197,7 +197,7 @@ export default function LoginScreen() {
                 <ActivityIndicator color={theme.colors.onAccent} size="small" />
               ) : (
                 <Text style={[styles.primaryBtnText, { color: theme.colors.onAccent }]}>
-                  Continue to key
+                  Verify
                 </Text>
               )}
             </TouchableOpacity>

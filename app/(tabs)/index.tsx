@@ -14,7 +14,8 @@ import { HomeWorkspaceHero } from '@/components/aura/HomeWorkspaceHero';
 import { getHeroCardMinHeight } from '@/utils/app-viewport';
 import { BotModuleCard } from '@/components/aura/BotModuleCard';
 import { AuraAtmosphere } from '@/components/aura';
-import { lux } from '@/constants/aura-ui';
+import { authColors } from '@/constants/auth-layout';
+import { type } from '@/constants/typography';
 import { overlayService } from '@/services/overlay-service';
 
 export default function HomeScreen() {
@@ -353,8 +354,7 @@ export default function HomeScreen() {
                     styles.addEAButton,
                     {
                       borderColor: theme.colors.borderColor,
-                      backgroundColor: theme.colors.backgroundSecondary,
-                      shadowColor: theme.colors.glowColor,
+                      backgroundColor: authColors.card,
                     },
                   ]}
                   onPress={handleAddNewEA}
@@ -818,11 +818,11 @@ const styles = StyleSheet.create({
   removeModalCard: {
     width: '100%',
     maxWidth: 360,
-    borderRadius: 26,
-    padding: 24,
+    borderRadius: 20,
+    padding: 22,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    backgroundColor: '#121722',
+    borderColor: authColors.cardBorder,
+    backgroundColor: authColors.card,
   },
   removeModalTitle: {
     fontSize: 20,
@@ -1042,7 +1042,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
   addEAButton: {
-    borderRadius: 999,
+    borderRadius: 20,
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 16,
@@ -1051,11 +1051,6 @@ const styles = StyleSheet.create({
     marginTop: 8,
     borderWidth: 1,
     gap: 14,
-    overflow: 'hidden',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.28,
-    shadowRadius: 16,
-    elevation: 6,
   },
   addEAGradientBackground: {
     display: 'none',
@@ -1070,13 +1065,12 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   addEATitle: {
+    ...type.title,
     fontSize: 16,
-    fontWeight: '600',
     letterSpacing: -0.2,
   },
   addEASubtitle: {
-    fontSize: 12,
-    fontWeight: '500',
+    ...type.caption,
     marginTop: 3,
   },
 });

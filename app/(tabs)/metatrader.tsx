@@ -10,8 +10,10 @@ import InjectableWebView from '../../components/injectable-webview';
 import FallbackWebView from '../../components/fallback-webview';
 import { Eye, EyeOff, Search, Database, ExternalLink, Shield, RefreshCw, X } from 'lucide-react-native';
 import { useApp } from '@/providers/app-provider';
-import { getScreenBackgroundColor, useTheme } from '@/providers/theme-provider';
+import { useTheme } from '@/providers/theme-provider';
 import { AuraHeader, LuxPulse } from '@/components/aura';
+import { authColors } from '@/constants/auth-layout';
+import { type } from '@/constants/typography';
 import { Toast } from '@/components/toast-notification';
 import { resolveApiBaseUrl } from '@/utils/api-base-url';
 import {
@@ -514,13 +516,12 @@ const DEFAULT_MT4_BROKERS = [
 
 export default function MetaTraderScreen() {
   const { theme } = useTheme();
-  const screenBg = getScreenBackgroundColor(theme);
   const softSurface = theme.colors.cardBackground;
-  const formCardSurface = theme.colors.backgroundSecondary;
-  const pageChromeBg = screenBg;
-  const pageSurface = screenBg;
-  const toastSurface = theme.colors.backgroundSecondary || 'rgba(7, 7, 8, 0.96)';
-  const softBorder = `${theme.colors.accent}28`;
+  const formCardSurface = authColors.card;
+  const pageChromeBg = authColors.bg;
+  const pageSurface = authColors.bg;
+  const toastSurface = authColors.card;
+  const softBorder = authColors.cardBorder;
   const mt5TabGradActive = [`${theme.colors.accent}33`, `${theme.colors.accent}14`] as [string, string];
   const mt5TabGradInactive = ['rgba(255, 255, 255, 0.06)', 'rgba(255, 255, 255, 0.02)'] as [string, string];
   const mtChrome = useMemo(
@@ -569,18 +570,13 @@ export default function MetaTraderScreen() {
         overflow: 'hidden' as const,
       },
       linkButton: {
-        backgroundColor: `${theme.colors.accent}16`,
-        paddingVertical: 16,
+        backgroundColor: theme.colors.accent,
+        height: 52,
         borderRadius: 999,
-        marginTop: 24,
-        borderWidth: 1,
-        borderColor: `${theme.colors.accent}66`,
+        marginTop: 20,
+        alignItems: 'center' as const,
+        justifyContent: 'center' as const,
         overflow: 'hidden' as const,
-        shadowColor: theme.colors.accent,
-        shadowOffset: { width: 0, height: 0 },
-        shadowOpacity: 0.28,
-        shadowRadius: 14,
-        elevation: 6,
       },
       brokerListChrome: {
         backgroundColor: softSurface,
@@ -2860,25 +2856,9 @@ export default function MetaTraderScreen() {
             {
               borderColor: softBorder,
               backgroundColor: toastSurface,
-              shadowColor: theme.colors.glowColor,
             },
           ]}
         >
-          {Platform.OS === 'ios' && (
-            <BlurView
-              intensity={28}
-              tint="dark"
-              style={StyleSheet.absoluteFill}
-              pointerEvents="none"
-            />
-          )}
-          <LinearGradient
-            pointerEvents="none"
-            colors={[`${theme.colors.accent}12`, 'transparent']}
-            style={styles.mtStatusSheen}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-          />
           <View style={styles.statusContainer}>
             <View
               style={[
@@ -3025,7 +3005,6 @@ export default function MetaTraderScreen() {
                 {
                   borderColor: softBorder,
                   backgroundColor: formCardSurface,
-                  shadowColor: theme.colors.glowColor,
                 },
               ]}
             >
@@ -3568,16 +3547,15 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   formCard: {
-    marginHorizontal: 20,
+    marginHorizontal: 24,
     marginTop: 12,
     marginBottom: 30,
-    borderRadius: 24,
+    maxWidth: 440,
+    width: '100%',
+    alignSelf: 'center',
+    borderRadius: 20,
     borderWidth: 1,
     overflow: 'visible',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.28,
-    shadowRadius: 24,
-    elevation: 12,
     position: 'relative',
   },
   formTopSheen: {
@@ -3625,45 +3603,36 @@ const styles = StyleSheet.create({
     zIndex: 3,
   },
   formSectionLabel: {
-    fontSize: 17,
-    fontWeight: '700',
-    letterSpacing: -0.2,
+    ...type.title,
+    fontSize: 18,
     marginBottom: 4,
   },
   formSectionHint: {
+    ...type.body,
     fontSize: 13,
     lineHeight: 18,
-    fontWeight: '500',
     marginBottom: 18,
   },
   fieldLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    letterSpacing: 1,
-    textTransform: 'uppercase',
+    ...type.label,
     marginBottom: 8,
   },
   mtStatusCard: {
-    marginHorizontal: 20,
-    marginTop: 8,
-    marginBottom: 14,
-    borderRadius: 22,
+    marginHorizontal: 24,
+    marginTop: 4,
+    marginBottom: 12,
+    maxWidth: 440,
+    width: '100%',
+    alignSelf: 'center',
+    borderRadius: 20,
     borderWidth: 1,
     paddingHorizontal: 16,
     paddingVertical: 14,
     overflow: 'hidden',
     position: 'relative',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.2,
-    shadowRadius: 16,
-    elevation: 6,
   },
   mtStatusCardPinned: {
     zIndex: 20,
-    marginTop: 4,
-    marginBottom: 10,
-    shadowOpacity: 0.35,
-    elevation: 12,
   },
   mtStatusSheen: {
     ...StyleSheet.absoluteFillObject,
@@ -3698,11 +3667,9 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   linkButtonText: {
-    fontSize: 17,
-    fontWeight: '800',
+    ...type.button,
     textAlign: 'center',
     marginLeft: 8,
-    letterSpacing: 0.5,
   },
   linkButtonDisabled: {
     opacity: 0.7,

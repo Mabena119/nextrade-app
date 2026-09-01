@@ -1,9 +1,10 @@
 import React from 'react';
-import { View, Text, StyleSheet, Platform } from 'react-native';
-import { AuraButton, AuraAtmosphere } from '@/components/aura';
-import { BrandLogo } from '@/components/brand-logo';
+import { View, Text, StyleSheet, Platform, TouchableOpacity } from 'react-native';
+import { AuthHero } from '@/components/auth/auth-hero';
 import { IOSAddToHomeBanner } from '@/components/ios-add-to-home-banner';
-import { lux } from '@/constants/aura-ui';
+import { authColors } from '@/constants/auth-layout';
+import { type } from '@/constants/typography';
+import { useTheme } from '@/providers/theme-provider';
 
 type Props = {
   onStart: () => void;
@@ -16,78 +17,99 @@ export function FirstTimeWelcome({
   androidOverlayGranted,
   androidNotificationGranted,
 }: Props) {
+  const { theme } = useTheme();
+
   return (
     <View style={styles.root}>
-      <AuraAtmosphere />
-
       <View style={styles.content}>
-        <BrandLogo size={240} testID="splash-app-icon" />
-
-        <Text style={styles.title}>NexTradeAI</Text>
-        <Text style={styles.lead}>NextGen AI Automations</Text>
+        <AuthHero
+          compact={false}
+          subtitle="NextGen AI automations for your trading workflow."
+        />
 
         {Platform.OS === 'android' && (
-          <View style={styles.permPanel}>
-            <Text style={styles.permHint}>Turn on overlay and notifications to keep signals running.</Text>
-            <Text style={[styles.permLabel, { color: androidOverlayGranted ? lux.color.success : lux.color.textSecondary }]}>
-              {androidOverlayGranted ? 'On' : 'Off'}  ·  Draw over other apps
+          <View style={[styles.permPanel, { borderColor: theme.colors.borderColor }]}>
+            <Text style={[styles.permHint, { color: theme.colors.textMuted }]}>
+              Turn on overlay and notifications to keep signals running.
             </Text>
-            <Text style={[styles.permLabel, { color: androidNotificationGranted ? lux.color.success : lux.color.textSecondary }]}>
-              {androidNotificationGranted ? 'On' : 'Off'}  ·  Notifications
+            <Text
+              style={[
+                styles.permLabel,
+                { color: androidOverlayGranted ? theme.colors.success : theme.colors.textMuted },
+              ]}
+            >
+              {androidOverlayGranted ? 'On' : 'Off'} · Draw over other apps
+            </Text>
+            <Text
+              style={[
+                styles.permLabel,
+                { color: androidNotificationGranted ? theme.colors.success : theme.colors.textMuted },
+              ]}
+            >
+              {androidNotificationGranted ? 'On' : 'Off'} · Notifications
             </Text>
           </View>
         )}
 
-        <View style={styles.ctaWrap}>
-          <AuraButton label="Get started" onPress={onStart} />
-        </View>
+        <TouchableOpacity
+          style={[styles.primaryBtn, { backgroundColor: theme.colors.accent }]}
+          onPress={onStart}
+          activeOpacity={0.88}
+          accessibilityRole="button"
+        >
+          <Text style={[styles.primaryBtnText, { color: theme.colors.onAccent }]}>Get started</Text>
+        </TouchableOpacity>
       </View>
 
-      <IOSAddToHomeBanner accentColor={lux.color.accent} />
+      <IOSAddToHomeBanner accentColor={theme.colors.accent} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: lux.color.bg },
+  root: {
+    flex: 1,
+    backgroundColor: authColors.bg,
+  },
   content: {
     flex: 1,
-    paddingHorizontal: 28,
-    paddingTop: 48,
+    paddingHorizontal: 24,
+    paddingTop: 40,
     paddingBottom: 24,
     justifyContent: 'center',
-    alignItems: 'center',
-  },
-  title: {
-    color: lux.color.text,
-    fontSize: 36,
-    fontWeight: '600',
-    letterSpacing: -1.1,
-    lineHeight: 42,
-    marginTop: 20,
-    marginBottom: 12,
-    textAlign: 'center',
-  },
-  lead: {
-    color: lux.color.textSecondary,
-    fontSize: 16,
-    lineHeight: 24,
-    fontWeight: '400',
-    textAlign: 'center',
-    maxWidth: 320,
+    maxWidth: 440,
+    width: '100%',
+    alignSelf: 'center',
   },
   permPanel: {
-    marginTop: 28,
+    marginTop: 8,
+    marginBottom: 20,
     alignSelf: 'stretch',
     gap: 6,
+    borderWidth: 1,
+    borderRadius: 20,
+    paddingHorizontal: 18,
+    paddingVertical: 16,
+    backgroundColor: authColors.card,
   },
   permHint: {
-    color: lux.color.textSecondary,
-    fontSize: 13,
-    lineHeight: 18,
-    marginBottom: 6,
+    ...type.caption,
     textAlign: 'center',
+    marginBottom: 4,
   },
-  permLabel: { fontSize: 13, fontWeight: '500', textAlign: 'center' },
-  ctaWrap: { marginTop: 36, alignSelf: 'stretch' },
+  permLabel: {
+    ...type.caption,
+    textAlign: 'center',
+    fontFamily: type.body.fontFamily,
+  },
+  primaryBtn: {
+    height: 52,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 8,
+  },
+  primaryBtnText: {
+    ...type.button,
+  },
 });

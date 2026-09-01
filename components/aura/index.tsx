@@ -19,6 +19,8 @@ import { BlurView } from 'expo-blur';
 import { ArrowLeft } from 'lucide-react-native';
 import { useTheme } from '@/providers/theme-provider';
 import { lux, auraUi } from '@/constants/aura-ui';
+import { type } from '@/constants/typography';
+import { authColors } from '@/constants/auth-layout';
 
 export { auraUi, lux };
 
@@ -443,32 +445,29 @@ const styles = StyleSheet.create({
   },
   iconBtnSpacer: { width: 44 },
   kicker: {
-    fontSize: 11,
-    fontWeight: '600',
-    letterSpacing: 1.6,
-    textTransform: 'uppercase',
+    ...type.eyebrow,
     color: lux.color.accent,
     marginBottom: 6,
   },
   headerTitle: {
-    fontSize: 26,
-    fontWeight: '600',
+    ...type.title,
+    fontSize: 28,
     letterSpacing: -0.6,
-    lineHeight: 32,
+    lineHeight: 34,
     color: lux.color.text,
   },
   headerSub: {
+    ...type.body,
     marginTop: 8,
-    fontSize: 15,
-    lineHeight: 22,
-    fontWeight: '400',
+    fontSize: 14,
+    lineHeight: 21,
     color: lux.color.textSecondary,
   },
   card: {
-    borderRadius: 16,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    backgroundColor: '#000',
+    borderColor: authColors.cardBorder,
+    backgroundColor: authColors.card,
   },
   cardAccent: {
     borderColor: 'rgba(49, 197, 255, 0.22)',
@@ -481,23 +480,20 @@ const styles = StyleSheet.create({
   },
   field: { marginBottom: lux.space.md },
   fieldLabel: {
-    fontSize: 11,
-    fontWeight: '600',
-    letterSpacing: 0.9,
-    textTransform: 'uppercase',
+    ...type.label,
     color: lux.color.textSecondary,
     marginBottom: 8,
   },
   input: {
     borderWidth: 1,
-    borderRadius: 12,
+    borderRadius: 14,
     paddingHorizontal: 16,
     paddingVertical: 14,
+    ...type.input,
     fontSize: 16,
-    fontWeight: '400',
     color: lux.color.text,
-    borderColor: 'rgba(255,255,255,0.1)',
-    backgroundColor: '#000',
+    borderColor: authColors.cardBorder,
+    backgroundColor: authColors.inputBg,
   },
   btn: {
     flexDirection: 'row',
@@ -505,14 +501,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignSelf: 'stretch',
     gap: 8,
-    paddingVertical: 15,
+    height: 52,
     paddingHorizontal: 22,
     borderRadius: 999,
   },
   btnText: {
-    fontSize: 15,
-    fontWeight: '600',
-    letterSpacing: 0,
+    ...type.button,
     color: '#000',
   },
   modalOverlay: {
