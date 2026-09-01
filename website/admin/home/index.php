@@ -29,6 +29,8 @@ $dash_name    = htmlspecialchars(get_admin($_SESSION['username'], "displayname")
     <div style="display:flex;flex-wrap:wrap;gap:0.55rem;">
       <a href="key.php" class="aura-btn aura-btn-primary"><i class="ti ti-key"></i> New code</a>
       <a href="stats.php" class="aura-btn aura-btn-ghost"><i class="ti ti-chart-dots"></i> Insights</a>
+      <a href="/shop/" class="aura-btn aura-btn-ghost" target="_blank" rel="noopener noreferrer"><i class="ti ti-shopping-cart"></i> Shop</a>
+      <a href="<?php echo htmlspecialchars(NEXTRADE_APP_URL, ENT_QUOTES, 'UTF-8'); ?>" class="aura-btn aura-btn-ghost" target="_blank" rel="noopener noreferrer"><i class="ti ti-device-mobile"></i> App</a>
     </div>
   </section>
 

@@ -25,6 +25,9 @@ SECRETS="${SECRETS}"
 touch "\$SECRETS"
 chown ${CPANEL_USER}:${CPANEL_USER} "\$SECRETS"
 chmod 600 "\$SECRETS"
+if ! grep -q '^<?php' "\$SECRETS" 2>/dev/null; then
+  printf '%s\n' '<?php' '/** NexTradeAI secrets */' > "\$SECRETS"
+fi
 sed -i '/NEXTRADEAI_DB_/d' "\$SECRETS" 2>/dev/null || true
 sed -i '/AURAAI_DB_/d' "\$SECRETS" 2>/dev/null || true
 cat >> "\$SECRETS" <<DBEOF

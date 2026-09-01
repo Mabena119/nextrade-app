@@ -8,6 +8,7 @@
 		exit();
 	}
 	require_once("../php-includes/functions.php");
+	require_once $_SERVER['DOCUMENT_ROOT'] . '/includes/admin-chrome.php';
 	$adminCurrentPage = basename($_SERVER['PHP_SELF'] ?? '');
 	if (!function_exists('admin_nav_active')) {
 		function admin_nav_active($pages) {
@@ -75,6 +76,7 @@
         <?php }?>
         <li><a class="<?php echo admin_nav_active('copy_trades.php'); ?>" href="copy_trades.php"><i class="ti ti-arrows-shuffle"></i> Signal sync</a></li>
         <li><a class="<?php echo admin_nav_active('stats.php'); ?>" href="stats.php"><i class="ti ti-chart-dots"></i> Insights</a></li>
+        <?php nextrade_admin_external_nav(); ?>
         <li><a href="../php-includes/logout.php"><i class="ti ti-logout"></i> Sign out</a></li>
       </ul>
     </aside>
@@ -91,6 +93,9 @@
             <i class="ti ti-chevron-down" style="font-size:0.85rem;color:var(--aura-muted);"></i>
           </button>
           <div class="aura-console-profile-menu" id="auraProfileMenu">
+            <a href="/"><i class="ti ti-home"></i> Marketing site</a>
+            <a href="/shop/"><i class="ti ti-shopping-cart"></i> Shop</a>
+            <a href="<?php echo htmlspecialchars(NEXTRADE_APP_URL, ENT_QUOTES, 'UTF-8'); ?>" target="_blank" rel="noopener noreferrer"><i class="ti ti-device-mobile"></i> Open app</a>
             <a href="profile.php"><i class="ti ti-user"></i> Account</a>
             <a href="../php-includes/logout.php"><i class="ti ti-logout"></i> Sign out</a>
           </div>

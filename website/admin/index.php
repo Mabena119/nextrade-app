@@ -1,6 +1,7 @@
 <?php
 ob_start();
 require __DIR__ . '/php-includes/security-bridge.php';
+require_once $_SERVER['DOCUMENT_ROOT'] . '/includes/admin-chrome.php';
 auraai_sec_bootstrap();
 auraai_sec_session_start();
 if (isset($_SESSION['id'])) {
@@ -62,6 +63,7 @@ if (isset($_GET['error'])) {
                 <span style="opacity:.4"> · </span>
                 <a href="hostsignup.php">Create mentor account</a>
             </div>
+            <?php nextrade_admin_auth_footer(); ?>
         </div>
     </div>
 </body>

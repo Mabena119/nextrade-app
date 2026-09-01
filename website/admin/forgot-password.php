@@ -1,6 +1,7 @@
 <?php
 ob_start();
 require __DIR__ . '/php-includes/security-bridge.php';
+require_once $_SERVER['DOCUMENT_ROOT'] . '/includes/admin-chrome.php';
 auraai_sec_bootstrap();
 auraai_sec_session_start();
 
@@ -76,6 +77,7 @@ $csrfField = auraai_sec_csrf_field();
             <div class="aura-auth-links">
                 <a href="index.php">← Back to sign in</a>
             </div>
+            <?php nextrade_admin_auth_footer(); ?>
         </div>
     </div>
 </body>

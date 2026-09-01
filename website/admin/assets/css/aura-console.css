@@ -82,6 +82,38 @@ body.aura-console {
   background: rgba(0,229,255,.1);
   border-color: rgba(0,229,255,.28);
 }
+.aura-console-nav-divider {
+  height: 1px;
+  margin: 0.65rem 0.35rem;
+  background: var(--aura-border);
+  list-style: none;
+}
+.aura-console-nav-label {
+  padding: 0.35rem 0.75rem 0.15rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--aura-muted-dim);
+  list-style: none;
+}
+
+.aura-auth-site-links {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--aura-border);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem 0.9rem;
+  font-size: 0.82rem;
+}
+.aura-auth-site-links a {
+  color: var(--aura-cyan);
+  text-decoration: none;
+  font-weight: 600;
+}
+.aura-auth-site-links a:hover { text-decoration: underline; }
 
 .aura-console-body { min-width: 0; display: flex; flex-direction: column; min-height: 100vh; }
 
