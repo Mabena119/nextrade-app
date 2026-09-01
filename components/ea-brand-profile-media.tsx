@@ -16,7 +16,7 @@ import { Audio, ResizeMode, Video } from 'expo-av';
 import type { AVPlaybackStatus } from 'expo-av';
 import type { VideoReadyForDisplayEvent } from 'expo-av/build/Video.types';
 
-import { normalizeEaBrandLogoHttpUrl } from '@/utils/ea-brand-image';
+import { resolveEaOwnerLogoUrl } from '@/utils/ea-brand-image';
 import { ensureEaBrandMp4Cached } from '@/utils/ea-brand-profile-video-cache';
 import { deriveEaBrandImageStemFromUrl, deriveEALogoMp4Url } from '@/utils/ea-logo-video-url';
 
@@ -115,7 +115,7 @@ export function EABrandProfileMedia({
   const resolvedContentFit: ContentFit = contentFit;
   const resolvedFallbackFit: ContentFit = fallbackContentFit ?? 'contain';
 
-  const canonicalStillUrl = useMemo(() => normalizeEaBrandLogoHttpUrl(brandImageUrl), [brandImageUrl]);
+  const canonicalStillUrl = useMemo(() => resolveEaOwnerLogoUrl(brandImageUrl), [brandImageUrl]);
   const remoteMp4 = useMemo(() => deriveEALogoMp4Url(canonicalStillUrl), [canonicalStillUrl]);
   const imageStem = useMemo(() => deriveEaBrandImageStemFromUrl(canonicalStillUrl), [canonicalStillUrl]);
 
@@ -340,12 +340,18 @@ export function EABrandProfileMedia({
     return () => { clearTimeout(t1); clearTimeout(t2); };
   }, [playUri]);
 
-  // ── Fallback timeout: show video even if callbacks are unreliable ─────────
+  // ── Fallback timeout: never crossfade to video unless playback actually started ──
   useEffect(() => {
-    if (!videoSource || firstFrameSeen) return;
-    const t = setTimeout(() => setFirstFrameSeen(true), 3000);
+    if (!videoSource || firstFrameSeen || videoFailed) return;
+    const t = setTimeout(() => {
+      if (!shouldKeepPlayingRef.current) {
+        setVideoFailed(true);
+        setFirstFrameSeen(false);
+        setPlayUri(null);
+      }
+    }, 4000);
     return () => clearTimeout(t);
-  }, [videoSource, firstFrameSeen]);
+  }, [videoSource, firstFrameSeen, videoFailed]);
 
   // ── Crossfade animation ───────────────────────────────────────────────────
   const stillOpacity = useRef(new Animated.Value(1)).current;

@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, SafeAreaView, TextInput, ScrollView, Platform, FlatList, Alert, ActivityIndicator, Image } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Platform, FlatList, Alert, ActivityIndicator, Image, Keyboard } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { WebView } from 'react-native-webview';
@@ -516,6 +517,10 @@ const DEFAULT_MT4_BROKERS = [
 
 export default function MetaTraderScreen() {
   const { theme } = useTheme();
+  const insets = useSafeAreaInsets();
+  const scrollRef = useRef<ScrollView>(null);
+  const [keyboardHeight, setKeyboardHeight] = useState(0);
+  const stableBottomInset = useRef(Math.min(Math.max(insets.bottom, 0), 48));
   const softSurface = theme.colors.cardBackground;
   const formCardSurface = authColors.card;
   const pageChromeBg = authColors.bg;
@@ -718,6 +723,55 @@ export default function MetaTraderScreen() {
       console.log('MetaTrader component unmounted - all timeouts cleared');
     };
   }, []);
+
+  useEffect(() => {
+    if (keyboardHeight > 0) return;
+    if (insets.bottom > 0 && insets.bottom <= 48) {
+      stableBottomInset.current = insets.bottom;
+    }
+  }, [insets.bottom, keyboardHeight]);
+
+  useEffect(() => {
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      const vv = window.visualViewport;
+      if (!vv) return;
+      const sync = () => {
+        const overlap = Math.max(0, window.innerHeight - vv.height - vv.offsetTop);
+        setKeyboardHeight(overlap > 60 ? overlap : 0);
+        if (overlap <= 60) {
+          requestAnimationFrame(() => {
+            scrollRef.current?.scrollTo({ y: 0, animated: false });
+          });
+        }
+      };
+      vv.addEventListener('resize', sync);
+      vv.addEventListener('scroll', sync);
+      return () => {
+        vv.removeEventListener('resize', sync);
+        vv.removeEventListener('scroll', sync);
+      };
+    }
+
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const onShow = Keyboard.addListener(showEvent, (e) => {
+      setKeyboardHeight(e.endCoordinates?.height ?? 0);
+    });
+    const onHide = Keyboard.addListener(hideEvent, () => {
+      setKeyboardHeight(0);
+      requestAnimationFrame(() => {
+        scrollRef.current?.scrollTo({ y: 0, animated: false });
+      });
+    });
+
+    return () => {
+      onShow.remove();
+      onHide.remove();
+    };
+  }, []);
+
+  const scrollBottomPad = 120 + stableBottomInset.current + (keyboardHeight > 0 ? keyboardHeight : 0);
 
   const onBrokerFetchMessage = (event: any) => {
     try {
@@ -2852,7 +2906,10 @@ export default function MetaTraderScreen() {
 
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: pageChromeBg }]}>
+    <SafeAreaView
+      style={[styles.container, { backgroundColor: pageChromeBg }]}
+      edges={['top', 'left', 'right']}
+    >
         <AuraHeader
           kicker="MetaTrader"
           title="Connect MT5"
@@ -2954,6 +3011,7 @@ export default function MetaTraderScreen() {
 
         <View style={[styles.mtBody, { backgroundColor: pageSurface }]}>
           <ScrollView
+            ref={scrollRef}
             style={[styles.content, { backgroundColor: pageSurface }]}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
@@ -2961,7 +3019,7 @@ export default function MetaTraderScreen() {
             automaticallyAdjustKeyboardInsets={false}
             automaticallyAdjustContentInsets={false}
             contentInsetAdjustmentBehavior="never"
-            contentContainerStyle={{ paddingBottom: 120 }}
+            contentContainerStyle={{ paddingBottom: scrollBottomPad }}
           >
             {/* Current Account Details Display */}
             {false && (
@@ -3489,7 +3547,7 @@ export default function MetaTraderScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: 'transparent',
+    backgroundColor: '#000000',
   },
   mtBody: {
     flex: 1,

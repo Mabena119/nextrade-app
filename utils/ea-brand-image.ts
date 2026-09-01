@@ -5,6 +5,42 @@ import { isNextradeSiteHost, NEXTRADE_SITE_URL } from '@/config/nextrade-site';
 /** Default EA app icon shown when no connected bot logo is available or remote load fails. */
 export const EA_BRAND_HERO_LOCAL = require('@/assets/images/icon.png');
 
+const PLACEHOLDER_LOGO_BASENAMES = new Set([
+  'default.png',
+  'default.jpg',
+  'default.jpeg',
+  'placeholder.png',
+  'none',
+  'null',
+]);
+
+/** True when mentor/admin has no custom logo (empty DB value or stock placeholder filename). */
+export function isPlaceholderEaOwnerLogo(rawInput: string | null | undefined): boolean {
+  if (rawInput == null) return true;
+  if (typeof rawInput !== 'string') return true;
+  const raw = rawInput.trim();
+  if (!raw) return true;
+
+  const withoutQuery = raw.split('?')[0]?.split('#')[0] ?? raw;
+  const basename = withoutQuery.split('/').pop()?.trim().toLowerCase() ?? '';
+  if (!basename) return true;
+  if (PLACEHOLDER_LOGO_BASENAMES.has(basename)) return true;
+
+  return false;
+}
+
+/**
+ * Resolve `owner.logo` to a CDN URL, or `null` when unset / placeholder.
+ * Callers should fall back to {@link EA_BRAND_HERO_LOCAL}.
+ */
+export function resolveEaOwnerLogoUrl(rawInput: string | null | undefined): string | null {
+  if (isPlaceholderEaOwnerLogo(rawInput)) return null;
+  const raw = String(rawInput).trim();
+  return /^https?:\/\//i.test(raw)
+    ? normalizeEaBrandLogoHttpUrl(raw)
+    : normalizeEaBrandLogoHttpUrl(raw.replace(/^\/+/, ''));
+}
+
 /** Sent with AV / FileSystem CDN access so picky Apache setups accept range requests vs Image. */
 export const EA_BRAND_CDN_HEADERS: Record<string, string> = {
   Referer: `${NEXTRADE_SITE_URL}/`,
@@ -67,11 +103,7 @@ export function toSameOriginBrandFetchUrl(imageUrl: string | null | undefined): 
 
 /** Build `ImageSourcePropType` for the EA brand splash from license `owner.logo` or fallback asset. */
 export function resolveEABrandImageSource(logo: string | null | undefined): ImageSourcePropType {
-  const raw = (logo ?? '').toString().trim();
-  if (!raw) return EA_BRAND_HERO_LOCAL;
-  const normalized = /^https?:\/\//i.test(raw)
-    ? normalizeEaBrandLogoHttpUrl(raw)
-    : normalizeEaBrandLogoHttpUrl(raw.replace(/^\/+/, ''));
+  const normalized = resolveEaOwnerLogoUrl(logo);
   if (!normalized) return EA_BRAND_HERO_LOCAL;
   return { uri: normalized };
 }

@@ -8,7 +8,7 @@ import {
 import { LinearGradient } from 'expo-linear-gradient';
 import type { EA } from '@/providers/app-provider';
 import { EABrandProfileMedia } from '@/components/ea-brand-profile-media';
-import { normalizeEaBrandLogoHttpUrl, EA_BRAND_HERO_LOCAL } from '@/utils/ea-brand-image';
+import { resolveEaOwnerLogoUrl, EA_BRAND_HERO_LOCAL } from '@/utils/ea-brand-image';
 
 interface EABrandBackdropProps {
   children: React.ReactNode;
@@ -33,12 +33,8 @@ export function EABrandBackdrop({
   const [forceFallback, setForceFallback] = useState(false);
 
   const brandImageUrl = useMemo(() => {
-    if (forceFallback || !rawLogo) return null;
-    const raw = String(rawLogo).trim();
-    if (!raw) return null;
-    return /^https?:\/\//i.test(raw)
-      ? normalizeEaBrandLogoHttpUrl(raw)
-      : normalizeEaBrandLogoHttpUrl(raw.replace(/^\/+/, ''));
+    if (forceFallback) return null;
+    return resolveEaOwnerLogoUrl(rawLogo);
   }, [rawLogo, forceFallback]);
 
   const onError = useCallback(() => {

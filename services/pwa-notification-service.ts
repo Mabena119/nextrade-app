@@ -2,6 +2,12 @@ import { Platform, AppState } from 'react-native';
 import { isIOSPWA } from '@/utils/pwa-detection';
 import { toSameOriginBrandFetchUrl } from '@/utils/ea-brand-image';
 import { NEXTRADE_SITE_URL } from '@/config/nextrade-site';
+import {
+  BOT_STATUS_NOTIFICATION_TAG,
+  buildBotStatusNotification,
+} from '@/utils/bot-status-notification';
+
+const NEXTRADE_DEFAULT_ICON_URL = `${NEXTRADE_SITE_URL}/assets/img/sitelogo.png`;
 
 interface NotificationOptions {
   title: string;
@@ -26,12 +32,13 @@ interface CachedImage {
 
 class PWANotificationService {
   private permissionGranted: boolean | null = null;
-  private notificationTag = 'aura-ai-bot-status';
+  private notificationTag = BOT_STATUS_NOTIFICATION_TAG;
   private pendingNotification: PendingNotification | null = null;
   private appStateListener: any = null;
   private currentAppState: string = 'active';
   private imageCache: Map<string, CachedImage> = new Map();
   private imageCacheExpiry = 5 * 60 * 1000; // 5 minutes
+  private defaultIconDataUrl: string | null = null;
 
   /**
    * Convert image URL to base64 data URL for better notification icon support
@@ -95,6 +102,35 @@ class PWANotificationService {
       console.error('[Notifications] Error loading image for notification:', error);
       return null;
     }
+  }
+
+  private async resolveNotificationIcon(botImageURL?: string | null): Promise<string | undefined> {
+    if (botImageURL) {
+      try {
+        const imageDataUrl = await this.getImageAsDataUrl(botImageURL);
+        if (imageDataUrl) {
+          return imageDataUrl;
+        }
+
+        return botImageURL.startsWith('http')
+          ? botImageURL
+          : `${NEXTRADE_SITE_URL}/admin/uploads/${botImageURL.replace(/^\/+/, '')}`;
+      } catch (e) {
+        console.log('[Notifications] Could not load bot icon, using NexTrade logo:', e);
+      }
+    }
+
+    if (this.defaultIconDataUrl) {
+      return this.defaultIconDataUrl;
+    }
+
+    const defaultIcon = await this.getImageAsDataUrl(NEXTRADE_DEFAULT_ICON_URL);
+    if (defaultIcon) {
+      this.defaultIconDataUrl = defaultIcon;
+      return defaultIcon;
+    }
+
+    return toSameOriginBrandFetchUrl(NEXTRADE_DEFAULT_ICON_URL) || NEXTRADE_DEFAULT_ICON_URL;
   }
 
   /**
@@ -310,42 +346,23 @@ class PWANotificationService {
     }
 
     try {
-      const status = isActive
-        ? (isPaused ? 'PAUSED' : 'ACTIVE')
-        : 'INACTIVE';
-
-      const statusEmoji = isActive
-        ? (isPaused ? '⏸️' : '🟢')
-        : '🔴';
+      const { title, body } = buildBotStatusNotification({
+        botName,
+        isActive,
+        isPaused,
+      });
 
       const options: NotificationOptions = {
-        title: `${statusEmoji} ${botName}`,
-        body: `Automation Status: ${status}`,
-        tag: this.notificationTag, // Replace previous notification with same tag
-        requireInteraction: false, // Auto-dismiss after a few seconds
+        title,
+        body,
+        tag: this.notificationTag,
+        requireInteraction: false,
         badge: isActive ? '1' : '0',
       };
 
-      // Try to load bot image as data URL for better iOS Safari support
-      if (botImageURL) {
-        try {
-          console.log('[Notifications] Loading bot image for notification...');
-          const imageDataUrl = await this.getImageAsDataUrl(botImageURL);
-          if (imageDataUrl) {
-            options.icon = imageDataUrl;
-            console.log('[Notifications] ✅ Bot image loaded for notification');
-          } else {
-            // Fallback to direct URL
-            options.icon = botImageURL.startsWith('http')
-              ? botImageURL
-              : `${NEXTRADE_SITE_URL}/admin/uploads/${botImageURL.replace(/^\/+/, '')}`;
-          }
-        } catch (e) {
-          console.log('[Notifications] Could not load bot image:', e);
-          options.icon = botImageURL.startsWith('http')
-            ? botImageURL
-            : `${NEXTRADE_SITE_URL}/admin/uploads/${botImageURL.replace(/^\/+/, '')}`;
-        }
+      const icon = await this.resolveNotificationIcon(botImageURL);
+      if (icon) {
+        options.icon = icon;
       }
 
       // Close any existing notification with the same tag
@@ -403,16 +420,11 @@ class PWANotificationService {
     }
 
     try {
-      const status = isActive
-        ? (isPaused ? 'PAUSED' : 'ACTIVE')
-        : 'INACTIVE';
-
-      const statusEmoji = isActive
-        ? (isPaused ? '⏸️' : '🟢')
-        : '🔴';
-
-      const title = `${statusEmoji} ${botName}`;
-      const body = `Status: ${status}${isActive && !isPaused ? ' • Monitoring signals' : ''}`;
+      const { title, body } = buildBotStatusNotification({
+        botName,
+        isActive,
+        isPaused,
+      });
 
       console.log('[Notifications] Creating notification:', {
         title,
@@ -422,35 +434,16 @@ class PWANotificationService {
         hasImageURL: !!botImageURL,
       });
 
-      // iOS Safari notification options - notification will appear in Notification Center
       const notificationOptions: any = {
-        body: body,
-        tag: this.notificationTag, // Same tag replaces previous notification
-        requireInteraction: false, // Normal notification behavior - goes to Notification Center
+        body,
+        tag: this.notificationTag,
+        requireInteraction: false,
         silent: false,
       };
 
-      // Try to load bot image as data URL for better iOS Safari support
-      if (botImageURL) {
-        try {
-          console.log('[Notifications] Attempting to load bot image for notification icon...');
-          const imageDataUrl = await this.getImageAsDataUrl(botImageURL);
-          if (imageDataUrl) {
-            notificationOptions.icon = imageDataUrl;
-            console.log('[Notifications] ✅ Bot image loaded as data URL for notification icon');
-          } else {
-            // Fallback to direct URL
-            notificationOptions.icon = botImageURL.startsWith('http')
-              ? botImageURL
-              : `${NEXTRADE_SITE_URL}/admin/uploads/${botImageURL.replace(/^\/+/, '')}`;
-            console.log('[Notifications] Using direct URL for notification icon:', notificationOptions.icon);
-          }
-        } catch (e) {
-          console.log('[Notifications] Could not load icon, using direct URL:', e);
-          notificationOptions.icon = botImageURL.startsWith('http')
-            ? botImageURL
-            : `${NEXTRADE_SITE_URL}/admin/uploads/${botImageURL.replace(/^\/+/, '')}`;
-        }
+      const icon = await this.resolveNotificationIcon(botImageURL);
+      if (icon) {
+        notificationOptions.icon = icon;
       }
 
       // badge might not be supported on iOS Safari
@@ -529,17 +522,14 @@ class PWANotificationService {
       }
     }
 
-    // Pre-load the bot image while app is in foreground (for faster notification display)
-    if (botImageURL) {
-      console.log('[Notifications] Pre-loading bot image for notification...');
-      this.getImageAsDataUrl(botImageURL).then((dataUrl) => {
-        if (dataUrl) {
-          console.log('[Notifications] ✅ Bot image pre-loaded and cached for notification');
-        }
-      }).catch((e) => {
-        console.log('[Notifications] Could not pre-load bot image:', e);
-      });
-    }
+    // Pre-load icons while app is in foreground (for faster notification display)
+    this.resolveNotificationIcon(botImageURL).then((icon) => {
+      if (icon) {
+        console.log('[Notifications] ✅ Notification icon pre-loaded');
+      }
+    }).catch((e) => {
+      console.log('[Notifications] Could not pre-load notification icon:', e);
+    });
 
     // Store notification data (always update pending notification)
     this.pendingNotification = {

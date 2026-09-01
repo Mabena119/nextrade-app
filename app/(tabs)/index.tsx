@@ -8,7 +8,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { useApp, type EA } from '@/providers/app-provider';
 import { getScreenBackgroundColor, useTheme } from '@/providers/theme-provider';
-import { normalizeEaBrandLogoHttpUrl } from '@/utils/ea-brand-image';
+import { resolveEaOwnerLogoUrl } from '@/utils/ea-brand-image';
 import { FirstTimeWelcome } from '@/components/aura/FirstTimeWelcome';
 import { HomeWorkspaceHero } from '@/components/aura/HomeWorkspaceHero';
 import { getHeroCardMinHeight } from '@/utils/app-viewport';
@@ -142,13 +142,8 @@ export default function HomeScreen() {
   }, [isFirstTime, eas.length]); // Re-run when isFirstTime or eas changes
 
   const getEAImageUrl = useCallback((ea: EA | null): string | null => {
-    if (!ea || !ea.userData || !ea.userData.owner) return null;
-    const raw = (ea.userData.owner.logo || '').toString().trim();
-    if (!raw) return null;
-    const resolved = /^https?:\/\//i.test(raw)
-      ? normalizeEaBrandLogoHttpUrl(raw)
-      : normalizeEaBrandLogoHttpUrl(raw.replace(/^\/+/, ''));
-    return resolved;
+    if (!ea?.userData?.owner) return null;
+    return resolveEaOwnerLogoUrl(ea.userData.owner.logo);
   }, []);
 
   const primaryEAImage = useMemo(() => getEAImageUrl(primaryEA), [getEAImageUrl, primaryEA]);

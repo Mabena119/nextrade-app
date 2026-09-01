@@ -2,20 +2,17 @@ import { Tabs } from "expo-router";
 import { Home, Wallet, Scan } from "lucide-react-native";
 import React from "react";
 import { useApp } from "@/providers/app-provider";
-import {
-  getScreenBackgroundColor,
-  useTheme,
-} from "@/providers/theme-provider";
+import { useTheme } from "@/providers/theme-provider";
+import { authColors } from "@/constants/auth-layout";
 import { View, StyleSheet, useWindowDimensions } from "react-native";
 import { isDesktopWebLayout } from "@/utils/app-viewport";
 
 export default function TabLayout() {
   const { isFirstTime } = useApp();
   const { theme } = useTheme();
-  const screenBg = getScreenBackgroundColor(theme);
   const accent = theme.colors.accent;
   const muted = theme.colors.navInactiveColor;
-  const sceneBg = screenBg;
+  const sceneBg = authColors.bg;
 
   const { width } = useWindowDimensions();
   const desktop = isDesktopWebLayout(width);

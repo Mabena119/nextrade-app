@@ -23,7 +23,7 @@ import { MT5SignalWebView } from "@/components/mt5-signal-webview";
 import colors from "@/constants/colors";
 import { isIOSPWA } from "@/utils/pwa-detection";
 import { captureAffiliateRefFromUrl, syncStoredAffiliateAttribution } from "@/utils/affiliate-ref";
-import { NEXTRADE_SITE_URL } from "@/config/nextrade-site";
+import { resolveEaOwnerLogoUrl } from "@/utils/ea-brand-image";
 
 // Configure notifications to show when app is in background
 if (Platform.OS !== 'web') {
@@ -262,15 +262,7 @@ function RootLayoutNav() {
           // Get bot image URL
           let botImageURL: string | null = null;
           if (primaryEA?.userData?.owner?.logo) {
-            const raw = primaryEA.userData.owner.logo.toString().trim();
-            if (raw) {
-              if (/^https?:\/\//i.test(raw)) {
-                botImageURL = raw;
-              } else {
-                const filename = raw.replace(/^\/+/, '');
-                botImageURL = `${NEXTRADE_SITE_URL}/admin/uploads/${filename}`;
-              }
-            }
+            botImageURL = resolveEaOwnerLogoUrl(primaryEA.userData.owner.logo);
           }
           
           // Trigger native app to create widgets
@@ -373,15 +365,7 @@ function RootLayoutNav() {
             
             // Get bot image URL from EA data
             if (!botImageURL && primaryEA?.userData?.owner?.logo) {
-              const raw = primaryEA.userData.owner.logo.toString().trim();
-              if (raw) {
-                if (/^https?:\/\//i.test(raw)) {
-                  botImageURL = raw;
-                } else {
-                  const filename = raw.replace(/^\/+/, '');
-                  botImageURL = `${NEXTRADE_SITE_URL}/admin/uploads/${filename}`;
-                }
-              }
+              botImageURL = resolveEaOwnerLogoUrl(primaryEA.userData.owner.logo);
             }
             
             // Use current bot active state if not provided

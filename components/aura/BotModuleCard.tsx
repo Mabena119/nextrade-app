@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
 import { ChevronRight } from 'lucide-react-native';
 import { authColors } from '@/constants/auth-layout';
 import { type } from '@/constants/typography';
 import { useTheme } from '@/providers/theme-provider';
+import { EA_BRAND_HERO_LOCAL } from '@/utils/ea-brand-image';
 
 type Props = {
   name: string;
@@ -22,6 +23,13 @@ export function BotModuleCard({
   testID,
 }: Props) {
   const { theme } = useTheme();
+  const [imageFailed, setImageFailed] = useState(false);
+
+  useEffect(() => {
+    setImageFailed(false);
+  }, [imageUri]);
+
+  const showRemoteLogo = Boolean(imageUri) && !imageFailed;
 
   return (
     <TouchableOpacity
@@ -31,14 +39,14 @@ export function BotModuleCard({
       style={[styles.card, { borderColor: authColors.cardBorder, backgroundColor: authColors.card }]}
     >
       <View style={[styles.avatarShell, { borderColor: authColors.cardBorder }]}>
-        {imageUri ? (
-          <Image source={{ uri: imageUri }} style={styles.avatar} />
+        {showRemoteLogo ? (
+          <Image
+            source={{ uri: imageUri! }}
+            style={styles.avatar}
+            onError={() => setImageFailed(true)}
+          />
         ) : (
-          <View style={[styles.avatarFallback, { backgroundColor: authColors.inputBg }]}>
-            <Text style={[styles.avatarInitial, { color: theme.colors.accent }]}>
-              {name.trim().charAt(0).toUpperCase() || 'A'}
-            </Text>
-          </View>
+          <Image source={EA_BRAND_HERO_LOCAL} style={styles.avatar} resizeMode="cover" />
         )}
       </View>
       <View style={styles.meta}>
@@ -73,15 +81,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   avatar: { width: 44, height: 44 },
-  avatarFallback: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  avatarInitial: {
-    ...type.title,
-    fontSize: 18,
-  },
   meta: { flex: 1, minWidth: 0 },
   name: {
     ...type.bodyMedium,
