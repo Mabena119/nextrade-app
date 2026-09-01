@@ -2,7 +2,7 @@
 /**
  * Shared external links for NexTradeAI mentor console pages.
  */
-require_once dirname(__DIR__) . '/site-config.php';
+require_once __DIR__ . '/site-config.php';
 
 if (!function_exists('nextrade_admin_external_nav')) {
     function nextrade_admin_external_nav(): void
