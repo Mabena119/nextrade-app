@@ -29,18 +29,14 @@ if (isset($_GET['error'])) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#020B18">
     <title>Sign In | NexTradeAI</title>
-    <link rel="icon" href="assets/sitelogo.png" />
+    <link rel="icon" href="<?php echo htmlspecialchars(NEXTRADE_LOGO_URL, ENT_QUOTES, 'UTF-8'); ?>" />
     <link rel="stylesheet" href="/assets/css/platform.css" />
 </head>
 <body class="aura-platform aura-auth">
     <div class="aura-atmosphere" aria-hidden="true"></div>
     <div class="aura-auth-shell">
         <div class="aura-auth-card">
-            <div class="aura-auth-logo">
-                <img src="assets/sitelogo.png" alt="NexTradeAI" />
-                <h1>Nex<span style="color:var(--aura-cyan)">Trade</span>AI</h1>
-                <p>Mentor console</p>
-            </div>
+            <?php nextrade_admin_auth_logo('Mentor console'); ?>
             <h2>Welcome back</h2>
             <p class="lead">Sign in to manage licenses, members, and cloud VPS access.</p>
             <?php if ($loginError !== ''): ?>

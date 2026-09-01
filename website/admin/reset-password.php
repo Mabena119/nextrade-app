@@ -65,18 +65,14 @@ $csrfField = auraai_sec_csrf_field();
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#020B18">
     <title>Reset Password | NexTradeAI</title>
-    <link rel="icon" href="assets/sitelogo.png" />
+    <link rel="icon" href="<?php echo htmlspecialchars(NEXTRADE_LOGO_URL, ENT_QUOTES, 'UTF-8'); ?>" />
     <link rel="stylesheet" href="/assets/css/platform.css" />
 </head>
 <body class="aura-platform aura-auth">
     <div class="aura-atmosphere" aria-hidden="true"></div>
     <div class="aura-auth-shell">
         <div class="aura-auth-card">
-            <div class="aura-auth-logo">
-                <img src="assets/sitelogo.png" alt="NexTradeAI" />
-                <h1>Nex<span style="color:var(--aura-cyan)">Trade</span>AI</h1>
-                <p>Set a new password</p>
-            </div>
+            <?php nextrade_admin_auth_logo('Set a new password'); ?>
             <h2>Reset password</h2>
             <?php if ($tokenValid): ?>
             <p class="lead">Choose a new password for <strong style="color:#fff;"><?php echo htmlspecialchars($email, ENT_QUOTES, 'UTF-8'); ?></strong>.</p>

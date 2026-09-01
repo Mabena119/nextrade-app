@@ -93,11 +93,11 @@ export async function POST(request: Request): Promise<Response> {
       expires: expires,
       key: canonicalKey,
       phone_secret_key: effectiveSecret || '',
-      ea_name: row.ea_name || 'AURA AI',
+      ea_name: row.ea_name || 'NexTradeAI',
       ea_notification: row.ea_notification || '',
       ea_martingale: Boolean(Number(row.ea_martingale ?? 0)),
       owner: {
-        name: row.owner_name || 'AURA AI',
+        name: row.owner_name || 'NexTradeAI',
         email: row.owner_email || '',
         phone: row.owner_phone || '',
         logo: row.owner_logo || '',

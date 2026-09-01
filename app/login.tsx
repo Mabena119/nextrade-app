@@ -9,8 +9,8 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   ScrollView,
+  Linking,
 } from 'react-native';
-import { WebView } from 'react-native-webview';
 import { router } from 'expo-router';
 import { ArrowLeft, X } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -22,7 +22,7 @@ import { AccessDialog } from '@/components/auth/access-dialog';
 import { AuthHero } from '@/components/auth/auth-hero';
 import { type } from '@/constants/typography';
 import {
-  buildShopPaymentUrl,
+  buildPaystackCheckoutUrl,
   confirmPaymentAffiliation,
   getOrCreateVisitorId,
   getStoredAffiliateRef,
@@ -74,8 +74,14 @@ export default function LoginScreen() {
         const visitorId = await getOrCreateVisitorId();
         if (affiliateRef) await pingAffiliateAttribution(affiliateRef, trimmed);
         setPaymentEmail(trimmed);
-        setPaymentUrl(buildShopPaymentUrl(trimmed, affiliateRef, visitorId));
-        setPaymentVisible(true);
+        const paystackUrl = buildPaystackCheckoutUrl(trimmed, affiliateRef);
+        setPaymentUrl(paystackUrl);
+        if (Platform.OS === 'web') {
+          setPaymentVisible(true);
+        } else {
+          await Linking.openURL(paystackUrl);
+          setPaymentVisible(true);
+        }
         return;
       }
 
@@ -125,7 +131,13 @@ export default function LoginScreen() {
         keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
       >
         <ScrollView
-          contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 24 }]}
+          contentContainerStyle={[
+            styles.scroll,
+            {
+              paddingTop: Math.max(insets.top > 0 ? 0 : 8, 4),
+              paddingBottom: insets.bottom + 32,
+            },
+          ]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
@@ -143,7 +155,6 @@ export default function LoginScreen() {
           </View>
 
           <AuthHero
-            logoSize={240}
             step={1}
             total={2}
             subtitle="Verify the email you registered with before linking your automation."
@@ -204,12 +215,19 @@ export default function LoginScreen() {
       />
 
       {paymentVisible && (
-        <View style={styles.payOverlay}>
+        <View style={[styles.payOverlay, { paddingTop: insets.top + 12, paddingBottom: insets.bottom + 12 }]}>
           <View style={[styles.paySheet, { borderColor: theme.colors.borderColor }]}>
             <View style={styles.payHead}>
-              <View>
+              <View style={styles.payHeadCopy}>
                 <Text style={[styles.payEyebrow, { color: theme.colors.accent }]}>Checkout</Text>
-                <Text style={[styles.payTitle, { color: theme.colors.textPrimary }]}>Complete payment</Text>
+                <Text style={[styles.payTitle, { color: theme.colors.textPrimary }]}>
+                  {Platform.OS === 'web' ? 'Complete payment' : 'Finish in your browser'}
+                </Text>
+                {Platform.OS !== 'web' ? (
+                  <Text style={[styles.payHint, { color: theme.colors.textMuted }]}>
+                    Paystack opened in your browser. Return here when done — we will verify your email automatically.
+                  </Text>
+                ) : null}
               </View>
               <TouchableOpacity onPress={() => void closePaymentModal()} style={styles.payClose}>
                 <X color={theme.colors.textPrimary} size={22} />
@@ -218,11 +236,26 @@ export default function LoginScreen() {
             {Platform.OS === 'web' ? (
               <iframe
                 src={paymentUrl}
-                style={{ width: '100%', height: '100%', border: 0, borderRadius: 12 } as never}
+                style={{ width: '100%', flex: 1, minHeight: 420, border: 0, borderRadius: 12 } as never}
                 allow="payment *; clipboard-write;"
               />
             ) : (
-              <WebView source={{ uri: paymentUrl }} style={{ flex: 1, borderRadius: 12 }} startInLoadingState />
+              <View style={styles.payNativeActions}>
+                <TouchableOpacity
+                  style={[styles.primaryBtn, { backgroundColor: theme.colors.accent }]}
+                  onPress={() => void Linking.openURL(paymentUrl)}
+                  activeOpacity={0.88}
+                >
+                  <Text style={[styles.primaryBtnText, { color: theme.colors.onAccent }]}>Open Paystack checkout</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.payDoneBtn}
+                  onPress={() => void closePaymentModal()}
+                  activeOpacity={0.88}
+                >
+                  <Text style={[styles.payDoneText, { color: theme.colors.textSecondary }]}>I have paid</Text>
+                </TouchableOpacity>
+              </View>
             )}
           </View>
         </View>
@@ -247,7 +280,7 @@ const styles = StyleSheet.create({
   topRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 4,
+    marginBottom: 0,
   },
   backLink: {
     flexDirection: 'row',
@@ -262,7 +295,7 @@ const styles = StyleSheet.create({
   },
   copyBlock: {
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 18,
   },
   eyebrow: {
     ...type.eyebrow,
@@ -303,16 +336,19 @@ const styles = StyleSheet.create({
   formFoot: {
     ...type.caption,
     textAlign: 'center',
-    marginTop: 20,
+    marginTop: 16,
+    marginBottom: 8,
+    paddingHorizontal: 8,
   },
   payOverlay: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0,0,0,0.94)',
-    padding: 20,
+    paddingHorizontal: 16,
     zIndex: 200,
   },
   paySheet: {
     flex: 1,
+    maxHeight: '100%',
     borderWidth: 1,
     borderRadius: 20,
     overflow: 'hidden',
@@ -324,6 +360,30 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     justifyContent: 'space-between',
     marginBottom: 12,
+    gap: 12,
+  },
+  payHeadCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  payHint: {
+    ...type.caption,
+    marginTop: 8,
+    lineHeight: 18,
+  },
+  payNativeActions: {
+    flex: 1,
+    justifyContent: 'center',
+    gap: 12,
+    paddingVertical: 12,
+  },
+  payDoneBtn: {
+    alignItems: 'center',
+    paddingVertical: 12,
+  },
+  payDoneText: {
+    ...type.bodyMedium,
+    fontSize: 15,
   },
   payEyebrow: {
     ...type.eyebrow,

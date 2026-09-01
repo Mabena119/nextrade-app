@@ -176,7 +176,9 @@ body.aura-auth {
   margin-bottom: 1.4rem;
 }
 .aura-auth-logo img {
-  width: min(320px, 82%);
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
   margin: 0 auto 0.65rem;
   filter: none;
 }

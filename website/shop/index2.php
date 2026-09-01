@@ -55,321 +55,156 @@ if ($email !== '') {
 $emailEsc = htmlspecialchars($email, ENT_QUOTES, 'UTF-8');
 $appUrlEsc = htmlspecialchars(NEXTRADE_APP_URL, ENT_QUOTES, 'UTF-8');
 $apkUrlEsc = htmlspecialchars(NEXTRADE_APK_URL, ENT_QUOTES, 'UTF-8');
+$supportEsc = htmlspecialchars(NEXTRADE_SUPPORT_EMAIL, ENT_QUOTES, 'UTF-8');
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <?php nextrade_shop_head('Access · R' . $shopPriceDisplay . ' · NexTradeAI'); ?>
-  <style>
-    body.checkout,
-    .shop-shell.checkout {
-      min-height: 100vh;
-      margin: 0;
-      display: grid;
-      grid-template-columns: 1.05fr 0.95fr;
-    }
-    .stage-left, .stage-right { position: relative; z-index: 1; min-height: 100vh; }
-    .stage-left {
-      padding: clamp(1.5rem, 4vw, 3rem);
-      display: flex;
-      flex-direction: column;
-      justify-content: space-between;
-      border-right: 1px solid var(--aura-border);
-      background:
-        radial-gradient(600px 380px at 20% 10%, rgba(0,229,255,.18), transparent 60%),
-        linear-gradient(165deg, #07090f 0%, #000000 55%, #0a0e16 100%);
-    }
-    .stage-right {
-      padding: clamp(1.5rem, 4vw, 3rem);
-      display: grid;
-      place-items: center;
-      background: #000000;
-    }
-    .brand-row {
-      display: flex; align-items: center; gap: .7rem;
-      font-family: var(--aura-font-display); font-weight: 700; font-size: 1.1rem;
-    }
-    .brand-row img { width: 44px; height: 44px; filter: drop-shadow(0 0 16px var(--aura-cyan-glow)); }
-    .brand-row b { color: var(--aura-cyan); }
-    .hero-copy { margin: 3rem 0 auto; max-width: 28rem; }
-    .hero-copy .kicker {
-      color: var(--aura-cyan); font-size: .72rem; font-weight: 700;
-      letter-spacing: .14em; text-transform: uppercase; margin: 0 0 .8rem;
-    }
-    .hero-copy h1 {
-      margin: 0 0 .9rem; font-family: var(--aura-font-display);
-      font-size: clamp(2rem, 4vw, 2.8rem); letter-spacing: -.04em; line-height: 1.05;
-    }
-    .hero-copy p { margin: 0 0 1.5rem; color: var(--aura-muted); line-height: 1.55; }
-    .perks { list-style: none; margin: 0; padding: 0; display: grid; gap: .7rem; }
-    .perks li {
-      display: flex; gap: .7rem; align-items: flex-start;
-      color: var(--aura-muted); font-size: .95rem;
-    }
-    .perks i {
-      width: 22px; height: 22px; border-radius: 50%;
-      background: rgba(0,229,255,.12); color: var(--aura-cyan);
-      display: grid; place-items: center; font-style: normal; font-size: .75rem; flex: 0 0 auto;
-      border: 1px solid var(--aura-border);
-    }
-    .foot-mini { color: var(--aura-muted-dim); font-size: .85rem; }
-    .foot-mini a { color: var(--aura-cyan); }
-
-    .ticket {
-      width: min(440px, 100%);
-      border-radius: 28px;
-      border: 1px solid var(--aura-border);
-      background:
-        linear-gradient(160deg, rgba(255,255,255,.04), transparent 42%),
-        linear-gradient(180deg, #0c1c30, #07111f);
-      box-shadow: 0 30px 80px rgba(0,0,0,.55);
-      overflow: hidden;
-    }
-    .ticket-top {
-      padding: 1.4rem 1.4rem 1.2rem;
-      border-bottom: 1px dashed rgba(0,229,255,.22);
-      display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start;
-    }
-    .ticket-top h2 {
-      margin: .35rem 0 0; font-family: var(--aura-font-display);
-      font-size: 1.45rem; letter-spacing: -.03em;
-    }
-    .chip {
-      display: inline-flex; padding: .28rem .65rem; border-radius: 999px;
-      background: rgba(0,229,255,.1); border: 1px solid var(--aura-border);
-      color: var(--aura-cyan); font-size: .7rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
-    }
-    .price-block { text-align: right; }
-    .price-block small { display: block; color: var(--aura-muted-dim); font-size: .75rem; }
-    .price-block strong {
-      font-family: var(--aura-font-display); font-size: 2rem; color: var(--aura-cyan);
-      letter-spacing: -.04em;
-    }
-    .ticket-body { padding: 1.35rem 1.4rem 1.5rem; }
-    .field { margin-bottom: 1rem; }
-    .field label { display: block; margin-bottom: .4rem; font-size: .86rem; font-weight: 600; color: #cbd5e1; }
-    .field input[type="email"] {
-      width: 100%; background: #020b18; border: 1px solid #1a3a52; color: #fff;
-      border-radius: 12px; padding: .9rem 1rem; font: inherit;
-    }
-    .field input:focus { outline: none; border-color: var(--aura-cyan); box-shadow: 0 0 0 3px rgba(0,229,255,.12); }
-    .field input.is-invalid { border-color: #f87171; }
-    .hint { margin: .35rem 0 0; color: var(--aura-muted-dim); font-size: .8rem; }
-    .checks { display: grid; gap: .75rem; margin: 1.1rem 0 1.25rem; }
-    .checks label {
-      display: grid; grid-template-columns: 20px 1fr; gap: .7rem; align-items: start;
-      color: var(--aura-muted); font-size: .86rem; line-height: 1.45; cursor: pointer;
-    }
-    .checks input { margin-top: .2rem; accent-color: var(--aura-cyan); }
-    .checks a { color: var(--aura-cyan); }
-    .pay-btn {
-      width: 100%; border: 0; border-radius: 14px; padding: 1rem 1.1rem;
-      font: inherit; font-weight: 800; cursor: not-allowed;
-      background: linear-gradient(135deg, #5ef6ff, #00a8ff); color: #021018;
-      box-shadow: 0 14px 36px rgba(0,229,255,.28); opacity: .55; pointer-events: none;
-      text-decoration: none; display: flex; justify-content: center; align-items: center; gap: .5rem;
-    }
-    .pay-btn.is-ready { opacity: 1; pointer-events: auto; cursor: pointer; }
-    .secure {
-      margin-top: .9rem; text-align: center; color: var(--aura-muted-dim); font-size: .8rem;
-    }
-
-    .checkout-pay-panel {
-      display: none;
-      flex-direction: column;
-      gap: .9rem;
-      min-height: 520px;
-    }
-    .checkout-pay-panel.is-active { display: flex; }
-    .checkout-form-panel.is-hidden { display: none; }
-    .checkout-toolbar {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: .75rem;
-    }
-    .checkout-toolbar h3 {
-      margin: 0;
-      font-family: var(--aura-font-display);
-      font-size: 1.05rem;
-      letter-spacing: -.02em;
-    }
-    .checkout-back-btn {
-      border: 1px solid rgba(255,255,255,.12);
-      background: rgba(255,255,255,.06);
-      color: #fff;
-      border-radius: 10px;
-      padding: .55rem .85rem;
-      font: inherit;
-      font-size: .82rem;
-      font-weight: 600;
-      cursor: pointer;
-    }
-    .checkout-back-btn:hover { background: rgba(255,255,255,.1); }
-    .checkout-frame-wrap {
-      flex: 1;
-      min-height: 460px;
-      border-radius: 16px;
-      overflow: hidden;
-      border: 1px solid rgba(255,255,255,.08);
-      background: #fff;
-    }
-    .checkout-frame-wrap iframe {
-      width: 100%;
-      height: 100%;
-      min-height: 460px;
-      border: 0;
-      display: block;
-      background: #fff;
-    }
-    .checkout-loading {
-      display: none;
-      align-items: center;
-      justify-content: center;
-      gap: .6rem;
-      color: var(--aura-muted);
-      font-size: .88rem;
-      padding: 1rem 0;
-    }
-    .checkout-loading.is-active { display: flex; }
-
-    @media (max-width: 900px) {
-      body.checkout,
-      .shop-shell.checkout { grid-template-columns: 1fr; }
-      .stage-left { min-height: auto; border-right: 0; border-bottom: 1px solid var(--aura-border); }
-      .hero-copy { margin: 1.5rem 0; }
-      .stage-right { min-height: auto; padding-bottom: 2.5rem; }
-    }
-  </style>
 </head>
-<body class="aura-platform checkout">
-  <div class="aura-atmosphere" aria-hidden="true"></div>
+<body class="shop-page">
   <?php nextrade_shop_topbar(); ?>
-  <div class="shop-shell checkout">
-  <section class="stage-left">
-    <a class="brand-row" href="/">
-      <img src="/assets/img/sitelogo.png" alt="NexTradeAI" />
-      <span>Nex<b>Trade</b>AI</span>
-    </a>
 
-    <div class="hero-copy">
-      <p class="kicker">Cloud access</p>
-      <h1>Unlock your always-on trading VPS</h1>
-      <p>One payment. Instant membership. Run MetaTrader EAs from your phone — 24/7.</p>
-      <ul class="perks">
-        <li><i>✓</i><span>One-time <strong>R<?php echo htmlspecialchars($shopPriceDisplay); ?></strong> — no subscription</span></li>
-        <li><i>✓</i><span>High-performance cloud VPS access</span></li>
-        <li><i>✓</i><span>Activated automatically after payment</span></li>
-        <li><i>✓</i><span>Mobile-first control for traders</span></li>
-      </ul>
-      <div class="shop-app-cta">
-        <p>After payment, open the app with the same email you use here.</p>
-        <a href="<?php echo $appUrlEsc; ?>" target="_blank" rel="noopener noreferrer">Open NexTradeAI app →</a>
-        · <a href="<?php echo $apkUrlEsc; ?>">Android APK</a>
+  <main class="shop-main">
+    <div class="shop-wrap">
+      <header class="shop-hero">
+        <p class="shop-hero__eyebrow">Membership</p>
+        <h1>Get cloud access</h1>
+        <p>One payment. Your VPS stays online. Control everything from the NexTradeAI app.</p>
+        <div class="shop-price-tag">One-time <strong>R<?php echo htmlspecialchars($shopPriceDisplay); ?></strong></div>
+      </header>
+
+      <div class="shop-layout">
+        <aside class="shop-benefits">
+          <h2>What you get</h2>
+          <ol class="shop-steps">
+            <li>
+              <span class="num">01</span>
+              <span><strong>Always-on VPS</strong> — keep MetaTrader automations running 24/7 without your phone open.</span>
+            </li>
+            <li>
+              <span class="num">02</span>
+              <span><strong>Instant activation</strong> — membership links to your email right after payment.</span>
+            </li>
+            <li>
+              <span class="num">03</span>
+              <span><strong>Mobile control</strong> — manage access, licenses, and signals from the app.</span>
+            </li>
+            <li>
+              <span class="num">04</span>
+              <span><strong>No subscription</strong> — pay R<?php echo htmlspecialchars($shopPriceDisplay); ?> once. Hosting access only; EA keys come from your mentor.</span>
+            </li>
+          </ol>
+          <p class="shop-note">
+            After checkout, open the <a href="<?php echo $appUrlEsc; ?>" target="_blank" rel="noopener noreferrer">web app</a>
+            or <a href="<?php echo $apkUrlEsc; ?>">Android APK</a> with the same email.
+          </p>
+        </aside>
+
+        <section class="shop-checkout" aria-labelledby="checkout-title">
+          <div class="shop-checkout__head">
+            <div>
+              <h2 id="checkout-title">Checkout</h2>
+              <small>Secure payment via Paystack</small>
+            </div>
+            <div class="shop-checkout__due">
+              Due today
+              <strong>R<?php echo htmlspecialchars($shopPriceDisplay); ?></strong>
+            </div>
+          </div>
+
+          <div class="checkout-form-panel" id="checkoutFormPanel">
+            <div class="shop-field">
+              <label for="customerEmail">Email</label>
+              <input type="email" id="customerEmail" name="customerEmail" value="<?php echo $emailEsc; ?>"
+                placeholder="you@example.com" autocomplete="email" required />
+              <p class="shop-hint">Use this email to sign in to the app.</p>
+            </div>
+
+            <div class="shop-agree">
+              <label>
+                <input type="checkbox" id="termsCheck" name="termsCheck" required />
+                <span>I agree to the <a href="/privacy-policy.html" target="_blank" rel="noopener">Privacy Policy</a>, <a href="/terms-of-service.html" target="_blank" rel="noopener">Terms</a>, and <a href="/terms-of-service.html#refund" target="_blank" rel="noopener">Refund Policy</a>.</span>
+              </label>
+              <label>
+                <input type="checkbox" id="vpsLicenseCheck" name="vpsLicenseCheck" required />
+                <span>I understand this is VPS hosting access — not an automation license. Keys are sold separately by a mentor.</span>
+              </label>
+            </div>
+
+            <button type="button" class="shop-pay-btn payment-gate-btn" id="paystackBtn"
+              data-base-url="<?php echo htmlspecialchars($paystackCheckoutBase); ?>">
+              Pay R<?php echo htmlspecialchars($shopPriceDisplay); ?>
+            </button>
+            <p class="shop-secure">Encrypted checkout · Card payments</p>
+          </div>
+        </section>
+      </div>
+
+      <p class="shop-help">
+        Questions? <a href="mailto:<?php echo $supportEsc; ?>"><?php echo $supportEsc; ?></a>
+        · <a href="/how-to-install/">Install guide</a>
+        · <a href="/">Home</a>
+      </p>
+    </div>
+  </main>
+
+  <div class="shop-overlay" id="checkoutOverlay" aria-hidden="true">
+    <div class="shop-overlay__sheet" role="dialog" aria-labelledby="overlay-title">
+      <div class="shop-overlay__bar">
+        <h3 id="overlay-title">Complete payment</h3>
+        <button type="button" class="shop-overlay__close" id="checkoutBackBtn">Close</button>
+      </div>
+      <div class="shop-overlay__loading is-active" id="checkoutLoading">Loading checkout…</div>
+      <div class="shop-overlay__frame">
+        <iframe id="paystackFrame" title="Paystack secure checkout" allow="payment *"></iframe>
       </div>
     </div>
-
-    <p class="foot-mini">
-      Need help? <a href="mailto:<?php echo htmlspecialchars(NEXTRADE_SUPPORT_EMAIL, ENT_QUOTES, 'UTF-8'); ?>"><?php echo htmlspecialchars(NEXTRADE_SUPPORT_EMAIL, ENT_QUOTES, 'UTF-8'); ?></a>
-      · <a href="/how-to-install/">Install guide</a>
-      · <a href="/">Back home</a>
-    </p>
-  </section>
-
-  <section class="stage-right">
-    <div class="ticket">
-      <div class="ticket-top">
-        <div>
-          <span class="chip">One-time · R<?php echo htmlspecialchars($shopPriceDisplay); ?></span>
-          <h2>NexTradeAI</h2>
-        </div>
-        <div class="price-block">
-          <small>Due today</small>
-          <strong>R<?php echo htmlspecialchars($shopPriceDisplay); ?></strong>
-        </div>
-      </div>
-      <div class="ticket-body">
-        <div class="checkout-form-panel" id="checkoutFormPanel">
-          <div class="field">
-            <label for="customerEmail">Membership email</label>
-            <input type="email" id="customerEmail" name="customerEmail" value="<?php echo $emailEsc; ?>"
-              placeholder="you@example.com" autocomplete="email" required />
-            <p class="hint">Access is linked to this email — use the same one in the app.</p>
-          </div>
-
-          <div class="checks">
-            <label>
-              <input type="checkbox" id="termsCheck" name="termsCheck" required />
-              <span>I agree to the <a href="/privacy-policy.html" target="_blank" rel="noopener">Privacy Policy</a>, <a href="/terms-of-service.html" target="_blank" rel="noopener">Terms</a>, and <a href="/terms-of-service.html#refund" target="_blank" rel="noopener">Refund Policy</a>.</span>
-            </label>
-            <label>
-              <input type="checkbox" id="vpsLicenseCheck" name="vpsLicenseCheck" required />
-              <span>I understand NexTradeAI is hosting access — not an automation license. Automation keys are purchased separately from a mentor.</span>
-            </label>
-          </div>
-
-          <button type="button"
-             class="pay-btn payment-gate-btn" id="paystackBtn"
-             data-base-url="<?php echo htmlspecialchars($paystackCheckoutBase); ?>">
-            Pay R<?php echo htmlspecialchars($shopPriceDisplay); ?> — secure checkout
-          </button>
-          <p class="secure">Card payments via Paystack · Encrypted checkout</p>
-          <p class="ticket-note">Membership activates on this email. Then open the <a href="<?php echo $appUrlEsc; ?>" target="_blank" rel="noopener noreferrer">NexTradeAI app</a> or follow the <a href="/how-to-install/">install guide</a>.</p>
-        </div>
-
-        <div class="checkout-pay-panel" id="checkoutPayPanel" aria-hidden="true">
-          <div class="checkout-toolbar">
-            <h3>Secure checkout</h3>
-            <button type="button" class="checkout-back-btn" id="checkoutBackBtn">← Back</button>
-          </div>
-          <div class="checkout-loading is-active" id="checkoutLoading">
-            <span>Loading Paystack checkout…</span>
-          </div>
-          <div class="checkout-frame-wrap">
-            <iframe id="paystackFrame" title="Paystack secure checkout" allow="payment *"></iframe>
-          </div>
-          <p class="secure">Complete payment below — your membership activates automatically.</p>
-        </div>
-      </div>
-    </div>
-  </section>
   </div>
+
   <?php nextrade_shop_footer(); ?>
+
   <script>
     document.addEventListener('DOMContentLoaded', function () {
-      const termsCheck = document.getElementById('termsCheck');
-      const vpsLicenseCheck = document.getElementById('vpsLicenseCheck');
-      const emailInput = document.getElementById('customerEmail');
-      const gateBtns = document.querySelectorAll('.payment-gate-btn');
-      const affiliateRef = <?php echo json_encode($affiliateRef); ?>;
-      const visitorId = <?php echo json_encode($visitorId); ?>;
-      const paystackBtn = document.getElementById('paystackBtn');
-      const checkoutFormPanel = document.getElementById('checkoutFormPanel');
-      const checkoutPayPanel = document.getElementById('checkoutPayPanel');
-      const checkoutBackBtn = document.getElementById('checkoutBackBtn');
-      const checkoutLoading = document.getElementById('checkoutLoading');
-      const paystackFrame = document.getElementById('paystackFrame');
-      let checkoutUrl = <?php echo json_encode($paystackCheckoutUrl); ?>;
+      var topbar = document.getElementById('shop-topbar');
+      var termsCheck = document.getElementById('termsCheck');
+      var vpsLicenseCheck = document.getElementById('vpsLicenseCheck');
+      var emailInput = document.getElementById('customerEmail');
+      var gateBtns = document.querySelectorAll('.payment-gate-btn');
+      var affiliateRef = <?php echo json_encode($affiliateRef); ?>;
+      var visitorId = <?php echo json_encode($visitorId); ?>;
+      var paystackBtn = document.getElementById('paystackBtn');
+      var checkoutOverlay = document.getElementById('checkoutOverlay');
+      var checkoutBackBtn = document.getElementById('checkoutBackBtn');
+      var checkoutLoading = document.getElementById('checkoutLoading');
+      var paystackFrame = document.getElementById('paystackFrame');
+      var checkoutUrl = <?php echo json_encode($paystackCheckoutUrl); ?>;
+
+      if (topbar) {
+        window.addEventListener('scroll', function () {
+          topbar.classList.toggle('is-scrolled', window.scrollY > 8);
+        }, { passive: true });
+      }
 
       function isValidEmail(value) {
         return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
       }
 
       function buildCheckoutUrl() {
-        const email = String(emailInput.value || '').trim();
-        const base = paystackBtn ? paystackBtn.getAttribute('data-base-url') : '';
+        var email = String(emailInput.value || '').trim();
+        var base = paystackBtn ? paystackBtn.getAttribute('data-base-url') : '';
         if (!base) return checkoutUrl;
-        const params = new URLSearchParams();
+        var params = new URLSearchParams();
         if (email) params.set('email', email);
         if (affiliateRef) params.set('ref', affiliateRef);
-        const qs = params.toString();
+        var qs = params.toString();
         checkoutUrl = qs ? base + '?' + qs : base;
         return checkoutUrl;
       }
 
       function trackAffiliate(email) {
         if (!email) return Promise.resolve();
-        const payload = { email: email, vid: visitorId };
+        var payload = { email: email, vid: visitorId };
         if (affiliateRef) payload.ref = affiliateRef;
         return fetch('track-ref.php', {
           method: 'POST',
@@ -387,39 +222,46 @@ $apkUrlEsc = htmlspecialchars(NEXTRADE_APK_URL, ENT_QUOTES, 'UTF-8');
       }
 
       function toggleButton() {
-        const emailOk = isValidEmail(emailInput.value);
+        var emailOk = isValidEmail(emailInput.value);
         emailInput.classList.toggle('is-invalid', emailInput.value.trim() !== '' && !emailOk);
         buildCheckoutUrl();
-        const ready = canProceedToPay();
+        var ready = canProceedToPay();
         gateBtns.forEach(function (btn) {
           btn.classList.toggle('is-ready', ready);
         });
       }
 
-      function showCheckoutPanel(url) {
-        if (!checkoutFormPanel || !checkoutPayPanel || !paystackFrame) {
+      function isMobileCheckout() {
+        return window.matchMedia('(max-width: 820px)').matches || /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+      }
+
+      function openCheckout(url) {
+        if (isMobileCheckout()) {
           window.location.assign(url);
           return;
         }
-        checkoutFormPanel.classList.add('is-hidden');
-        checkoutPayPanel.classList.add('is-active');
-        checkoutPayPanel.setAttribute('aria-hidden', 'false');
+        if (!checkoutOverlay || !paystackFrame) {
+          window.location.assign(url);
+          return;
+        }
+        checkoutOverlay.classList.add('is-open');
+        checkoutOverlay.setAttribute('aria-hidden', 'false');
         if (checkoutLoading) checkoutLoading.classList.add('is-active');
         paystackFrame.onload = function () {
           if (checkoutLoading) checkoutLoading.classList.remove('is-active');
         };
         paystackFrame.src = url;
-        checkoutPayPanel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        document.body.style.overflow = 'hidden';
       }
 
-      function hideCheckoutPanel() {
-        if (!checkoutFormPanel || !checkoutPayPanel || !paystackFrame) return;
-        checkoutPayPanel.classList.remove('is-active');
-        checkoutPayPanel.setAttribute('aria-hidden', 'true');
-        checkoutFormPanel.classList.remove('is-hidden');
+      function closeCheckout() {
+        if (!checkoutOverlay || !paystackFrame) return;
+        checkoutOverlay.classList.remove('is-open');
+        checkoutOverlay.setAttribute('aria-hidden', 'true');
         if (checkoutLoading) checkoutLoading.classList.remove('is-active');
         paystackFrame.removeAttribute('src');
         paystackFrame.onload = null;
+        document.body.style.overflow = '';
       }
 
       termsCheck.addEventListener('change', toggleButton);
@@ -427,26 +269,27 @@ $apkUrlEsc = htmlspecialchars(NEXTRADE_APK_URL, ENT_QUOTES, 'UTF-8');
       emailInput.addEventListener('input', toggleButton);
       emailInput.addEventListener('blur', toggleButton);
 
-      if (checkoutBackBtn) {
-        checkoutBackBtn.addEventListener('click', hideCheckoutPanel);
+      if (checkoutBackBtn) checkoutBackBtn.addEventListener('click', closeCheckout);
+      if (checkoutOverlay) {
+        checkoutOverlay.addEventListener('click', function (e) {
+          if (e.target === checkoutOverlay) closeCheckout();
+        });
       }
 
       gateBtns.forEach(function (btn) {
         btn.addEventListener('click', function () {
           if (!termsCheck.checked || !vpsLicenseCheck.checked) {
-            alert('Please accept the terms and confirm that NexTradeAI does not include an automation license.');
+            alert('Please accept the terms and confirm that this purchase is hosting access only.');
             return;
           }
-          const email = String(emailInput.value || '').trim();
+          var email = String(emailInput.value || '').trim();
           if (!isValidEmail(email)) {
-            alert('Please enter a valid email address to continue.');
+            alert('Please enter a valid email address.');
             emailInput.focus();
             return;
           }
-          const url = buildCheckoutUrl();
-          trackAffiliate(email).finally(function () {
-            showCheckoutPanel(url);
-          });
+          var url = buildCheckoutUrl();
+          trackAffiliate(email).finally(function () { openCheckout(url); });
         });
       });
 

@@ -79,6 +79,7 @@ if ($query_reg) {
         error_log('[NexTradeAI Email] mentor signup: ' . $e->getMessage());
     }
     // Show success page instead of alert
+    require_once $_SERVER['DOCUMENT_ROOT'] . '/includes/admin-chrome.php';
     ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -89,8 +90,8 @@ if ($query_reg) {
     <title>Registration Successful | NexTradeAI</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
-    <link rel="shortcut icon" href="assets/sitelogo.png" />
-    <link rel="icon" href="assets/sitelogo.png" />
+    <link rel="shortcut icon" href="<?php echo htmlspecialchars(NEXTRADE_LOGO_URL, ENT_QUOTES, 'UTF-8'); ?>" />
+    <link rel="icon" href="<?php echo htmlspecialchars(NEXTRADE_LOGO_URL, ENT_QUOTES, 'UTF-8'); ?>" />
     <style>
         * {
             margin: 0;
@@ -244,8 +245,9 @@ if ($query_reg) {
         }
 
         .logo-wrapper img {
-            max-width: 120px;
-            height: auto;
+            width: 56px;
+            height: 56px;
+            object-fit: contain;
             filter: drop-shadow(0 4px 12px rgba(0, 229, 255, 0.3));
         }
 
@@ -279,7 +281,7 @@ if ($query_reg) {
     <div class="success-container">
         <div class="success-card">
             <div class="logo-wrapper">
-                <img src="assets/sitelogo.png" alt="NexTradeAI Logo" />
+                <img src="<?php echo htmlspecialchars(NEXTRADE_LOGO_URL, ENT_QUOTES, 'UTF-8'); ?>" alt="NexTradeAI" width="56" height="56" />
             </div>
             <div class="success-icon">
                 <i class="bi bi-check-circle-fill"></i>

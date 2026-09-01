@@ -133,7 +133,13 @@ export default function LicenseScreen() {
         keyboardVerticalOffset={Platform.OS === 'ios' ? 8 : 0}
       >
         <ScrollView
-          contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 28 }]}
+          contentContainerStyle={[
+            styles.scroll,
+            {
+              paddingTop: Math.max(insets.top > 0 ? 0 : 8, 4),
+              paddingBottom: insets.bottom + 32,
+            },
+          ]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
@@ -151,11 +157,10 @@ export default function LicenseScreen() {
               </TouchableOpacity>
             </View>
           ) : (
-            <View style={styles.topSpacer} />
+            <View style={styles.topRow} />
           )}
 
           <AuthHero
-            logoSize={240}
             step={2}
             total={2}
             subtitle="Paste the secret key from your mentor console. One key per device."
@@ -243,9 +248,8 @@ const styles = StyleSheet.create({
   topRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 4,
+    marginBottom: 0,
   },
-  topSpacer: { height: 40 },
   backLink: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -259,7 +263,7 @@ const styles = StyleSheet.create({
   },
   copyBlock: {
     alignItems: 'center',
-    marginBottom: 24,
+    marginBottom: 18,
   },
   eyebrow: {
     ...type.eyebrow,

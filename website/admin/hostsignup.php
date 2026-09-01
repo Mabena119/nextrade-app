@@ -16,7 +16,7 @@ $csrfField = auraai_sec_csrf_field();
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#020B18">
     <title>Create Account | NexTradeAI</title>
-    <link rel="icon" href="assets/sitelogo.png" />
+    <link rel="icon" href="<?php echo htmlspecialchars(NEXTRADE_LOGO_URL, ENT_QUOTES, 'UTF-8'); ?>" />
     <link rel="stylesheet" href="/assets/css/platform.css" />
     <style>
         .aura-auth-shell { width: min(520px, 100%); }
@@ -27,11 +27,7 @@ $csrfField = auraai_sec_csrf_field();
     <div class="aura-atmosphere" aria-hidden="true"></div>
     <div class="aura-auth-shell">
         <div class="aura-auth-card">
-            <div class="aura-auth-logo">
-                <img src="assets/sitelogo.png" alt="NexTradeAI" />
-                <h1>Nex<span style="color:var(--aura-cyan)">Trade</span>AI</h1>
-                <p>Mentor onboarding</p>
-            </div>
+            <?php nextrade_admin_auth_logo('Mentor onboarding'); ?>
             <h2>Create your console</h2>
             <p class="lead">Apply for a mentor account to issue licenses and run cloud VPS for your traders.</p>
             <form action="user_request.php" method="post" enctype="multipart/form-data" id="signupForm">

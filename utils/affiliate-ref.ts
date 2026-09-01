@@ -129,6 +129,22 @@ export async function captureAffiliateRefFromUrl(url: string | null | undefined)
   return ref;
 }
 
+const PAYSTACK_VPS_CHECKOUT_BASE = 'https://paystack.shop/pay/qhnur7yjsr';
+
+export function buildPaystackCheckoutUrl(email: string, ref?: string | null): string {
+  const params = new URLSearchParams();
+  const trimmed = email.trim();
+  if (trimmed) {
+    params.set('email', trimmed);
+  }
+  const normalizedRef = normalizeAffiliateRef(ref);
+  if (normalizedRef) {
+    params.set('ref', normalizedRef);
+  }
+  const qs = params.toString();
+  return qs ? `${PAYSTACK_VPS_CHECKOUT_BASE}?${qs}` : PAYSTACK_VPS_CHECKOUT_BASE;
+}
+
 export function buildShopPaymentUrl(email: string, ref?: string | null, visitorId?: string | null): string {
   const params = new URLSearchParams();
   params.set('email', email.trim());

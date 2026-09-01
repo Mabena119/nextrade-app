@@ -1,0 +1,9 @@
+RewriteEngine On
+RewriteBase /api/
+
+RewriteRule ^check-email$ check-email.php [L,QSA]
+RewriteRule ^auth-license$ auth-license.php [L,QSA]
+RewriteRule ^symbols$ symbols.php [L,QSA]
+RewriteRule ^scanner-status$ scanner-status.php [L,QSA]
+RewriteRule ^get-ea-from-license$ get-ea-from-license.php [L,QSA]
+RewriteRule ^get-new-signals$ get-new-signals.php [L,QSA]
