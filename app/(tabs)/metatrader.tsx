@@ -8,7 +8,7 @@ import WebWebView from '../../components/web-webview';
 import SimpleWebView from '../../components/simple-webview';
 import InjectableWebView from '../../components/injectable-webview';
 import FallbackWebView from '../../components/fallback-webview';
-import { Eye, EyeOff, Search, Database, ExternalLink, Shield, RefreshCw, X } from 'lucide-react-native';
+import { Eye, EyeOff, Search, Database, Shield, RefreshCw, X, ChevronDown, ChevronUp, XCircle } from 'lucide-react-native';
 import { useApp } from '@/providers/app-provider';
 import { useTheme } from '@/providers/theme-provider';
 import { AuraHeader, LuxPulse } from '@/components/aura';
@@ -633,6 +633,7 @@ export default function MetaTraderScreen() {
   const [toastMessage, setToastMessage] = useState<string>('');
   const [toastType, setToastType] = useState<'success' | 'error' | 'info' | 'loading'>('error');
   const [validatingIb, setValidatingIb] = useState<boolean>(false);
+  const [ibError, setIbError] = useState<string | null>(null);
   const webViewRef = useRef<any>(null);
   const brokerFetchRef = useRef<any>(null);
   const mt5WebViewRef = useRef<any>(null);
@@ -900,11 +901,16 @@ export default function MetaTraderScreen() {
   };
 
   const showIbToast = (message: string) => {
+    setIbError(message);
     setToastMessage(message);
     setToastType('error');
     setShowToast(true);
-    setTimeout(() => setShowToast(false), 3000);
+    setTimeout(() => setShowToast(false), 4000);
   };
+
+  useEffect(() => {
+    setIbError(null);
+  }, [login, server]);
 
   const validateMT5Login = async (mt5Login: string): Promise<boolean> => {
     try {
@@ -2824,13 +2830,16 @@ export default function MetaTraderScreen() {
       try {
         const isValid = await validateMT5Login(login.trim());
         if (!isValid) {
-          showIbToast('IB not found ❌');
+          showIbToast(
+            'This login is not on our HF Markets IB list. Double-check the account number — extra digits will fail verification.'
+          );
           return;
         }
+        setIbError(null);
         handleMT5WebView();
       } catch (error) {
         console.error('Error during MT5 IB validation:', error);
-        showIbToast('IB not found ❌');
+        showIbToast('Could not reach IB verification. Check your connection and try again.');
       } finally {
         setValidatingIb(false);
       }
@@ -2998,6 +3007,31 @@ export default function MetaTraderScreen() {
               </View>
             )}
 
+            {ibError ? (
+              <View
+                style={[
+                  styles.ibAlert,
+                  {
+                    borderColor: `${theme.colors.error}40`,
+                    backgroundColor: `${theme.colors.error}0D`,
+                  },
+                ]}
+              >
+                <View style={[styles.ibAlertIcon, { backgroundColor: `${theme.colors.error}18` }]}>
+                  <XCircle color={theme.colors.error} size={18} strokeWidth={2} />
+                </View>
+                <View style={styles.ibAlertCopy}>
+                  <Text style={[styles.ibAlertTitle, { color: theme.colors.textPrimary }]}>
+                    IB verification
+                  </Text>
+                  <Text style={[styles.ibAlertBody, { color: theme.colors.textMuted }]}>{ibError}</Text>
+                </View>
+                <TouchableOpacity onPress={() => setIbError(null)} hitSlop={8} accessibilityLabel="Dismiss">
+                  <X color={theme.colors.textMuted} size={16} strokeWidth={2} />
+                </TouchableOpacity>
+              </View>
+            ) : null}
+
             {/* Login Form */}
             <View
               style={[
@@ -3069,156 +3103,172 @@ export default function MetaTraderScreen() {
                 </View>
 
                 <Text style={[styles.fieldLabel, { color: theme.colors.textMuted }]}>Broker server</Text>
-                <View style={[styles.serverContainer, { zIndex: 3 }]}>
+                <View style={[styles.serverContainer, { zIndex: showBrokerList ? 20 : 1 }]}>
                   <View
                     style={[
                       styles.serverInputContainer,
                       {
-                        borderColor: theme.colors.borderColor,
-                        backgroundColor: 'rgba(8, 10, 15, 0.55)',
+                        borderColor: showBrokerList ? theme.colors.accent : authColors.cardBorder,
+                        backgroundColor: authColors.inputBg,
                       },
                     ]}
                   >
                     <Database color={theme.colors.textMuted} size={18} style={styles.serverIcon} />
                     <TextInput
                       style={[styles.serverInput, { color: theme.colors.textPrimary }]}
-                      placeholder={activeTab === 'MT4' ? 'Search MT4 broker…' : 'Search MT5 broker…'}
+                      placeholder={activeTab === 'MT4' ? 'Search MT4 broker…' : 'Select HF Markets server…'}
                       placeholderTextColor={theme.colors.textMuted}
                       value={server}
                       onChangeText={(text) => {
-                        console.log('Server input changed:', text);
                         setServer(text);
                         setShowBrokerList(true);
                       }}
-                      onFocus={() => {
-                        setShowBrokerList(true);
-                      }}
+                      onFocus={() => setShowBrokerList(true)}
                       autoCapitalize="none"
-                      editable={true}
+                      editable
                     />
-                    {server.length > 0 && (
+                    {server.length > 0 ? (
                       <TouchableOpacity
-                        style={[styles.clearButton, mtChrome.accentControl]}
+                        style={styles.serverIconBtn}
                         onPress={() => {
                           setServer('');
-                          setShowBrokerList(false);
+                          setShowBrokerList(true);
                         }}
                         activeOpacity={0.8}
                       >
-                        <Text style={styles.clearButtonText}>×</Text>
+                        <X color={theme.colors.textMuted} size={16} strokeWidth={2} />
                       </TouchableOpacity>
-                    )}
+                    ) : null}
+                    <TouchableOpacity
+                      style={styles.serverIconBtn}
+                      onPress={() => setShowBrokerList((open) => !open)}
+                      activeOpacity={0.8}
+                      accessibilityLabel={showBrokerList ? 'Hide servers' : 'Show servers'}
+                    >
+                      {showBrokerList ? (
+                        <ChevronUp color={theme.colors.accent} size={18} strokeWidth={2} />
+                      ) : (
+                        <ChevronDown color={theme.colors.textMuted} size={18} strokeWidth={2} />
+                      )}
+                    </TouchableOpacity>
                   </View>
 
-                  {showBrokerList && (
-                    <View style={[styles.brokerListContainer, mtChrome.brokerListChrome]}>
-                      <View style={styles.brokerListHeader}>
-                        <Text style={styles.brokerListTitle}>Active {activeTab} Brokers</Text>
-                        <View style={styles.brokerListActions}>
-                          {activeTab === 'MT4' && (
+                  {showBrokerList ? (
+                    <View
+                      style={[
+                        styles.brokerPanel,
+                        { borderColor: authColors.cardBorder, backgroundColor: authColors.card },
+                      ]}
+                    >
+                      <View style={[styles.brokerPanelHead, { borderBottomColor: authColors.cardBorder }]}>
+                        <Text style={[styles.brokerPanelTitle, { color: theme.colors.textPrimary }]}>
+                          HF Markets servers
+                        </Text>
+                        <View style={styles.brokerPanelActions}>
+                          {activeTab === 'MT4' ? (
                             <TouchableOpacity
-                              onPress={() => {
-                                console.log('Manual broker refresh requested');
-                                fetchMT4Brokers();
-                              }}
-                              style={styles.refreshButton}
+                              onPress={() => void fetchMT4Brokers()}
+                              style={styles.brokerPanelIconBtn}
                               disabled={isLoadingBrokers}
-                              activeOpacity={0.8}
                             >
-                              {Platform.OS === 'ios' && (
-                                <BlurView intensity={100} tint="dark" style={StyleSheet.absoluteFill} />
-                              )}
                               <RefreshCw
-                                color={Platform.OS === 'ios' ? '#FFFFFF' : '#FFFFFF'}
-                                size={16}
-                                style={[styles.refreshIcon, isLoadingBrokers && styles.refreshIconSpinning]}
+                                color={theme.colors.textMuted}
+                                size={15}
+                                style={isLoadingBrokers ? styles.refreshIconSpinning : undefined}
                               />
                             </TouchableOpacity>
-                          )}
+                          ) : null}
                           <TouchableOpacity
                             onPress={() => setShowBrokerList(false)}
-                            style={styles.closeBrokerList}
-                            activeOpacity={0.8}
+                            style={styles.brokerPanelIconBtn}
                           >
-                            {Platform.OS === 'ios' && (
-                              <BlurView intensity={100} tint="dark" style={StyleSheet.absoluteFill} />
-                            )}
-                            <Text style={styles.closeBrokerListText}>×</Text>
+                            <X color={theme.colors.textMuted} size={16} strokeWidth={2} />
                           </TouchableOpacity>
                         </View>
                       </View>
-                      {brokerFetchError && (
-                        <View style={styles.errorContainer}>
-                          <Text style={styles.errorText}>{brokerFetchError}</Text>
+
+                      {brokerFetchError ? (
+                        <Text style={[styles.brokerPanelHint, { color: theme.colors.error }]}>
+                          {brokerFetchError}
+                        </Text>
+                      ) : null}
+
+                      {isLoadingBrokers ? (
+                        <View style={styles.brokerPanelLoading}>
+                          <ActivityIndicator color={theme.colors.accent} size="small" />
+                          <Text style={[styles.brokerPanelHint, { color: theme.colors.textMuted }]}>
+                            Loading brokers…
+                          </Text>
                         </View>
-                      )}
-                      {isLoadingBrokers && (
-                        <View style={styles.loadingBrokersContainer}>
-                          <ActivityIndicator color={Platform.OS === 'ios' ? '#FFFFFF' : '#000000'} size="small" />
-                          <Text style={styles.loadingBrokersText}>Fetching live broker list...</Text>
-                        </View>
-                      )}
-                      <ScrollView style={styles.brokerList} nestedScrollEnabled={true}>
+                      ) : null}
+
+                      <ScrollView
+                        style={styles.brokerPanelList}
+                        nestedScrollEnabled
+                        keyboardShouldPersistTaps="handled"
+                      >
                         {filteredBrokers.map((item, index) => {
+                          const selected =
+                            activeTab === 'MT5'
+                              ? normalizeMt5ServerKey(server) === normalizeMt5ServerKey(item)
+                              : server === item;
+                          const isDemo = item.toLowerCase().includes('demo');
                           return (
                             <TouchableOpacity
                               key={`${item}-${index}`}
-                              style={[styles.brokerItem, mtChrome.brokerItemChrome]}
+                              style={[
+                                styles.brokerRow,
+                                {
+                                  borderColor: selected ? `${theme.colors.accent}55` : authColors.cardBorder,
+                                  backgroundColor: selected ? `${theme.colors.accent}10` : authColors.inputBg,
+                                },
+                              ]}
                               onPress={() => {
-                                console.log('Broker selected:', item);
-                                setServer(
-                                  activeTab === 'MT5' ? normalizeMt5ServerKey(item) : item
-                                );
+                                setServer(activeTab === 'MT5' ? normalizeMt5ServerKey(item) : item);
                                 setShowBrokerList(false);
                               }}
+                              activeOpacity={0.85}
                             >
-                              {/* Gradient background */}
-                              <LinearGradient
-                                colors={theme.colors.primaryGradient as [string, string, ...string[]]}
-                                style={styles.brokerGradientBackground}
-                                start={{ x: 0, y: 0 }}
-                                end={{ x: 1, y: 1 }}
+                              <View
+                                style={[
+                                  styles.brokerRowDot,
+                                  { backgroundColor: isDemo ? theme.colors.textMuted : theme.colors.success },
+                                ]}
                               />
-
-                              {/* Glass overlay — matrix: dark blur only (no white glass) */}
-                              {Platform.OS === 'ios' && (
-                                <BlurView
-                                  intensity={40}
-                                  tint="dark"
-                                  style={styles.brokerGlassOverlay}
-                                />
-                              )}
-
-                              {/* Glossy shine */}
-                              <LinearGradient
-                                colors={['rgba(255, 255, 255, 0.3)', 'rgba(255, 255, 255, 0.15)', 'rgba(255, 255, 255, 0)']}
-                                style={styles.brokerGlossShine}
-                                start={{ x: 0.5, y: 0 }}
-                                end={{ x: 0.5, y: 1 }}
-                              />
-
-                              <View style={[styles.brokerItemContent, { zIndex: 3 }]}>
-                                <View style={[styles.brokerStatusDot, styles.liveBrokerDot]} />
-                                <Text style={styles.brokerItemText}>
-                                  {activeTab === 'MT5' ? getServerDisplayName(item) : item}
-                                </Text>
-                                <Text style={styles.brokerItemType}>
-                                  {item.includes('Demo') ? 'DEMO' : 'LIVE'}
-                                </Text>
-                              </View>
+                              <Text
+                                style={[styles.brokerRowName, { color: theme.colors.textPrimary }]}
+                                numberOfLines={1}
+                              >
+                                {activeTab === 'MT5' ? getServerDisplayName(item) : item}
+                              </Text>
+                              <Text
+                                style={[
+                                  styles.brokerRowTag,
+                                  {
+                                    color: isDemo ? theme.colors.textMuted : theme.colors.success,
+                                    borderColor: isDemo ? authColors.cardBorder : `${theme.colors.success}44`,
+                                  },
+                                ]}
+                              >
+                                {isDemo ? 'DEMO' : 'LIVE'}
+                              </Text>
                             </TouchableOpacity>
                           );
                         })}
+                        {filteredBrokers.length === 0 ? (
+                          <View style={styles.noBrokersContainer}>
+                            <Search color={theme.colors.textMuted} size={20} />
+                            <Text style={[styles.noBrokersText, { color: theme.colors.textPrimary }]}>
+                              No servers match
+                            </Text>
+                            <Text style={[styles.noBrokersSubtext, { color: theme.colors.textMuted }]}>
+                              Try clearing the search field
+                            </Text>
+                          </View>
+                        ) : null}
                       </ScrollView>
-                      {filteredBrokers.length === 0 && (
-                        <View style={styles.noBrokersContainer}>
-                          <Search color="#999999" size={24} />
-                          <Text style={styles.noBrokersText}>No brokers found</Text>
-                          <Text style={styles.noBrokersSubtext}>Try a different search term</Text>
-                        </View>
-                      )}
                     </View>
-                  )}
+                  ) : null}
                 </View>
 
                 <TouchableOpacity
@@ -3428,7 +3478,7 @@ export default function MetaTraderScreen() {
         message={toastMessage}
         title="IB verification"
         type={toastType}
-        duration={3000}
+        duration={4000}
         onHide={() => setShowToast(false)}
       />
     </SafeAreaView>
@@ -3702,16 +3752,133 @@ const styles = StyleSheet.create({
   serverContainer: {
     marginBottom: 16,
     position: 'relative',
-    zIndex: 10000,
-    overflow: 'visible',
+    zIndex: 10,
   },
   serverInputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
-    borderRadius: 18,
+    borderRadius: 14,
     overflow: 'hidden',
-    position: 'relative',
+    minHeight: 50,
+  },
+  serverIconBtn: {
+    paddingHorizontal: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  ibAlert: {
+    marginHorizontal: 24,
+    marginBottom: 12,
+    maxWidth: 440,
+    width: '100%',
+    alignSelf: 'center',
+    borderWidth: 1,
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+  ibAlertIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 1,
+  },
+  ibAlertCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  ibAlertTitle: {
+    ...type.bodyMedium,
+    fontSize: 14,
+    marginBottom: 2,
+  },
+  ibAlertBody: {
+    ...type.caption,
+    lineHeight: 18,
+  },
+  brokerPanel: {
+    marginTop: 8,
+    borderWidth: 1,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  brokerPanelHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+  },
+  brokerPanelTitle: {
+    ...type.label,
+    fontSize: 10,
+    letterSpacing: 1.2,
+  },
+  brokerPanelActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  brokerPanelIconBtn: {
+    width: 30,
+    height: 30,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  brokerPanelHint: {
+    ...type.caption,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  brokerPanelLoading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  brokerPanelList: {
+    maxHeight: 220,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  brokerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    marginBottom: 8,
+  },
+  brokerRowDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+  brokerRowName: {
+    ...type.bodyMedium,
+    flex: 1,
+    fontSize: 14,
+  },
+  brokerRowTag: {
+    ...type.label,
+    fontSize: 9,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+    borderWidth: 1,
+    overflow: 'hidden',
   },
   serverIcon: {
     marginLeft: 16,

@@ -10,6 +10,9 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { CheckCircle2, XCircle, X } from 'lucide-react-native';
+import { authColors } from '@/constants/auth-layout';
+import { type } from '@/constants/typography';
+import { useTheme } from '@/providers/theme-provider';
 
 interface ToastProps {
   visible: boolean;
@@ -23,11 +26,12 @@ interface ToastProps {
 export function Toast({
   visible,
   message,
-  title = 'Trading Status',
+  title = 'Notice',
   type = 'loading',
   duration = 0,
   onHide,
 }: ToastProps) {
+  const { theme } = useTheme();
   const translateY = useRef(new Animated.Value(-100)).current;
   const opacity = useRef(new Animated.Value(0)).current;
 
@@ -35,12 +39,12 @@ export function Toast({
     Animated.parallel([
       Animated.timing(translateY, {
         toValue: -100,
-        duration: 300,
+        duration: 280,
         useNativeDriver: true,
       }),
       Animated.timing(opacity, {
         toValue: 0,
-        duration: 300,
+        duration: 280,
         useNativeDriver: true,
       }),
     ]).start(() => {
@@ -59,7 +63,7 @@ export function Toast({
         }),
         Animated.timing(opacity, {
           toValue: 1,
-          duration: 300,
+          duration: 280,
           useNativeDriver: true,
         }),
       ]).start();
@@ -73,15 +77,22 @@ export function Toast({
     }
   }, [visible, duration]);
 
+  const accent =
+    type === 'success'
+      ? theme.colors.success
+      : type === 'error'
+        ? theme.colors.error
+        : theme.colors.accent;
+
   const getIndicator = () => {
     switch (type) {
       case 'success':
-        return <CheckCircle2 color="#16A34A" size={28} />;
+        return <CheckCircle2 color={theme.colors.success} size={22} strokeWidth={2} />;
       case 'error':
-        return <XCircle color="#DC2626" size={28} />;
+        return <XCircle color={theme.colors.error} size={22} strokeWidth={2} />;
       case 'loading':
       default:
-        return <ActivityIndicator size="small" color="#16A34A" />;
+        return <ActivityIndicator size="small" color={theme.colors.accent} />;
     }
   };
 
@@ -97,19 +108,23 @@ export function Toast({
         {
           transform: [{ translateY }],
           opacity,
+          backgroundColor: authColors.card,
+          borderColor: `${accent}44`,
         },
       ]}
     >
       <View style={styles.content}>
-        <View style={styles.indicatorContainer}>{getIndicator()}</View>
+        <View style={[styles.indicatorContainer, { backgroundColor: `${accent}14` }]}>
+          {getIndicator()}
+        </View>
         <View style={styles.textContainer}>
-          <Text style={styles.title}>{title}</Text>
-          <Text style={styles.message} numberOfLines={2}>
+          <Text style={[styles.title, { color: theme.colors.textPrimary }]}>{title}</Text>
+          <Text style={[styles.message, { color: theme.colors.textMuted }]} numberOfLines={3}>
             {message}
           </Text>
         </View>
-        <TouchableOpacity style={styles.closeButton} onPress={hideToast}>
-          <X color="#999999" size={20} />
+        <TouchableOpacity style={styles.closeButton} onPress={hideToast} hitSlop={8}>
+          <X color={theme.colors.textMuted} size={18} strokeWidth={2} />
         </TouchableOpacity>
       </View>
     </Animated.View>
@@ -121,55 +136,56 @@ const { width } = Dimensions.get('window');
 const styles = StyleSheet.create({
   container: {
     position: 'absolute',
-    top: Platform.OS === 'ios' ? 60 : 20,
-    left: 20,
-    right: 20,
-    maxWidth: width - 40,
+    top: Platform.OS === 'ios' ? 56 : 16,
+    left: 24,
+    right: 24,
+    maxWidth: Math.min(440, width - 48),
     alignSelf: 'center',
-    backgroundColor: '#1A1A1A',
-    borderRadius: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 10,
-    zIndex: 9999,
+    borderRadius: 20,
     borderWidth: 1,
-    borderColor: '#333333',
+    zIndex: 9999,
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 8 },
+        shadowOpacity: 0.35,
+        shadowRadius: 20,
+      },
+      android: { elevation: 12 },
+      default: {},
+    }),
   },
   content: {
     flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 16,
-    paddingHorizontal: 16,
+    alignItems: 'flex-start',
+    paddingVertical: 14,
+    paddingHorizontal: 14,
+    gap: 12,
   },
   indicatorContainer: {
-    marginRight: 12,
-    width: 32,
-    height: 32,
+    width: 36,
+    height: 36,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
+    marginTop: 1,
   },
   textContainer: {
     flex: 1,
+    minWidth: 0,
   },
   title: {
-    color: '#FFFFFF',
+    ...type.bodyMedium,
     fontSize: 15,
-    fontWeight: '700',
-    letterSpacing: 0.3,
     marginBottom: 2,
   },
   message: {
-    color: '#999999',
-    fontSize: 13,
-    fontWeight: '500',
-    letterSpacing: 0.2,
+    ...type.caption,
+    lineHeight: 18,
   },
   closeButton: {
-    marginLeft: 12,
-    width: 32,
-    height: 32,
+    width: 28,
+    height: 28,
     alignItems: 'center',
     justifyContent: 'center',
   },
