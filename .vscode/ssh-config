@@ -1,0 +1,28 @@
+# NexTrade AI Lightsail — project SSH config (mirrors ~/.ssh/config Host nextrade)
+# Workspace uses ~/.ssh/config by default; this file is for reference / Remote-SSH override.
+
+Host nextrade nextradeai nextrade-ai 35.168.213.207
+  HostName 35.168.213.207
+  User ec2-user
+  Port 22
+  IdentityFile ~/.ssh/nextrade.pem
+  IdentitiesOnly yes
+  PreferredAuthentications publickey
+  AddKeysToAgent yes
+  UseKeychain yes
+  ConnectTimeout 15
+  ServerAliveInterval 60
+  ServerAliveCountMax 3
+
+Host aura auraai-vps-cpanel auraai-vps.com
+  HostName 3.210.101.66
+  User ec2-user
+  Port 22
+  IdentityFile ~/.ssh/aura.pem
+  IdentitiesOnly yes
+  PreferredAuthentications publickey
+  AddKeysToAgent yes
+  UseKeychain yes
+  ConnectTimeout 15
+  ServerAliveInterval 60
+  ServerAliveCountMax 3

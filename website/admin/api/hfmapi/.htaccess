@@ -1,0 +1,4 @@
+# HF Markets IB lookup API (validate-mt5 upstream)
+<IfModule mod_authz_core.c>
+  Require all granted
+</IfModule>

@@ -1,0 +1,36 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Local: NexTradeAI web + API",
+      "type": "shell",
+      "command": "cd ${workspaceFolder} && bun run start-web-local",
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Local: marketing site :8080",
+      "type": "shell",
+      "command": "cd ${workspaceFolder} && python3 scripts/serve-website.py",
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "SSH: Connect to NexTrade Lightsail",
+      "type": "shell",
+      "command": "${workspaceFolder}/scripts/connect-nextrade.sh",
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "focus": true
+      },
+      "problemMatcher": []
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: nextrade-app
+    env: docker
+    plan: free
+    autoDeploy: true
+    healthCheckPath: /health
+    buildCommand: ""
+    startCommand: bun run serve:dist
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    envVars:
+      - key: EXPO_NO_TELEMETRY
+        value: "1"
+      - key: NODE_ENV
+        value: "production"
+      - key: PORT
+        value: "3000"
+      - key: EXPO_PUBLIC_CHART_WARMUP_ENABLED
+        value: "false"
+      - key: API_UPSTREAM_URL
+        value: "https://auraai-vps.com"
+      - key: GOOGLE_AI_API_KEY
+        sync: false
+      - key: GMAIL_USER
+        sync: false
+      - key: GMAIL_PASS
+        sync: false
+      - key: AURAAI_EMAIL_RELAY_SECRET
+        sync: false

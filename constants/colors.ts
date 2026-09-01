@@ -1,0 +1,31 @@
+/** Shared palette — NexTradeAI robot mark: void black / electric blue / orbital cyan. */
+export default {
+  primary: '#00A8FF',
+  secondary: '#5EF6FF',
+  background: '#000000',
+  backgroundSecondary: '#07090F',
+  surface: 'rgba(255, 255, 255, 0.045)',
+  surfaceLight: 'rgba(255, 255, 255, 0.07)',
+  surfaceDark: 'rgba(0, 0, 0, 0.5)',
+  text: '#F2F4F7',
+  textSecondary: '#8B95A5',
+  textTertiary: 'rgba(139, 149, 165, 0.72)',
+  border: 'rgba(255, 255, 255, 0.08)',
+  borderLight: 'rgba(0, 168, 255, 0.38)',
+  success: '#3AE374',
+  error: '#FF5C7A',
+  warning: '#FBBF24',
+  glass: {
+    background: 'rgba(7, 9, 15, 0.78)',
+    backgroundMedium: 'rgba(7, 9, 15, 0.86)',
+    backgroundStrong: 'rgba(7, 9, 15, 0.94)',
+    border: 'rgba(94, 246, 255, 0.16)',
+    borderMedium: 'rgba(0, 168, 255, 0.32)',
+    shadow: 'rgba(0, 0, 0, 0.6)',
+  },
+  blur: {
+    light: 'rgba(0, 168, 255, 0.08)',
+    medium: 'rgba(94, 246, 255, 0.14)',
+    dark: 'rgba(0, 0, 0, 0.55)',
+  },
+};

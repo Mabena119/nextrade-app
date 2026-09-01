@@ -1,0 +1,15 @@
+{
+  "java.configuration.updateBuildConfiguration": "automatic",
+  "java.compile.nullAnalysis.mode": "automatic",
+  "task.allowAutomaticTasks": "on",
+  "remote.SSH.configFile": "${env:HOME}/.ssh/config",
+  "remote.SSH.remotePlatform": {
+    "aura": "linux",
+    "auraai-vps.com": "linux",
+    "auraai-vps-cpanel": "linux"
+  },
+  "files.associations": {
+    "*.mq5": "cpp",
+    "*.mqh": "cpp"
+  }
+}

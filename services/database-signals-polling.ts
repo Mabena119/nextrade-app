@@ -1,0 +1,417 @@
+import { CPANEL_DB } from '../config/database';
+import { Platform } from 'react-native';
+import { resolveApiBaseUrl } from '../utils/api-base-url';
+
+/**
+ * Web/iOS PWA: relative `/api/*` (EA Trade pattern — same-origin, no CORS).
+ * Metro web (:8081) and native: absolute base from resolveApiBaseUrl.
+ */
+function getApiBaseUrl(): string {
+  if (Platform.OS === 'web' && typeof window !== 'undefined' && window.location?.origin) {
+    try {
+      const { hostname, port } = new URL(window.location.origin);
+      if (!(hostname === 'localhost' && port === '8081')) {
+        return '';
+      }
+    } catch {
+      // fall through
+    }
+  }
+  return resolveApiBaseUrl();
+}
+
+// Database configuration (cPanel VPS — polling uses API, not direct MySQL)
+const dbConfig = {
+  host: CPANEL_DB.host,
+  user: CPANEL_DB.user,
+  password: CPANEL_DB.password,
+  database: CPANEL_DB.database,
+  port: CPANEL_DB.port,
+  connectTimeout: 60000,
+  acquireTimeout: 60000,
+  timeout: 60000,
+};
+
+export interface DatabaseSignal {
+  id: string;
+  ea: string;
+  asset: string;
+  latestupdate: string;
+  type: string;
+  action: string;
+  price: string;
+  tp: string;
+  sl: string;
+  time: string;
+  results: string;
+  lot?: string;
+}
+
+export interface LicenseData {
+  id: string;
+  owner: string;
+  ea: string;
+  user: string;
+  k_ey: string;
+  created: string;
+  expires: string;
+  plan: string;
+  status: string;
+  phone_secret_code: string;
+  phoneId: string;
+  power: string;
+}
+
+export interface SignalPollingCallback {
+  onSignalFound: (signal: DatabaseSignal) => void;
+  onError: (error: string) => void;
+}
+
+class DatabaseSignalsPollingService {
+  private isEnabled: boolean = true;
+  private intervalId: ReturnType<typeof setInterval> | null = null;
+  private onSignalFound?: (signal: DatabaseSignal) => void;
+  private onError?: (error: string) => void;
+  /** Called after each scheduled interval poll completes (not used for `pollNow`). */
+  private onPollComplete?: () => void;
+  private currentLicenseKey: string | null = null;
+  private currentEA: string | null = null;
+  private lastPollTime: string | null = null;
+  private isPaused: boolean = false;
+
+  // Enable database connections
+  enableDatabaseConnections() {
+    this.isEnabled = true;
+    console.log('Database connections enabled for signals polling service');
+  }
+
+  // Disable database connections
+  disableDatabaseConnections() {
+    this.isEnabled = false;
+    this.stopPolling();
+    console.log('Database connections disabled for signals polling service');
+  }
+
+  // Start polling for signals
+  startPolling(
+    licenseKey: string,
+    onSignalFound?: (signal: DatabaseSignal) => void,
+    onError?: (error: string) => void,
+    options?: { onPollComplete?: () => void }
+  ) {
+    if (this.intervalId && this.currentLicenseKey === licenseKey && !this.isPaused) {
+      this.onSignalFound = onSignalFound ?? this.onSignalFound;
+      this.onError = onError ?? this.onError;
+      this.onPollComplete = options?.onPollComplete ?? this.onPollComplete;
+      console.log('Database signals polling already running for same license — callbacks refreshed');
+      return;
+    }
+
+    if (this.intervalId) {
+      clearInterval(this.intervalId);
+      this.intervalId = null;
+    }
+
+    this.isPaused = false;
+    this.onSignalFound = onSignalFound;
+    this.onError = onError;
+    this.onPollComplete = options?.onPollComplete;
+    this.currentLicenseKey = licenseKey;
+    // Start with 24 hours ago so first poll fetches recent signals (was: "now" which missed everything)
+    this.lastPollTime = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+    console.log('Starting database signals polling for license:', licenseKey);
+
+    if (!this.isEnabled) {
+      console.log('Database connections disabled - using mock data for testing');
+      this.startMockPolling(licenseKey);
+      return;
+    }
+
+    // Start real database polling
+    this.startRealPolling(licenseKey);
+  }
+
+  /**
+   * Switch active EA license while keeping the same JS callbacks (after user reorders EAs, bot still on).
+   * Resets poll cursor so we only track signals for the new EA.
+   */
+  restartWithLicense(licenseKey: string) {
+    const wasPaused = this.isPaused;
+    if (this.intervalId) {
+      clearInterval(this.intervalId);
+      this.intervalId = null;
+    }
+    this.isPaused = false;
+    this.currentLicenseKey = licenseKey;
+    this.currentEA = null;
+    this.lastPollTime = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    console.log('Restarting database signals polling for new active EA license');
+
+    if (!this.onSignalFound) {
+      console.warn('restartWithLicense: no onSignalFound — call startPolling first');
+      return;
+    }
+
+    if (!this.isEnabled) {
+      this.startMockPolling(licenseKey);
+      if (wasPaused) {
+        this.pausePolling();
+      }
+      return;
+    }
+    this.startRealPolling(licenseKey);
+    if (wasPaused) {
+      this.pausePolling();
+    }
+  }
+
+  // Stop polling
+  stopPolling() {
+    if (this.intervalId) {
+      clearInterval(this.intervalId);
+      this.intervalId = null;
+    }
+    this.currentLicenseKey = null;
+    this.currentEA = null;
+    this.lastPollTime = null;
+    this.isPaused = false;
+    this.onPollComplete = undefined;
+    console.log('Database signals polling stopped');
+  }
+
+  // Pause polling (keeps state but stops checking)
+  pausePolling() {
+    if (this.intervalId) {
+      clearInterval(this.intervalId);
+      this.intervalId = null;
+    }
+    this.isPaused = true;
+    console.log('Database signals polling paused');
+  }
+
+  // Resume polling (restarts checking with existing state)
+  resumePolling() {
+    if (!this.isPaused) {
+      console.log('Polling is not paused, cannot resume');
+      return;
+    }
+
+    if (this.intervalId) {
+      console.log('Polling already running');
+      return;
+    }
+
+    if (!this.currentLicenseKey) {
+      console.log('No license key available to resume polling');
+      return;
+    }
+
+    this.isPaused = false;
+    console.log('Resuming database signals polling for license:', this.currentLicenseKey);
+
+    if (!this.isEnabled) {
+      console.log('Database connections disabled - using mock data for testing');
+      this.startMockPolling(this.currentLicenseKey);
+      return;
+    }
+
+    // Resume real database polling
+    this.startRealPolling(this.currentLicenseKey);
+  }
+
+  // Check if polling is paused
+  getIsPaused(): boolean {
+    return this.isPaused;
+  }
+
+  // Mock polling for testing (when database is disabled)
+  private startMockPolling(licenseKey: string) {
+    console.log('Starting mock database signals polling for license:', licenseKey);
+
+    // Simulate finding a signal every 30 seconds for testing
+    this.intervalId = setInterval(() => {
+      const mockSignal: DatabaseSignal = {
+        id: 'mock-' + Date.now(),
+        ea: 'MockEA',
+        asset: 'XAUUSD',
+        latestupdate: new Date().toISOString(),
+        type: 'TRADE',
+        action: Math.random() > 0.5 ? 'BUY' : 'SELL',
+        price: (Math.random() * 1000 + 2000).toFixed(2),
+        tp: (Math.random() * 50 + 10).toFixed(2),
+        sl: (Math.random() * 30 + 5).toFixed(2),
+        time: new Date().toISOString(),
+        results: 'PENDING'
+      };
+
+      console.log('Mock database signal found:', mockSignal);
+      if (this.onSignalFound) {
+        this.onSignalFound(mockSignal);
+      }
+      try {
+        this.onPollComplete?.();
+      } catch (e) {
+        console.error('onPollComplete error:', e);
+      }
+    }, 30000); // Check every 30 seconds
+  }
+
+  // Real database polling
+  private startRealPolling(licenseKey: string) {
+    console.log('Starting real database signals polling for license:', licenseKey);
+
+    const runPoll = async () => {
+      try {
+        await this.checkForNewSignals(licenseKey);
+      } catch (error) {
+        console.error('Error checking for database signals:', error);
+        if (this.onError) {
+          this.onError(`Database error: ${error}`);
+        }
+      } finally {
+        try {
+          this.onPollComplete?.();
+        } catch (e) {
+          console.error('onPollComplete error:', e);
+        }
+      }
+    };
+
+    // Immediate first poll so idle → AI chart warmup can start without waiting for the first interval tick
+    void runPoll();
+
+    // Then every 5 seconds for faster refresh and stay live
+    this.intervalId = setInterval(() => {
+      void runPoll();
+    }, 5000);
+  }
+
+  // Check for new signals in database
+  private async checkForNewSignals(licenseKey: string) {
+    try {
+      console.log('Checking for new database signals for license:', licenseKey);
+
+      // First, get the EA from the license
+      const ea = await this.getEAFromLicense(licenseKey);
+      if (!ea) {
+        console.error('Could not find EA for license:', licenseKey);
+        return;
+      }
+
+      this.currentEA = ea;
+      console.log('Found EA for license:', ea);
+
+      // Get new signals for this EA since last poll
+      const signals = await this.getNewSignalsForEA(ea);
+
+      console.log(`Found ${signals.length} new signals for EA ${ea}:`, signals);
+
+      // Process each signal found (defensive: row EA must match polled EA)
+      for (const signal of signals) {
+        if (this.currentEA && String(signal.ea) !== String(this.currentEA)) {
+          console.log('⏭️ Skip signal — EA mismatch (not active bot):', signal.ea, 'vs', this.currentEA);
+          continue;
+        }
+        console.log('✅ New database signal found:', signal);
+        if (this.onSignalFound) {
+          this.onSignalFound(signal);
+        }
+      }
+
+      // Update last poll time: use newest signal's timestamp (as ISO for consistent server parsing)
+      if (signals.length > 0) {
+        const newest = signals.reduce((a, s) => {
+          const aTime = new Date(a.latestupdate || a.time || 0).getTime();
+          const sTime = new Date(s.latestupdate || s.time || 0).getTime();
+          return sTime > aTime ? s : a;
+        });
+        const rawTs = newest.latestupdate || newest.time;
+        this.lastPollTime = rawTs ? new Date(rawTs).toISOString() : new Date(Date.now() - 5000).toISOString();
+      } else {
+        // No signals: advance by 5s overlap to avoid race conditions with in-flight inserts
+        this.lastPollTime = new Date(Date.now() - 5000).toISOString();
+      }
+
+    } catch (error) {
+      console.error('Error in checkForNewSignals:', error);
+      throw error;
+    }
+  }
+
+  // Get EA from license key via API
+  private async getEAFromLicense(licenseKey: string): Promise<string | null> {
+    try {
+      const url = `${getApiBaseUrl()}/api/get-ea-from-license?licenseKey=${encodeURIComponent(licenseKey)}`;
+      console.log('Fetching EA from license, URL:', url);
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`API call failed: ${response.status}`);
+      }
+      const data = await response.json();
+      // Support both formats: { id: eaId } and { eaId: eaId }
+      return data.id || data.eaId || null;
+    } catch (error) {
+      console.error('Error fetching EA from license via API:', error);
+      throw new Error('Failed to fetch EA from license');
+    }
+  }
+
+  // Get new signals for EA since last poll
+  private async getNewSignalsForEA(ea: string): Promise<DatabaseSignal[]> {
+    try {
+      // Use 24h ago when lastPollTime is null (e.g. after stop/restart) so we always fetch recent signals
+      const since = this.lastPollTime || new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      const params = new URLSearchParams({ eaId: ea, since });
+
+      const url = `${getApiBaseUrl()}/api/get-new-signals?${params}`;
+      console.log('Fetching new signals, URL:', url);
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`API call failed: ${response.status}`);
+      }
+      const data = await response.json();
+      return data.signals;
+    } catch (error) {
+      console.error('Error fetching new signals via API:', error);
+      throw new Error('Failed to fetch new signals');
+    }
+  }
+
+  /**
+   * Trigger an immediate poll for signals (e.g. when app returns to foreground).
+   * Catches any signals that may have arrived while app was in background.
+   */
+  async pollNow(): Promise<void> {
+    if (!this.currentLicenseKey) return;
+    try {
+      console.log('Immediate poll triggered (app resumed)');
+      await this.checkForNewSignals(this.currentLicenseKey);
+    } catch (error) {
+      console.error('Error in immediate poll:', error);
+      if (this.onError) {
+        this.onError(`Immediate poll error: ${error}`);
+      }
+    }
+  }
+
+  // Check if polling is running
+  isRunning(): boolean {
+    return this.intervalId !== null;
+  }
+
+  // Get current polling status
+  getStatus() {
+    return {
+      isRunning: this.isRunning(),
+      isPaused: this.isPaused,
+      licenseKey: this.currentLicenseKey,
+      ea: this.currentEA,
+      lastPollTime: this.lastPollTime,
+      isEnabled: this.isEnabled
+    };
+  }
+}
+
+export const databaseSignalsPollingService = new DatabaseSignalsPollingService();
+export default databaseSignalsPollingService;

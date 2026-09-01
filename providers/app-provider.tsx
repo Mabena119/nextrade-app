@@ -1,0 +1,3761 @@
+import createContextHook from '@nkzw/create-context-hook';
+import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform, Alert, AppState, Linking, InteractionManager } from 'react-native';
+import { router } from 'expo-router';
+import { resolveApiBaseUrl } from '@/utils/api-base-url';
+import { isIOSPWA } from '@/utils/pwa-detection';
+import backgroundMonitoringService from '@/services/background-monitoring-service';
+import apiService from '@/services/api';
+import type { LicenseData as ApiLicensePayload } from '@/services/api';
+import { evaluateLicenseAuthResponse, isLicenseExpired } from '@/utils/license-status';
+import {
+  classifyInstrumentSymbol,
+  getEquityBasedMT5Preset,
+  sanitizeManualLotSize,
+  sanitizeManualTradesCount,
+} from '@/utils/equity-trade-preset';
+import { normalizeEaBrandLogoHttpUrl } from '@/utils/ea-brand-image';
+import {
+  isAiChartTradingEnabled,
+  isMartingaleEa,
+  MARTINGALE_PLACEHOLDER_LOT,
+  type MartingaleLotSource,
+} from '@/utils/trading-features';
+import { symbolsAreSimilar, resolveConfiguredMt5QuotesSymbol, quoteSetNotFoundMessage } from '@/utils/trade-symbol-match';
+
+function normalizeSymbolKeyLocal(s: string): string {
+  return s.replace(/\s/g, '').toUpperCase();
+}
+
+/** Chart AI warmup cycle repeats while bot is active (ms). */
+const CHART_WARMUP_INTERVAL_MS = 45 * 60 * 1000;
+const CHART_WARMUP_LAST_AT_STORAGE_KEY = 'aura_chart_warmup_last_at_v1';
+
+function chartWarmupCooldownRemainingMs(lastAt: number): number {
+  if (!lastAt) return 0;
+  return Math.max(0, CHART_WARMUP_INTERVAL_MS - (Date.now() - lastAt));
+}
+
+function canLaunchChartWarmupNow(lastAt: number): boolean {
+  return chartWarmupCooldownRemainingMs(lastAt) === 0;
+}
+
+async function persistChartWarmupLastAt(ms: number): Promise<void> {
+  try {
+    await AsyncStorage.setItem(CHART_WARMUP_LAST_AT_STORAGE_KEY, String(ms));
+  } catch (e) {
+    console.warn('[Chart Warmup] Failed to persist cooldown timestamp:', e);
+  }
+  if (Platform.OS === 'android') {
+    try {
+      const { overlayService } = await import('@/services/overlay-service');
+      await overlayService.setLastChartWarmupAt(ms);
+    } catch (e) {
+      console.warn('[Chart Warmup] Failed to sync cooldown to native:', e);
+    }
+  }
+}
+
+/** Standard EAs: after this many DB polls with no copy signal, run AI chart analysis + auto-trade. */
+const DB_BOOTSTRAP_POLLS_BEFORE_CHART_WARMUP = 10;
+
+function getExpoApiBaseUrl(): string {
+  return resolveApiBaseUrl();
+}
+
+// Define LicenseData locally to avoid importing from api service (prevents circular dependency)
+export interface LicenseData {
+  id: string;
+  owner: {
+    logo?: string;
+    [key: string]: any;
+  };
+  ea: string;
+  user: string;
+  k_ey: string;
+  created: string;
+  expires: string;
+  plan: string;
+  status: string;
+  phone_secret_code: string;
+  phoneId: string;
+  power: string;
+  [key: string]: any;
+}
+
+// Define types locally to avoid importing service modules at top level
+export interface SignalLog {
+  id: string;
+  asset: string;
+  action: string;
+  price: string;
+  tp: string;
+  sl: string;
+  time: string;
+  latestupdate?: string;
+  lot?: string;
+  receivedAt?: Date;
+  type?: string;
+  source?: string;
+}
+
+export interface DatabaseSignal {
+  id: string;
+  ea: string;
+  asset: string;
+  latestupdate: string;
+  type: string;
+  action: string;
+  price: string;
+  tp: string;
+  sl: string;
+  time: string;
+  results?: string;
+  lot?: string;
+}
+
+// Android background monitoring removed - using JavaScript polling only for cross-platform compatibility
+
+// Lazy import helpers - defined outside component to prevent bundling issues
+// Using function declarations instead of const to prevent hoisting issues
+let signalsMonitorCache: any = null;
+let databaseSignalsPollingServiceCache: any = null;
+let signalsMonitorPromise: Promise<any> | null = null;
+let databaseSignalsPollingServicePromise: Promise<any> | null = null;
+
+// Lazy import helpers - using function declarations to prevent hoisting issues
+// These functions are only called at runtime, never during module initialization
+function getSignalsMonitor(): Promise<any> {
+  if (signalsMonitorCache) {
+    return Promise.resolve(signalsMonitorCache);
+  }
+  if (signalsMonitorPromise) {
+    return signalsMonitorPromise;
+  }
+  // Create promise lazily - only when function is called
+  signalsMonitorPromise = Promise.resolve().then(async () => {
+    try {
+      // Dynamic import - only loads when called, not during module initialization
+      const module = await import('@/services/signals-monitor');
+      const service = module.default || module.signalsMonitor;
+      signalsMonitorCache = service;
+      return service;
+    } catch (error) {
+      console.log('[AppProvider] Failed to load signalsMonitor (non-critical):', error);
+      return null;
+    } finally {
+      signalsMonitorPromise = null;
+    }
+  });
+  return signalsMonitorPromise;
+}
+
+async function notifySignalReceived(signal: { asset: string; action: string; price: string | number; tp: string | number; sl: string | number; time?: string; id?: string | number }) {
+  if (Platform.OS === 'web' && isIOSPWA()) {
+    try {
+      const { pwaNotificationService } = await import('@/services/pwa-notification-service');
+      await pwaNotificationService.showSignalNotification(signal);
+    } catch (e) {
+      console.log('[Notifications] Could not show signal notification:', e);
+    }
+  }
+}
+
+function getDatabaseSignalsPollingService(): Promise<any> {
+  if (databaseSignalsPollingServiceCache) {
+    return Promise.resolve(databaseSignalsPollingServiceCache);
+  }
+  if (databaseSignalsPollingServicePromise) {
+    return databaseSignalsPollingServicePromise;
+  }
+  // Create promise lazily - only when function is called
+  databaseSignalsPollingServicePromise = Promise.resolve().then(async () => {
+    try {
+      // Dynamic import - only loads when called, not during module initialization
+      const module = await import('@/services/database-signals-polling');
+      const service = module.default || module.databaseSignalsPollingService;
+      databaseSignalsPollingServiceCache = service;
+      return service;
+    } catch (error) {
+      console.log('[AppProvider] Failed to load databaseSignalsPollingService (non-critical):', error);
+      return null;
+    } finally {
+      databaseSignalsPollingServicePromise = null;
+    }
+  });
+  return databaseSignalsPollingServicePromise;
+}
+
+export interface User {
+  mentorId: string;
+  email: string;
+}
+
+export interface EA {
+  id: string;
+  name: string;
+  licenseKey: string;
+  status: 'connected' | 'disconnected';
+  description?: string;
+  phoneSecretKey?: string;
+  userData?: LicenseData;
+}
+
+export interface MTAccount {
+  type: 'MT4' | 'MT5';
+  login: string;
+  server: string;
+  connected: boolean;
+}
+
+export interface MT4Account {
+  login: string;
+  password: string;
+  server: string;
+  connected: boolean;
+  /** Last equity read from embedded web terminal after connect (numeric string). */
+  equity?: string;
+  /** Last balance read from embedded web terminal after connect (numeric string). */
+  balance?: string;
+}
+
+export interface MT5Account {
+  login: string;
+  password: string;
+  server: string;
+  connected: boolean;
+  equity?: string;
+  balance?: string;
+}
+
+export interface ActiveSymbol {
+  symbol: string;
+  lotSize: string;
+  direction: 'BUY' | 'SELL' | 'BOTH';
+  platform: 'MT4' | 'MT5';
+  numberOfTrades: string;
+  activatedAt: Date;
+}
+
+export interface MT4Symbol {
+  symbol: string;
+  lotSize: string;
+  direction: 'BUY' | 'SELL' | 'BOTH';
+  numberOfTrades: string;
+  activatedAt: Date;
+}
+
+export type MT5TradeMode = 'scalper' | 'swing';
+
+/** Auto: AI + equity heuristics update lots. Manual: user-defined per symbol (trade config). */
+export type MT5LotSizingMode = 'auto' | 'manual';
+export type { MartingaleLotSource } from '@/utils/trading-features';
+
+export interface MT5Symbol {
+  symbol: string;
+  lotSize: string;
+  direction: 'BUY' | 'SELL' | 'BOTH';
+  numberOfTrades: string;
+  /** User-selected on trade config; drives execution style (e.g. scalper = tighter levels / single round). */
+  tradeMode?: MT5TradeMode;
+  activatedAt: Date;
+}
+
+const TRADE_SYMBOLS_V1_PREFIX = 'tradeSymbolsV1:';
+
+function tradeSymbolsStorageKey(eaId: string): string {
+  return `${TRADE_SYMBOLS_V1_PREFIX}${eaId}`;
+}
+
+function parseActiveSymbolsFromStorage(raw: unknown): ActiveSymbol[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((symbol: any) => {
+    try {
+      return {
+        ...symbol,
+        activatedAt: symbol?.activatedAt ? new Date(symbol.activatedAt) : new Date(),
+      };
+    } catch {
+      return { ...symbol, activatedAt: new Date() };
+    }
+  });
+}
+
+function parseMT4SymbolsFromStorage(raw: unknown): MT4Symbol[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((symbol: any) => {
+    try {
+      return {
+        ...symbol,
+        activatedAt: symbol?.activatedAt ? new Date(symbol.activatedAt) : new Date(),
+      };
+    } catch {
+      return { ...symbol, activatedAt: new Date() };
+    }
+  });
+}
+
+function parseMT5SymbolsFromStorage(raw: unknown): MT5Symbol[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((symbol: any) => {
+    try {
+      return {
+        ...symbol,
+        tradeMode: symbol.tradeMode === 'scalper' ? 'scalper' : 'swing',
+        activatedAt: symbol?.activatedAt ? new Date(symbol.activatedAt) : new Date(),
+      };
+    } catch {
+      return {
+        ...symbol,
+        tradeMode: symbol.tradeMode === 'scalper' ? 'scalper' : 'swing',
+        activatedAt: new Date(),
+      };
+    }
+  });
+}
+
+/**
+ * Chart AI warmup runs in the MT5 web terminal only — use MT5 Quotes rows (mt5Symbols + legacy active rows with platform MT5).
+ * MT4-only configured symbols are excluded.
+ */
+function buildMt5QuotesSymbolsForWarmup(
+  activeSymbols: ActiveSymbol[],
+  mt5Symbols: MT5Symbol[]
+): { symbol: string; direction: string }[] {
+  const merged: { symbol: string; direction: string }[] = [
+    ...mt5Symbols.map((sym) => ({ symbol: sym.symbol, direction: sym.direction })),
+    ...activeSymbols
+      .filter((s) => s.platform === 'MT5')
+      .map((sym) => ({ symbol: sym.symbol, direction: sym.direction })),
+  ];
+  const seenKeys = new Set<string>();
+  const out: { symbol: string; direction: string }[] = [];
+  for (const row of merged) {
+    const k = normalizeSymbolKeyLocal(row.symbol || '');
+    if (!row.symbol?.trim() || seenKeys.has(k)) continue;
+    seenKeys.add(k);
+    out.push(row);
+  }
+  return out;
+}
+
+/** Cheap fingerprint so we skip AsyncStorage write when licence refresh yielded no visible changes. */
+function fingerprintEaProfiles(list: EA[]): string {
+  return JSON.stringify(
+    list.map((e) => ({
+      id: e.id,
+      lk: e.licenseKey,
+      n: e.name,
+      dsc: e.description ?? '',
+      ps: e.phoneSecretKey ?? '',
+      logo: (e.userData?.owner?.logo ?? '').toString().trim(),
+      on: ((e.userData?.owner as { name?: string } | undefined)?.name ?? '').toString(),
+      en: ((e.userData as { ea_name?: string } | undefined)?.ea_name ?? '').toString(),
+    }))
+  );
+}
+
+/** Merge `/api/auth-license` payload back into persisted EA (`owner.logo`, names, secrets). */
+function mergeEaWithApiLicensePayload(ea: EA, d: ApiLicensePayload): EA {
+  const prev = ea.userData || ({} as LicenseData);
+  return {
+    ...ea,
+    name: d.ea_name?.trim() || ea.name,
+    description: d.owner?.name?.trim() || ea.description,
+    phoneSecretKey: d.phone_secret_key || ea.phoneSecretKey,
+    userData: {
+      ...prev,
+      user: d.user,
+      status: d.status,
+      expires: d.expires,
+      key: d.key,
+      k_ey: d.key ?? prev.k_ey ?? ea.licenseKey,
+      phone_secret_key: d.phone_secret_key ?? prev.phone_secret_key ?? prev.phone_secret_code,
+      phone_secret_code: d.phone_secret_key ?? prev.phone_secret_code,
+      ea_name: d.ea_name,
+      ea_notification: d.ea_notification,
+      ea_martingale: d.ea_martingale,
+      owner: {
+        ...(prev.owner ?? {}),
+        ...d.owner,
+      },
+    } as LicenseData,
+  };
+}
+
+/** Active robot licence health from `/api/auth-license` (same check as the license screen). */
+export type PrimaryLicenseStatus = 'idle' | 'checking' | 'valid' | 'expired';
+
+interface AppState {
+  user: User | null;
+  eas: EA[];
+  mtAccount: MTAccount | null;
+  mt4Account: MT4Account | null;
+  mt5Account: MT5Account | null;
+  isFirstTime: boolean;
+  /** Primary EA licence: valid, expired, or idle when no robot is connected. */
+  primaryLicenseStatus: PrimaryLicenseStatus;
+  activeSymbols: ActiveSymbol[];
+  mt4Symbols: MT4Symbol[];
+  mt5Symbols: MT5Symbol[];
+  /** Lot sizing: auto (AI/equity) vs manual (user sets in trade config). */
+  mt5LotSizingMode: MT5LotSizingMode;
+  /** Martingale only: lot from mentor signal vs user's own configured lot. */
+  martingaleLotSource: MartingaleLotSource;
+  isBotActive: boolean;
+  signalLogs: SignalLog[];
+  isSignalsMonitoring: boolean;
+  newSignal: SignalLog | null;
+  showMT5SignalWebView: boolean;
+  mt5Signal: SignalLog | null;
+  /** When set, MT5 overlay shows this message instead of executing (e.g. AI Scanner block). Cleared when the overlay closes or a real signal is set. */
+  mt5TradeOverlayMessage: string | null;
+  databaseSignal: DatabaseSignal | null;
+  isDatabaseSignalsPolling: boolean;
+  isPollingPaused: boolean;
+  pausePolling: () => void;
+  resumePolling: () => void;
+  /** After chart AI warmup finishes — reset poll cycle and resume DB polling (standard bots only). */
+  resumePollingAfterChartWarmup: () => void;
+  setUser: (user: User) => void;
+  addEA: (ea: EA) => Promise<boolean>;
+  removeEA: (id: string) => Promise<boolean>;
+  setActiveEA: (id: string) => Promise<void>;
+  setMTAccount: (account: MTAccount) => void;
+  setMT4Account: (account: MT4Account) => void;
+  setMT5Account: (account: MT5Account) => void;
+  setMt5LotSizingMode: (mode: MT5LotSizingMode) => Promise<void>;
+  setMartingaleLotSource: (source: MartingaleLotSource) => Promise<void>;
+  setIsFirstTime: (isFirstTime: boolean) => void;
+  activateSymbol: (symbolConfig: Omit<ActiveSymbol, 'activatedAt'>) => void;
+  activateMT4Symbol: (symbolConfig: Omit<MT4Symbol, 'activatedAt'>) => void;
+  activateMT5Symbol: (symbolConfig: Omit<MT5Symbol, 'activatedAt'>) => void;
+  deactivateSymbol: (symbol: string) => void;
+  deactivateMT4Symbol: (symbol: string) => void;
+  deactivateMT5Symbol: (symbol: string) => void;
+  setBotActive: (active: boolean) => void;
+  requestOverlayPermission: () => Promise<boolean>;
+  startSignalsMonitoring: (phoneSecret: string) => void;
+  stopSignalsMonitoring: () => void;
+  clearSignalLogs: () => void;
+  dismissNewSignal: () => void;
+  setShowMT5SignalWebView: (show: boolean) => void;
+  setMT5Signal: (signal: SignalLog | null) => void;
+  setMT5TradeOverlayMessage: (message: string | null) => void;
+  markTradeExecuted: (symbol: string) => void;
+  /** True if the symbol appears in legacy active, MT4, or MT5 configured lists (same as auto-trade). */
+  isSymbolConfiguredForTrading: (symbol: string) => boolean;
+}
+
+export const [AppProvider, useApp] = createContextHook<AppState>(() => {
+  const [user, setUserState] = useState<User | null>(null);
+  const [eas, setEAs] = useState<EA[]>([]);
+  const [mtAccount, setMTAccountState] = useState<MTAccount | null>(null);
+  const [mt4Account, setMT4AccountState] = useState<MT4Account | null>(null);
+  const [mt5Account, setMT5AccountState] = useState<MT5Account | null>(null);
+  const [isFirstTime, setIsFirstTimeState] = useState<boolean>(true);
+  const [primaryLicenseStatus, setPrimaryLicenseStatus] = useState<PrimaryLicenseStatus>('idle');
+  const revalidatingLicenseRef = useRef(false);
+  const [activeSymbols, setActiveSymbols] = useState<ActiveSymbol[]>([]);
+  const [mt4Symbols, setMT4Symbols] = useState<MT4Symbol[]>([]);
+  const [mt5Symbols, setMT5Symbols] = useState<MT5Symbol[]>([]);
+  const [mt5LotSizingMode, setMt5LotSizingModeState] = useState<MT5LotSizingMode>('auto');
+  const mt5LotSizingModeRef = useRef<MT5LotSizingMode>('auto');
+  const [martingaleLotSource, setMartingaleLotSourceState] = useState<MartingaleLotSource>('signal');
+  const martingaleLotSourceRef = useRef<MartingaleLotSource>('signal');
+  const [isBotActive, setIsBotActive] = useState<boolean>(false);
+  const [signalLogs, setSignalLogs] = useState<SignalLog[]>([]);
+  const [isSignalsMonitoring, setIsSignalsMonitoring] = useState<boolean>(false);
+  const [newSignal, setNewSignal] = useState<SignalLog | null>(null);
+  const [showMT5SignalWebView, setShowMT5SignalWebView] = useState<boolean>(false);
+  const [mt5Signal, setMT5Signal] = useState<SignalLog | null>(null);
+  const [mt5TradeOverlayMessage, setMt5TradeOverlayMessage] = useState<string | null>(null);
+  const [databaseSignal, setDatabaseSignal] = useState<DatabaseSignal | null>(null);
+  const [isDatabaseSignalsPolling, setIsDatabaseSignalsPolling] = useState<boolean>(false);
+  const [isPollingPaused, setIsPollingPaused] = useState<boolean>(false);
+  const showMT5SignalWebViewRef = useRef(showMT5SignalWebView);
+
+  /** Processed signal keys: id + version stamp (latestupdate/time) so DB row updates / new scans are not treated as duplicates */
+  const processedSignalKeysRef = useRef<Set<string>>(new Set());
+  // Track last trade execution time per symbol (45-second cooldown)
+  const lastTradeExecutionRef = useRef<Map<string, number>>(new Map());
+
+  /** After bot start: count interval DB polls; after N polls with no processable DB signal, open chart warmup WebView once. */
+  const dbBootstrapSessionRef = useRef<{
+    pollCount: number;
+    gotProcessableDbSignal: boolean;
+    chartWarmupLaunched: boolean;
+  }>({ pollCount: 0, gotProcessableDbSignal: false, chartWarmupLaunched: false });
+  /** Timestamp of last chart warmup start/finish — enforces 45 min between AI scans. */
+  const lastChartWarmupAtRef = useRef<number>(0);
+  const chartWarmupCooldownTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const stampChartWarmupCooldown = useCallback((at = Date.now()) => {
+    lastChartWarmupAtRef.current = at;
+    void persistChartWarmupLastAt(at);
+  }, []);
+
+  /** Clear 45 min gate — used on bot start so the first chart warmup is not blocked. */
+  const clearChartWarmupCooldown = useCallback(() => {
+    lastChartWarmupAtRef.current = 0;
+    void (async () => {
+      try {
+        await AsyncStorage.removeItem(CHART_WARMUP_LAST_AT_STORAGE_KEY);
+      } catch {
+        /* ignore */
+      }
+      if (Platform.OS === 'android') {
+        try {
+          const { overlayService } = await import('@/services/overlay-service');
+          await overlayService.setLastChartWarmupAt(0);
+        } catch {
+          /* ignore */
+        }
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(CHART_WARMUP_LAST_AT_STORAGE_KEY);
+        const n = raw ? parseInt(raw, 10) : 0;
+        if (!cancelled && Number.isFinite(n) && n > 0) {
+          lastChartWarmupAtRef.current = n;
+          if (Platform.OS === 'android') {
+            try {
+              const { overlayService } = await import('@/services/overlay-service');
+              await overlayService.setLastChartWarmupAt(n);
+            } catch {
+              /* native module optional at boot */
+            }
+          }
+          const mins = Math.ceil(chartWarmupCooldownRemainingMs(n) / 60000);
+          if (mins > 0) {
+            console.log(`[Chart Warmup] Restored 45 min cooldown — ~${mins} min remaining`);
+          }
+        }
+      } catch (e) {
+        console.warn('[Chart Warmup] Failed to restore cooldown timestamp:', e);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const mt5AccountForBootstrapRef = useRef(mt5Account);
+  const easRef = useRef(eas);
+  const symbolsForBootstrapRef = useRef({ activeSymbols, mt4Symbols, mt5Symbols });
+  const mt5SizingAccountRef = useRef(mt5Account);
+  const mt5SizingSymbolsRef = useRef(mt5Symbols);
+  const lastProcessedMt5SizingKeyRef = useRef<string>('');
+  const mt5SizingReqIdRef = useRef(0);
+  useEffect(() => {
+    mt5AccountForBootstrapRef.current = mt5Account;
+  }, [mt5Account]);
+  useEffect(() => {
+    easRef.current = eas;
+  }, [eas]);
+  useEffect(() => {
+    symbolsForBootstrapRef.current = { activeSymbols, mt4Symbols, mt5Symbols };
+  }, [activeSymbols, mt4Symbols, mt5Symbols]);
+  useEffect(() => {
+    mt5SizingAccountRef.current = mt5Account;
+  }, [mt5Account]);
+  useEffect(() => {
+    mt5SizingSymbolsRef.current = mt5Symbols;
+  }, [mt5Symbols]);
+  useLayoutEffect(() => {
+    mt5LotSizingModeRef.current = mt5LotSizingMode;
+  }, [mt5LotSizingMode]);
+  useLayoutEffect(() => {
+    martingaleLotSourceRef.current = martingaleLotSource;
+  }, [martingaleLotSource]);
+  useEffect(() => {
+    if (!mt5Account?.connected) lastProcessedMt5SizingKeyRef.current = '';
+  }, [mt5Account?.connected]);
+
+  useEffect(() => {
+    showMT5SignalWebViewRef.current = showMT5SignalWebView;
+  }, [showMT5SignalWebView]);
+
+  useEffect(() => {
+    botActiveRef.current = isBotActive;
+  }, [isBotActive]);
+
+  /** Always-current pause flag — `resumePolling` must not close over a stale `isPollingPaused`. */
+  const isPollingPausedRef = useRef(isPollingPaused);
+  useEffect(() => {
+    isPollingPausedRef.current = isPollingPaused;
+  }, [isPollingPaused]);
+
+  const pausePollingRef = useRef<(() => Promise<void>) | null>(null);
+  type ChartWarmupSource = 'db_bootstrap_chart_warmup';
+  const openChartWarmupTerminalRef = useRef<
+    ((source: ChartWarmupSource) => boolean) | null
+  >(null);
+  const botActiveRef = useRef(isBotActive);
+  /** Set after `startDatabaseSignalPolling` is defined (same render as `setBotActive`). */
+  const startDatabaseSignalPollingRef = useRef<(() => Promise<void>) | null>(null);
+  /** Latest DB bootstrap interval tick (10 polls → chart warmup); shared when polling restarts in background. */
+  const databaseOnPollCompleteRef = useRef<(() => void) | null>(null);
+  const bringAppToForegroundRef = useRef<(() => Promise<void>) | null>(null);
+
+  const buildSignalProcessKey = useCallback(
+    (
+      signalId: string | number,
+      time?: string,
+      latestupdate?: string,
+      contentFingerprint?: string
+    ): string => {
+      const id = String(signalId);
+      const ver =
+        (latestupdate && String(latestupdate).trim()) ||
+        (time && String(time).trim()) ||
+        '';
+      const base = ver ? `${id}\x1f${ver}` : id;
+      const fp = (contentFingerprint && String(contentFingerprint).trim()) || '';
+      return fp ? `${base}\x1f${fp}` : base;
+    },
+    []
+  );
+
+  // Helper function to check if signal is recent and not already processed
+  const shouldProcessSignal = useCallback(
+    (
+      signalId: string | number,
+      symbol: string,
+      time?: string,
+      latestupdate?: string,
+      /** When set, new SL/TP/action vs same DB row still processes (scan content changed). */
+      contentFingerprint?: string
+    ): { shouldProcess: boolean; ageInSeconds: number; reason?: string; cooldownRemaining?: number } => {
+      const processKey = buildSignalProcessKey(signalId, time, latestupdate, contentFingerprint);
+      if (processedSignalKeysRef.current.has(processKey)) {
+        return { shouldProcess: false, ageInSeconds: -1, reason: 'already_processed' };
+      }
+
+      // Note: Cooldown is now handled by global pausePolling (35 seconds), not per-symbol
+
+      // Compare both time and latestupdate from database, use the most recent one
+      const now = new Date().getTime();
+      let signalTime: Date | null = null;
+
+      if (time) {
+        signalTime = new Date(time);
+      }
+      if (latestupdate) {
+        const latestUpdateTime = new Date(latestupdate);
+        // Use the most recent timestamp between time and latestupdate
+        if (!signalTime || latestUpdateTime.getTime() > signalTime.getTime()) {
+          signalTime = latestUpdateTime;
+        }
+      }
+
+      if (!signalTime || isNaN(signalTime.getTime())) {
+        return { shouldProcess: false, ageInSeconds: -1, reason: 'invalid_time' };
+      }
+
+      const ageInSeconds = (now - signalTime.getTime()) / 1000;
+      // If signal is more than 30 seconds old (based on most recent timestamp), ignore it
+      const isRecent = ageInSeconds <= 30;
+
+      if (isRecent) {
+        processedSignalKeysRef.current.add(processKey);
+        if (processedSignalKeysRef.current.size > 1000) {
+          const keysArray = Array.from(processedSignalKeysRef.current);
+          processedSignalKeysRef.current.clear();
+          keysArray.slice(-500).forEach((k) => processedSignalKeysRef.current.add(k));
+        }
+      }
+
+      return { shouldProcess: isRecent, ageInSeconds };
+    },
+    [buildSignalProcessKey]
+  );
+
+  const tradeLevelsFingerprint = useCallback(
+    (action?: string, sl?: string, tp?: string, price?: string) =>
+      `${action ?? ''}\x1f${sl ?? ''}\x1f${tp ?? ''}\x1f${price ?? ''}`,
+    []
+  );
+
+  /** True when at least one MT5 Quotes row exists (required for chart AI warmup). */
+  const hasMt5QuotesForChartWarmup = useMemo(
+    () => buildMt5QuotesSymbolsForWarmup(activeSymbols, mt5Symbols).length > 0,
+    [activeSymbols, mt5Symbols]
+  );
+
+  /** Same notion as Quotes “active” — symbol must appear in legacy, MT4, or MT5 configured lists (fuzzy match for broker suffixes like `.USTECH.`). */
+  const isSymbolConfiguredForTrading = useCallback(
+    (symbol: string) =>
+      activeSymbols.some(s => symbolsAreSimilar(symbol, s.symbol)) ||
+      mt4Symbols.some(s => symbolsAreSimilar(symbol, s.symbol)) ||
+      mt5Symbols.some(s => symbolsAreSimilar(symbol, s.symbol)),
+    [activeSymbols, mt4Symbols, mt5Symbols]
+  );
+
+  /** True if the active EA has at least one symbol on Quotes (legacy / MT4 / MT5). No signal polling or chart AI without this. */
+  const hasActiveTradeSymbolsConfigured = useMemo(
+    () => activeSymbols.length > 0 || mt4Symbols.length > 0 || mt5Symbols.length > 0,
+    [activeSymbols, mt4Symbols, mt5Symbols]
+  );
+
+  // Shared helper function to get EA image URL (same as home page)
+  const getEAImageUrl = useCallback((ea: EA | null): string | null => {
+    if (!ea || !ea.userData || !ea.userData.owner) return null;
+    const raw = (ea.userData.owner.logo || '').toString().trim();
+    if (!raw) return null;
+    const resolved = /^https?:\/\//i.test(raw)
+      ? normalizeEaBrandLogoHttpUrl(raw)
+      : normalizeEaBrandLogoHttpUrl(raw.replace(/^\/+/, ''));
+    return resolved;
+  }, []);
+
+  /** Reconcile primary licence with server; blur/stop bot when expired; remove robot when deleted. */
+  const refreshEaProfilesFromServer = useCallback(async (list: EA[]): Promise<void> => {
+    if (!getExpoApiBaseUrl() || list.length === 0) {
+      setPrimaryLicenseStatus('idle');
+      return;
+    }
+
+    const primary = list[0];
+    const key = primary.licenseKey?.trim();
+    if (!key) {
+      setPrimaryLicenseStatus('idle');
+      return;
+    }
+
+    const localStatus: PrimaryLicenseStatus =
+      primary.userData && isLicenseExpired(primary.userData.status, primary.userData.expires)
+        ? 'expired'
+        : 'valid';
+
+    if (revalidatingLicenseRef.current) return;
+    revalidatingLicenseRef.current = true;
+    setPrimaryLicenseStatus((prev) => (prev === 'idle' ? 'checking' : prev));
+
+    try {
+      const res = await apiService.authenticateLicense({
+        licence: key,
+        phone_secret: primary.phoneSecretKey?.trim(),
+      });
+      const verdict = evaluateLicenseAuthResponse(res);
+
+      if (verdict === 'unavailable') {
+        console.log('[App] Licence revalidation skipped (network/server unavailable) — keeping local state');
+        setPrimaryLicenseStatus(localStatus);
+        return;
+      }
+
+      if (verdict === 'valid' && res.data) {
+        const mergedPrimary = mergeEaWithApiLicensePayload(primary, res.data);
+        const refreshed = list.map((ea, i) => (i === 0 ? mergedPrimary : ea));
+        if (fingerprintEaProfiles(list) !== fingerprintEaProfiles(refreshed)) {
+          await AsyncStorage.setItem('eas', JSON.stringify(refreshed));
+          setEAs(refreshed);
+        }
+        setPrimaryLicenseStatus('valid');
+        return;
+      }
+
+      if (verdict === 'expired') {
+        if (res.data) {
+          const mergedPrimary = mergeEaWithApiLicensePayload(primary, res.data);
+          const refreshed = list.map((ea, i) => (i === 0 ? mergedPrimary : ea));
+          await AsyncStorage.setItem('eas', JSON.stringify(refreshed));
+          setEAs(refreshed);
+        }
+        setPrimaryLicenseStatus('expired');
+        setIsBotActive(false);
+        try {
+          await AsyncStorage.setItem('isBotActive', JSON.stringify(false));
+        } catch {
+          // ignore
+        }
+        return;
+      }
+
+      // Deleted from database or bound to another device — remove local robot and re-enter key.
+      console.log('[App] Primary licence no longer valid on server — removing EA:', key);
+      const remaining = list.filter((ea) => ea.id !== primary.id);
+      try {
+        await AsyncStorage.removeItem(tradeSymbolsStorageKey(primary.id));
+      } catch {
+        // ignore
+      }
+      await AsyncStorage.setItem('eas', JSON.stringify(remaining));
+      setEAs(remaining);
+      setPrimaryLicenseStatus('idle');
+      setIsBotActive(false);
+      try {
+        await AsyncStorage.setItem('isBotActive', JSON.stringify(false));
+      } catch {
+        // ignore
+      }
+      router.replace('/license');
+    } catch (e) {
+      console.warn('[App] refreshEaProfilesFromServer skipped (error):', e);
+      setPrimaryLicenseStatus(localStatus);
+    } finally {
+      revalidatingLicenseRef.current = false;
+    }
+  }, []);
+
+  useEffect(() => {
+    let t: ReturnType<typeof setTimeout> | undefined;
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state !== 'active') return;
+      if (t) clearTimeout(t);
+      t = setTimeout(() => {
+        const snap = easRef.current;
+        if (snap.length === 0) return;
+        void refreshEaProfilesFromServer(snap);
+      }, 400);
+    });
+    return () => {
+      if (t) clearTimeout(t);
+      sub.remove();
+    };
+  }, [refreshEaProfilesFromServer]);
+
+  useEffect(() => {
+    if (eas.length === 0) {
+      setPrimaryLicenseStatus('idle');
+      return;
+    }
+    const ud = eas[0].userData;
+    if (ud && isLicenseExpired(ud.status, ud.expires)) {
+      setPrimaryLicenseStatus('expired');
+      setIsBotActive(false);
+      AsyncStorage.setItem('isBotActive', JSON.stringify(false)).catch(() => {});
+    }
+  }, [eas]);
+
+  const loadPersistedData = async () => {
+    try {
+      console.log('Loading persisted data...');
+
+      // Load all data in parallel but handle each independently
+      const [userData, easData, mtData, mt4Data, mt5Data, firstTimeData, activeSymbolsData, mt4SymbolsData, mt5SymbolsData, botActiveData, mt5LotSizingModeData, martingaleLotSourceData] = await Promise.allSettled([
+        AsyncStorage.getItem('user'),
+        AsyncStorage.getItem('eas'),
+        AsyncStorage.getItem('mtAccount'),
+        AsyncStorage.getItem('mt4Account'),
+        AsyncStorage.getItem('mt5Account'),
+        AsyncStorage.getItem('isFirstTime'),
+        AsyncStorage.getItem('activeSymbols'),
+        AsyncStorage.getItem('mt4Symbols'),
+        AsyncStorage.getItem('mt5Symbols'),
+        AsyncStorage.getItem('isBotActive'),
+        AsyncStorage.getItem('mt5LotSizingMode'),
+        AsyncStorage.getItem('martingaleLotSource'),
+      ]);
+
+      // Handle user data
+      if (userData.status === 'fulfilled' && userData.value) {
+        try {
+          const parsed = JSON.parse(userData.value);
+          if (parsed && typeof parsed === 'object') {
+            setUserState(parsed);
+            console.log('User data loaded successfully');
+          }
+        } catch (parseError) {
+          console.error('Error parsing user data:', parseError);
+          AsyncStorage.removeItem('user').catch(console.error);
+        }
+      }
+
+      // Handle EAs data
+      let parsedEas: EA[] = [];
+      if (easData.status === 'fulfilled' && easData.value) {
+        try {
+          const parsed = JSON.parse(easData.value);
+          if (Array.isArray(parsed)) {
+            parsedEas = parsed;
+            setEAs(parsed);
+            console.log('EAs data loaded successfully:', parsed.length);
+          } else {
+            setEAs([]);
+          }
+        } catch (parseError) {
+          console.error('Error parsing EAs data:', parseError);
+          AsyncStorage.removeItem('eas').catch(console.error);
+          setEAs([]);
+        }
+      }
+
+      const firstEaId = parsedEas[0]?.id;
+      const keyedSymbolsRaw =
+        firstEaId ? await AsyncStorage.getItem(tradeSymbolsStorageKey(firstEaId)) : null;
+
+      let loadedActive: ActiveSymbol[] = [];
+      let loadedMt4: MT4Symbol[] = [];
+      let loadedMt5: MT5Symbol[] = [];
+      let symbolsFromKeyed = false;
+
+      if (keyedSymbolsRaw) {
+        try {
+          const t = JSON.parse(keyedSymbolsRaw);
+          loadedActive = parseActiveSymbolsFromStorage(t.activeSymbols);
+          loadedMt4 = parseMT4SymbolsFromStorage(t.mt4Symbols);
+          loadedMt5 = parseMT5SymbolsFromStorage(t.mt5Symbols);
+          symbolsFromKeyed = true;
+          console.log('Trade symbols loaded from per-EA storage for active EA');
+        } catch (parseError) {
+          console.error('Error parsing per-EA trade symbols:', parseError);
+        }
+      }
+
+      if (!symbolsFromKeyed) {
+        // Handle active symbols (legacy global key)
+        if (activeSymbolsData.status === 'fulfilled' && activeSymbolsData.value) {
+          try {
+            const parsed = JSON.parse(activeSymbolsData.value);
+            if (Array.isArray(parsed)) {
+              loadedActive = parseActiveSymbolsFromStorage(parsed);
+              console.log('Active symbols loaded successfully:', loadedActive.length);
+            }
+          } catch (parseError) {
+            console.error('Error parsing active symbols data:', parseError);
+            AsyncStorage.removeItem('activeSymbols').catch(console.error);
+          }
+        }
+
+        // Handle MT4 symbols
+        if (mt4SymbolsData.status === 'fulfilled' && mt4SymbolsData.value) {
+          try {
+            const parsed = JSON.parse(mt4SymbolsData.value);
+            if (Array.isArray(parsed)) {
+              loadedMt4 = parseMT4SymbolsFromStorage(parsed);
+              console.log('MT4 symbols loaded successfully:', loadedMt4.length);
+            }
+          } catch (parseError) {
+            console.error('Error parsing MT4 symbols data:', parseError);
+            AsyncStorage.removeItem('mt4Symbols').catch(console.error);
+          }
+        }
+
+        // Handle MT5 symbols
+        if (mt5SymbolsData.status === 'fulfilled' && mt5SymbolsData.value) {
+          try {
+            const parsed = JSON.parse(mt5SymbolsData.value);
+            if (Array.isArray(parsed)) {
+              loadedMt5 = parseMT5SymbolsFromStorage(parsed);
+              console.log('MT5 symbols loaded successfully:', loadedMt5.length);
+            }
+          } catch (parseError) {
+            console.error('Error parsing MT5 symbols data:', parseError);
+            AsyncStorage.removeItem('mt5Symbols').catch(console.error);
+          }
+        }
+
+        if (
+          firstEaId &&
+          (loadedActive.length > 0 || loadedMt4.length > 0 || loadedMt5.length > 0)
+        ) {
+          try {
+            await AsyncStorage.setItem(
+              tradeSymbolsStorageKey(firstEaId),
+              JSON.stringify({
+                activeSymbols: loadedActive,
+                mt4Symbols: loadedMt4,
+                mt5Symbols: loadedMt5,
+              })
+            );
+            console.log('Migrated legacy trade symbols to per-EA storage');
+          } catch (e) {
+            console.error('Error migrating trade symbols to per-EA storage:', e);
+          }
+        }
+      }
+
+      setActiveSymbols(loadedActive);
+      setMT4Symbols(loadedMt4);
+      setMT5Symbols(loadedMt5);
+
+      if (symbolsFromKeyed) {
+        try {
+          await AsyncStorage.multiSet([
+            ['activeSymbols', JSON.stringify(loadedActive)],
+            ['mt4Symbols', JSON.stringify(loadedMt4)],
+            ['mt5Symbols', JSON.stringify(loadedMt5)],
+          ]);
+        } catch (e) {
+          console.error('Error syncing legacy symbol keys from per-EA storage:', e);
+        }
+      }
+      if (mtData.status === 'fulfilled' && mtData.value) {
+        try {
+          const parsed = JSON.parse(mtData.value);
+          if (parsed && typeof parsed === 'object') {
+            setMTAccountState(parsed);
+            console.log('MT account data loaded successfully');
+          }
+        } catch (parseError) {
+          console.error('Error parsing MT account data:', parseError);
+          AsyncStorage.removeItem('mtAccount').catch(console.error);
+        }
+      }
+
+      // Handle MT4 account data
+      if (mt4Data.status === 'fulfilled' && mt4Data.value) {
+        try {
+          const parsed = JSON.parse(mt4Data.value);
+          if (parsed && typeof parsed === 'object') {
+            setMT4AccountState(parsed);
+            console.log('MT4 account data loaded successfully');
+          }
+        } catch (parseError) {
+          console.error('Error parsing MT4 account data:', parseError);
+          AsyncStorage.removeItem('mt4Account').catch(console.error);
+        }
+      }
+
+      // Handle MT5 account data
+      if (mt5Data.status === 'fulfilled' && mt5Data.value) {
+        try {
+          const parsed = JSON.parse(mt5Data.value);
+          if (parsed && typeof parsed === 'object') {
+            setMT5AccountState(parsed);
+            console.log('MT5 account data loaded successfully');
+          }
+        } catch (parseError) {
+          console.error('Error parsing MT5 account data:', parseError);
+          AsyncStorage.removeItem('mt5Account').catch(console.error);
+        }
+      }
+
+      // Handle first time flag
+      if (firstTimeData.status === 'fulfilled' && firstTimeData.value !== null) {
+        try {
+          const parsed = JSON.parse(firstTimeData.value);
+          if (typeof parsed === 'boolean') {
+            setIsFirstTimeState(parsed);
+            console.log('First time flag loaded successfully:', parsed);
+          }
+        } catch (parseError) {
+          console.error('Error parsing first time data:', parseError);
+          AsyncStorage.removeItem('isFirstTime').catch(console.error);
+        }
+      }
+
+      // Handle MT account data
+      if (botActiveData.status === 'fulfilled' && botActiveData.value !== null) {
+        try {
+          const parsed = JSON.parse(botActiveData.value);
+          if (typeof parsed === 'boolean') {
+            setIsBotActive(parsed);
+            console.log('Bot active state loaded successfully:', parsed);
+          }
+        } catch (parseError) {
+          console.error('Error parsing bot active data:', parseError);
+          AsyncStorage.removeItem('isBotActive').catch(console.error);
+        }
+      }
+
+      if (mt5LotSizingModeData.status === 'fulfilled' && mt5LotSizingModeData.value) {
+        try {
+          const parsed = JSON.parse(mt5LotSizingModeData.value);
+          if (parsed === 'manual' || parsed === 'auto') {
+            setMt5LotSizingModeState(parsed);
+          }
+        } catch (parseError) {
+          console.error('Error parsing mt5 lot sizing mode:', parseError);
+          AsyncStorage.removeItem('mt5LotSizingMode').catch(console.error);
+        }
+      }
+
+      if (martingaleLotSourceData.status === 'fulfilled' && martingaleLotSourceData.value) {
+        try {
+          const parsed = JSON.parse(martingaleLotSourceData.value);
+          if (parsed === 'signal' || parsed === 'own') {
+            setMartingaleLotSourceState(parsed);
+          }
+        } catch (parseError) {
+          console.error('Error parsing martingale lot source:', parseError);
+          AsyncStorage.removeItem('martingaleLotSource').catch(console.error);
+        }
+      }
+
+      if (parsedEas.length > 0) {
+        void refreshEaProfilesFromServer(parsedEas);
+      }
+
+      console.log('Persisted data loading completed');
+    } catch (error) {
+      console.error('Critical error loading persisted data:', error);
+      // Reset to safe default state
+      setUserState(null);
+      setEAs([]);
+      setMTAccountState(null);
+      setMT4AccountState(null);
+      setMT5AccountState(null);
+      setIsFirstTimeState(true);
+      setActiveSymbols([]);
+      setMT4Symbols([]);
+      setMT5Symbols([]);
+      setIsBotActive(false);
+    }
+  };
+
+  useEffect(() => {
+    void loadPersistedData();
+  }, []);
+
+  // On Android, automatically show overlay when bot is active and EAs are loaded
+  useEffect(() => {
+    if (Platform.OS !== 'android' || !isBotActive || eas.length === 0) return;
+
+    const showOverlayOnStart = async () => {
+      try {
+        const { overlayService, ANDROID_OVERLAY_LOGO_SIZE_PX } = await import('@/services/overlay-service');
+        const primaryEA = eas[0];
+
+        if (primaryEA) {
+          const botName = primaryEA.name || 'NexTradeAI';
+          const botImageURL = getEAImageUrl(primaryEA);
+
+          console.log('[Android Overlay] Bot active and EAs loaded, showing overlay:', { botName, botImageURL });
+
+          // Save image URL first
+          await overlayService.updateOverlayData(botName, true, false, botImageURL || null);
+
+          // Show overlay at default position
+          const statusBarHeight = 50;
+          const initialX = 20;
+          const initialY = statusBarHeight + 50;
+          const overlayWidth = ANDROID_OVERLAY_LOGO_SIZE_PX;
+          const overlayHeight = ANDROID_OVERLAY_LOGO_SIZE_PX;
+
+          const showSuccess = await overlayService.showOverlay(
+            initialX,
+            initialY,
+            overlayWidth,
+            overlayHeight
+          );
+
+          if (showSuccess) {
+            console.log('[Android Overlay] Overlay shown successfully');
+            // Update overlay data again to ensure image is loaded
+            await overlayService.updateOverlayData(botName, true, false, botImageURL || null);
+          } else {
+            console.log('[Android Overlay] Failed to show overlay - permission may be required');
+          }
+        }
+      } catch (error) {
+        console.error('[Android Overlay] Error showing overlay:', error);
+      }
+    };
+
+    // Small delay to ensure everything is ready
+    const timeoutId = setTimeout(showOverlayOnStart, 500);
+    return () => clearTimeout(timeoutId);
+  }, [isBotActive, eas, getEAImageUrl]);
+
+  const setUser = useCallback(async (newUser: User) => {
+    setUserState(newUser);
+    try {
+      await AsyncStorage.setItem('user', JSON.stringify(newUser));
+    } catch (error) {
+      console.error('Error saving user:', error);
+    }
+  }, []);
+
+  const addEA = useCallback(async (ea: EA) => {
+    try {
+      console.log('Adding EA:', ea.name, 'Current EAs count:', eas.length);
+
+      // Validate EA object
+      if (!ea || !ea.id || !ea.name || !ea.licenseKey) {
+        console.error('Invalid EA object:', ea);
+        return false;
+      }
+
+      // Check for duplicates with current state
+      const existingEA = eas.find(existingEa =>
+        existingEa.licenseKey.toLowerCase().trim() === ea.licenseKey.toLowerCase().trim() ||
+        existingEa.id === ea.id
+      );
+
+      if (existingEA) {
+        console.warn('Attempted to add duplicate EA:', ea.name);
+        return false;
+      }
+
+      const updatedEAs = [...eas, ea];
+      console.log('Saving EAs to storage, count:', updatedEAs.length);
+
+      // Save to AsyncStorage with error handling
+      try {
+        await AsyncStorage.setItem('eas', JSON.stringify(updatedEAs));
+        console.log('EAs saved to AsyncStorage successfully');
+      } catch (storageError) {
+        console.error('Failed to save EAs to AsyncStorage:', storageError);
+        return false;
+      }
+
+      // Update state after successful storage save
+      setEAs(updatedEAs);
+      const ud = ea.userData;
+      if (ud && isLicenseExpired(ud.status, ud.expires)) {
+        setPrimaryLicenseStatus('expired');
+      } else {
+        setPrimaryLicenseStatus('valid');
+      }
+      console.log('EA added successfully:', ea.name, 'Total EAs:', updatedEAs.length);
+
+      return true;
+    } catch (error) {
+      console.error('Critical error adding EA:', error);
+      return false;
+    }
+  }, [eas]);
+
+  const removeEA = useCallback(async (id: string) => {
+    try {
+      const removedWasPrimary = eas[0]?.id === id;
+      const updatedEAs = eas.filter(ea => ea.id !== id);
+
+      try {
+        await AsyncStorage.removeItem(tradeSymbolsStorageKey(id));
+      } catch (e) {
+        console.warn('Could not remove per-EA trade symbols for deleted EA:', e);
+      }
+
+      await AsyncStorage.setItem('eas', JSON.stringify(updatedEAs));
+
+      let nextActive: ActiveSymbol[] = [];
+      let nextMt4: MT4Symbol[] = [];
+      let nextMt5: MT5Symbol[] = [];
+
+      if (removedWasPrimary) {
+        if (updatedEAs.length > 0) {
+          const newPrimary = updatedEAs[0];
+          const raw = await AsyncStorage.getItem(tradeSymbolsStorageKey(newPrimary.id));
+          if (raw) {
+            try {
+              const t = JSON.parse(raw);
+              nextActive = parseActiveSymbolsFromStorage(t.activeSymbols);
+              nextMt4 = parseMT4SymbolsFromStorage(t.mt4Symbols);
+              nextMt5 = parseMT5SymbolsFromStorage(t.mt5Symbols);
+            } catch (e) {
+              console.error('Error parsing trade symbols for new primary after EA removal:', e);
+            }
+          }
+          await AsyncStorage.multiSet([
+            ['activeSymbols', JSON.stringify(nextActive)],
+            ['mt4Symbols', JSON.stringify(nextMt4)],
+            ['mt5Symbols', JSON.stringify(nextMt5)],
+          ]);
+        } else {
+          await AsyncStorage.multiSet([
+            ['activeSymbols', JSON.stringify([])],
+            ['mt4Symbols', JSON.stringify([])],
+            ['mt5Symbols', JSON.stringify([])],
+          ]);
+        }
+      }
+
+      setEAs(updatedEAs);
+      if (removedWasPrimary) {
+        setActiveSymbols(nextActive);
+        setMT4Symbols(nextMt4);
+        setMT5Symbols(nextMt5);
+      }
+
+      processedSignalKeysRef.current.clear();
+      dbBootstrapSessionRef.current = {
+        pollCount: 0,
+        gotProcessableDbSignal: false,
+        chartWarmupLaunched: false,
+      };
+
+      console.log('EA removed successfully:', id);
+      return true;
+    } catch (error) {
+      console.error('Error removing EA:', error);
+      return false;
+    }
+  }, [eas]);
+
+  const setActiveEA = useCallback(
+    async (id: string) => {
+      try {
+        console.log('Setting active EA by id:', id);
+        const index = eas.findIndex(e => e.id === id);
+        if (index <= 0) {
+          console.log('Active EA already first or not found, index:', index);
+          return;
+        }
+
+        const previousPrimary = eas[0];
+        if (previousPrimary?.id) {
+          try {
+            await AsyncStorage.setItem(
+              tradeSymbolsStorageKey(previousPrimary.id),
+              JSON.stringify({
+                activeSymbols,
+                mt4Symbols,
+                mt5Symbols,
+              })
+            );
+          } catch (e) {
+            console.error('Error saving trade symbols for previous active EA:', e);
+          }
+        }
+
+        const reordered = [eas[index], ...eas.slice(0, index), ...eas.slice(index + 1)];
+        const newPrimary = reordered[0];
+
+        let nextActive: ActiveSymbol[] = [];
+        let nextMt4: MT4Symbol[] = [];
+        let nextMt5: MT5Symbol[] = [];
+
+        if (newPrimary?.id) {
+          const raw = await AsyncStorage.getItem(tradeSymbolsStorageKey(newPrimary.id));
+          if (raw) {
+            try {
+              const t = JSON.parse(raw);
+              nextActive = parseActiveSymbolsFromStorage(t.activeSymbols);
+              nextMt4 = parseMT4SymbolsFromStorage(t.mt4Symbols);
+              nextMt5 = parseMT5SymbolsFromStorage(t.mt5Symbols);
+            } catch (e) {
+              console.error('Error parsing trade symbols for new active EA:', e);
+            }
+          }
+        }
+
+        try {
+          await AsyncStorage.multiSet([
+            ['eas', JSON.stringify(reordered)],
+            ['activeSymbols', JSON.stringify(nextActive)],
+            ['mt4Symbols', JSON.stringify(nextMt4)],
+            ['mt5Symbols', JSON.stringify(nextMt5)],
+          ]);
+        } catch (e) {
+          console.error('Error persisting EA order / trade symbols:', e);
+        }
+
+        setEAs(reordered);
+        setActiveSymbols(nextActive);
+        setMT4Symbols(nextMt4);
+        setMT5Symbols(nextMt5);
+
+        processedSignalKeysRef.current.clear();
+        dbBootstrapSessionRef.current = {
+          pollCount: 0,
+          gotProcessableDbSignal: false,
+          chartWarmupLaunched: false,
+        };
+
+        void refreshEaProfilesFromServer(reordered);
+
+        console.log('Active EA set. New first EA:', newPrimary?.name);
+      } catch (error) {
+        console.error('Error setting active EA:', error);
+      }
+    },
+    [eas, activeSymbols, mt4Symbols, mt5Symbols, refreshEaProfilesFromServer]
+  );
+
+  const setMTAccount = useCallback(async (account: MTAccount) => {
+    setMTAccountState(account);
+    try {
+      await AsyncStorage.setItem('mtAccount', JSON.stringify(account));
+    } catch (error) {
+      console.error('Error saving MT account:', error);
+    }
+  }, []);
+
+  const setMT4Account = useCallback(async (account: MT4Account) => {
+    setMT4AccountState(account);
+    try {
+      await AsyncStorage.setItem('mt4Account', JSON.stringify(account));
+      console.log('MT4 account saved successfully');
+    } catch (error) {
+      console.error('Error saving MT4 account:', error);
+    }
+  }, []);
+
+  const setMT5Account = useCallback(async (account: MT5Account) => {
+    setMT5AccountState(account);
+    try {
+      await AsyncStorage.setItem('mt5Account', JSON.stringify(account));
+      console.log('MT5 account saved successfully');
+    } catch (error) {
+      console.error('Error saving MT5 account:', error);
+    }
+  }, []);
+
+  const setIsFirstTime = useCallback(async (value: boolean) => {
+    setIsFirstTimeState(value);
+    try {
+      await AsyncStorage.setItem('isFirstTime', JSON.stringify(value));
+    } catch (error) {
+      console.error('Error saving first time flag:', error);
+    }
+  }, []);
+
+  const setMt5LotSizingMode = useCallback(async (mode: MT5LotSizingMode) => {
+    if (isMartingaleEa(eas)) {
+      console.log('[MT5] Standard lot sizing mode ignored — martingale uses signal/own lot preference');
+      return;
+    }
+    setMt5LotSizingModeState(mode);
+    if (mode === 'auto') {
+      lastProcessedMt5SizingKeyRef.current = '';
+    }
+    try {
+      await AsyncStorage.setItem('mt5LotSizingMode', JSON.stringify(mode));
+    } catch (error) {
+      console.error('Error saving mt5 lot sizing mode:', error);
+    }
+  }, [eas]);
+
+  const setMartingaleLotSource = useCallback(async (source: MartingaleLotSource) => {
+    setMartingaleLotSourceState(source);
+    martingaleLotSourceRef.current = source;
+    try {
+      await AsyncStorage.setItem('martingaleLotSource', JSON.stringify(source));
+    } catch (error) {
+      console.error('Error saving martingale lot source:', error);
+    }
+  }, []);
+
+  const activateSymbol = useCallback(async (symbolConfig: Omit<ActiveSymbol, 'activatedAt'>) => {
+    let effective = symbolConfig;
+    if (symbolConfig.platform === 'MT5') {
+      const martingale = isMartingaleEa(eas);
+      const p = martingale
+        ? martingaleLotSource === 'own'
+          ? {
+            lotSize: sanitizeManualLotSize(symbolConfig.lotSize),
+            numberOfTrades: sanitizeManualTradesCount(symbolConfig.numberOfTrades),
+            direction: 'BOTH' as const,
+            platform: 'MT5' as const,
+          }
+          : {
+            lotSize: MARTINGALE_PLACEHOLDER_LOT,
+            numberOfTrades: sanitizeManualTradesCount(symbolConfig.numberOfTrades),
+            direction: 'BOTH' as const,
+            platform: 'MT5' as const,
+          }
+        : mt5LotSizingMode === 'manual'
+          ? {
+            lotSize: sanitizeManualLotSize(symbolConfig.lotSize),
+            numberOfTrades: sanitizeManualTradesCount(symbolConfig.numberOfTrades),
+            direction: 'BOTH' as const,
+            platform: 'MT5' as const,
+          }
+          : getEquityBasedMT5Preset(mt5Account?.equity, symbolConfig.symbol);
+      effective = {
+        ...symbolConfig,
+        lotSize: p.lotSize,
+        direction: 'BOTH',
+        platform: 'MT5',
+        numberOfTrades: p.numberOfTrades,
+      };
+    }
+    const newActiveSymbol: ActiveSymbol = {
+      ...effective,
+      activatedAt: new Date()
+    };
+
+    // Ensure single-platform config per symbol: remove from MT4/MT5 lists
+    setMT4Symbols(current => {
+      const updated = current.filter(s => s.symbol !== symbolConfig.symbol);
+      AsyncStorage.setItem('mt4Symbols', JSON.stringify(updated)).catch(error => {
+        console.error('Error saving MT4 symbols:', error);
+      });
+      return updated;
+    });
+    setMT5Symbols(current => {
+      const updated = current.filter(s => s.symbol !== symbolConfig.symbol);
+      AsyncStorage.setItem('mt5Symbols', JSON.stringify(updated)).catch(error => {
+        console.error('Error saving MT5 symbols:', error);
+      });
+      return updated;
+    });
+
+    setActiveSymbols(currentSymbols => {
+      const filteredSymbols = currentSymbols.filter(s => s.symbol !== symbolConfig.symbol);
+      const updatedSymbols = [...filteredSymbols, newActiveSymbol];
+
+      AsyncStorage.setItem('activeSymbols', JSON.stringify(updatedSymbols)).catch(error => {
+        console.error('Error saving active symbols:', error);
+      });
+
+      return updatedSymbols;
+    });
+  }, [mt5Account?.equity, mt5LotSizingMode, martingaleLotSource, eas]);
+
+  const deactivateSymbol = useCallback(async (symbol: string) => {
+    setActiveSymbols(currentSymbols => {
+      const updatedSymbols = currentSymbols.filter(s => s.symbol !== symbol);
+
+      AsyncStorage.setItem('activeSymbols', JSON.stringify(updatedSymbols)).catch(error => {
+        console.error('Error saving active symbols:', error);
+      });
+
+      return updatedSymbols;
+    });
+  }, []);
+
+  const activateMT4Symbol = useCallback(async (symbolConfig: Omit<MT4Symbol, 'activatedAt'>) => {
+    const newActiveSymbol: MT4Symbol = {
+      ...symbolConfig,
+      activatedAt: new Date()
+    };
+
+    // Ensure single-platform config per symbol: clear legacy and MT5 entries
+    setActiveSymbols(current => {
+      const updated = current.filter(s => s.symbol !== symbolConfig.symbol);
+      AsyncStorage.setItem('activeSymbols', JSON.stringify(updated)).catch(error => {
+        console.error('Error saving active symbols:', error);
+      });
+      return updated;
+    });
+    setMT5Symbols(current => {
+      const updated = current.filter(s => s.symbol !== symbolConfig.symbol);
+      AsyncStorage.setItem('mt5Symbols', JSON.stringify(updated)).catch(error => {
+        console.error('Error saving MT5 symbols:', error);
+      });
+      return updated;
+    });
+
+    setMT4Symbols(currentSymbols => {
+      const filteredSymbols = currentSymbols.filter(s => s.symbol !== symbolConfig.symbol);
+      const updatedSymbols = [...filteredSymbols, newActiveSymbol];
+
+      AsyncStorage.setItem('mt4Symbols', JSON.stringify(updatedSymbols)).catch(error => {
+        console.error('Error saving MT4 symbols:', error);
+      });
+
+      console.log('MT4 symbol activated:', symbolConfig.symbol);
+      return updatedSymbols;
+    });
+  }, []);
+
+  const activateMT5Symbol = useCallback(async (symbolConfig: Omit<MT5Symbol, 'activatedAt'>) => {
+    const martingale = isMartingaleEa(eas);
+    const preset = martingale
+      ? martingaleLotSource === 'own'
+        ? {
+          lotSize: sanitizeManualLotSize(symbolConfig.lotSize),
+          numberOfTrades: sanitizeManualTradesCount(symbolConfig.numberOfTrades),
+          direction: 'BOTH' as const,
+        }
+        : {
+          lotSize: MARTINGALE_PLACEHOLDER_LOT,
+          numberOfTrades: sanitizeManualTradesCount(symbolConfig.numberOfTrades),
+          direction: 'BOTH' as const,
+        }
+      : mt5LotSizingMode === 'manual'
+        ? {
+          lotSize: sanitizeManualLotSize(symbolConfig.lotSize),
+          numberOfTrades: sanitizeManualTradesCount(symbolConfig.numberOfTrades),
+          direction: 'BOTH' as const,
+        }
+        : getEquityBasedMT5Preset(mt5Account?.equity, symbolConfig.symbol);
+    const tradeMode: MT5TradeMode = symbolConfig.tradeMode === 'scalper' ? 'scalper' : 'swing';
+    const newActiveSymbol: MT5Symbol = {
+      symbol: symbolConfig.symbol,
+      lotSize: preset.lotSize,
+      direction: 'BOTH',
+      numberOfTrades: preset.numberOfTrades,
+      tradeMode,
+      activatedAt: new Date()
+    };
+
+    // Ensure single-platform config per symbol: clear legacy and MT4 entries
+    setActiveSymbols(current => {
+      const updated = current.filter(s => s.symbol !== symbolConfig.symbol);
+      AsyncStorage.setItem('activeSymbols', JSON.stringify(updated)).catch(error => {
+        console.error('Error saving active symbols:', error);
+      });
+      return updated;
+    });
+    setMT4Symbols(current => {
+      const updated = current.filter(s => s.symbol !== symbolConfig.symbol);
+      AsyncStorage.setItem('mt4Symbols', JSON.stringify(updated)).catch(error => {
+        console.error('Error saving MT4 symbols:', error);
+      });
+      return updated;
+    });
+
+    setMT5Symbols(currentSymbols => {
+      const filteredSymbols = currentSymbols.filter(s => s.symbol !== symbolConfig.symbol);
+      const updatedSymbols = [...filteredSymbols, newActiveSymbol];
+
+      AsyncStorage.setItem('mt5Symbols', JSON.stringify(updatedSymbols)).catch(error => {
+        console.error('Error saving MT5 symbols:', error);
+      });
+
+      console.log('MT5 symbol activated:', symbolConfig.symbol);
+      return updatedSymbols;
+    });
+  }, [mt5Account?.equity, mt5LotSizingMode, martingaleLotSource, eas]);
+
+  /** Martingale + lot-from-signal: never keep user-defined lots on MT5 symbol rows. */
+  useEffect(() => {
+    if (!isMartingaleEa(eas)) return;
+    if (martingaleLotSource !== 'signal') return;
+    setMT5Symbols(current => {
+      let changed = false;
+      const next = current.map(s => {
+        if (s.lotSize === MARTINGALE_PLACEHOLDER_LOT) return s;
+        changed = true;
+        return { ...s, lotSize: MARTINGALE_PLACEHOLDER_LOT };
+      });
+      if (changed) {
+        AsyncStorage.setItem('mt5Symbols', JSON.stringify(next)).catch(err => {
+          console.error('Error saving MT5 symbols (martingale lot reset):', err);
+        });
+      }
+      return changed ? next : current;
+    });
+    setActiveSymbols(current => {
+      let changed = false;
+      const next = current.map(s => {
+        if (s.platform !== 'MT5' || s.lotSize === MARTINGALE_PLACEHOLDER_LOT) return s;
+        changed = true;
+        return { ...s, lotSize: MARTINGALE_PLACEHOLDER_LOT };
+      });
+      if (changed) {
+        AsyncStorage.setItem('activeSymbols', JSON.stringify(next)).catch(err => {
+          console.error('Error saving active symbols (martingale lot reset):', err);
+        });
+      }
+      return changed ? next : current;
+    });
+  }, [eas, martingaleLotSource]);
+
+  /** After MT5 login / equity refresh: ask AI for per-symbol lot + trade count; fallback to equity heuristics. Manual mode: never touch lots when equity updates. */
+  useEffect(() => {
+    if (isMartingaleEa(eas)) return;
+    if (mt5LotSizingMode === 'manual') return;
+    if (!mt5Account?.connected || !String(mt5Account.equity ?? '').trim()) return;
+    const symList = mt5SizingSymbolsRef.current;
+    if (symList.length === 0) return;
+
+    const key = `${mt5Account.login ?? ''}|${mt5Account.equity}|${symList.map(s => s.symbol).sort().join(';')}`;
+    if (lastProcessedMt5SizingKeyRef.current === key) return;
+
+    const reqId = ++mt5SizingReqIdRef.current;
+    const timer = setTimeout(() => {
+      void (async () => {
+        if (mt5LotSizingModeRef.current === 'manual') return;
+        const acc = mt5SizingAccountRef.current;
+        const sym = mt5SizingSymbolsRef.current;
+        if (!acc?.connected || !String(acc.equity ?? '').trim() || sym.length === 0) return;
+        const currentKey = `${acc.login ?? ''}|${acc.equity}|${sym.map(s => s.symbol).sort().join(';')}`;
+        if (currentKey !== key) return;
+        if (reqId !== mt5SizingReqIdRef.current) return;
+        if (mt5LotSizingModeRef.current === 'manual') return;
+
+        const res = await apiService.fetchMt5TradeSizing({
+          equity: acc.equity,
+          balance: acc.balance,
+          symbols: sym.map(s => ({
+            symbol: s.symbol,
+            instrumentClass: classifyInstrumentSymbol(s.symbol),
+          })),
+        });
+
+        if (reqId !== mt5SizingReqIdRef.current) return;
+        if (mt5LotSizingModeRef.current === 'manual') return;
+
+        const applyDeterministic = (list: MT5Symbol[]) =>
+          list.map(s => {
+            const p = getEquityBasedMT5Preset(acc.equity, s.symbol);
+            return {
+              ...s,
+              lotSize: p.lotSize,
+              direction: 'BOTH' as const,
+              numberOfTrades: p.numberOfTrades,
+            };
+          });
+
+        if (res.message === 'accept' && res.data?.length) {
+          const byUpper = new Map(res.data.map(r => [r.symbol.toUpperCase(), r]));
+          setMT5Symbols(current => {
+            if (reqId !== mt5SizingReqIdRef.current) return current;
+            const next = current.map(s => {
+              const hit = byUpper.get(s.symbol.toUpperCase());
+              if (!hit) {
+                const p = getEquityBasedMT5Preset(acc.equity, s.symbol);
+                return {
+                  ...s,
+                  lotSize: p.lotSize,
+                  direction: 'BOTH' as const,
+                  numberOfTrades: p.numberOfTrades,
+                };
+              }
+              return {
+                ...s,
+                lotSize: hit.lotSize,
+                direction: 'BOTH' as const,
+                numberOfTrades: hit.numberOfTrades,
+              };
+            });
+            AsyncStorage.setItem('mt5Symbols', JSON.stringify(next)).catch(err => {
+              console.error('Error saving MT5 symbols:', err);
+            });
+            return next;
+          });
+        } else {
+          setMT5Symbols(current => {
+            if (reqId !== mt5SizingReqIdRef.current) return current;
+            const next = applyDeterministic(current);
+            let changed = false;
+            for (let i = 0; i < current.length; i++) {
+              if (
+                current[i].lotSize !== next[i].lotSize ||
+                current[i].numberOfTrades !== next[i].numberOfTrades
+              ) {
+                changed = true;
+                break;
+              }
+            }
+            if (!changed) return current;
+            AsyncStorage.setItem('mt5Symbols', JSON.stringify(next)).catch(err => {
+              console.error('Error saving MT5 symbols:', err);
+            });
+            return next;
+          });
+        }
+
+        if (reqId !== mt5SizingReqIdRef.current) return;
+        lastProcessedMt5SizingKeyRef.current = key;
+      })();
+    }, 450);
+
+    return () => clearTimeout(timer);
+  }, [
+    mt5LotSizingMode,
+    mt5Account?.connected,
+    mt5Account?.equity,
+    mt5Account?.balance,
+    mt5Account?.login,
+    mt5Symbols,
+    eas,
+  ]);
+
+  const deactivateMT4Symbol = useCallback(async (symbol: string) => {
+    setMT4Symbols(currentSymbols => {
+      const updatedSymbols = currentSymbols.filter(s => s.symbol !== symbol);
+
+      AsyncStorage.setItem('mt4Symbols', JSON.stringify(updatedSymbols)).catch(error => {
+        console.error('Error saving MT4 symbols:', error);
+      });
+
+      console.log('MT4 symbol deactivated:', symbol);
+      return updatedSymbols;
+    });
+  }, []);
+
+  const deactivateMT5Symbol = useCallback(async (symbol: string) => {
+    setMT5Symbols(currentSymbols => {
+      const updatedSymbols = currentSymbols.filter(s => s.symbol !== symbol);
+
+      AsyncStorage.setItem('mt5Symbols', JSON.stringify(updatedSymbols)).catch(error => {
+        console.error('Error saving MT5 symbols:', error);
+      });
+
+      console.log('MT5 symbol deactivated:', symbol);
+      return updatedSymbols;
+    });
+  }, []);
+
+  const requestOverlayPermission = useCallback(async (): Promise<boolean> => {
+    if (Platform.OS !== 'android') {
+      return true;
+    }
+
+    try {
+      console.log('Checking overlay permission for Android...');
+      // Permission is already requested at app startup in MainActivity
+      // Just check if we have permission, don't show dialog
+      const { overlayService } = await import('@/services/overlay-service');
+      const hasPermission = await overlayService.checkOverlayPermission();
+      if (!hasPermission) {
+        console.log('Overlay permission not granted, opening settings silently');
+        // Silently open settings if needed, but don't block bot activation
+        overlayService.requestOverlayPermission();
+      }
+      return hasPermission;
+    } catch (error) {
+      console.error('Error checking overlay permission:', error);
+      return false;
+    }
+  }, []);
+
+  const setBotActive = useCallback(async (active: boolean) => {
+    console.log('setBotActive called with:', active);
+
+    if (active && primaryLicenseStatus === 'expired') {
+      console.log('Cannot start bot — licence expired');
+      return;
+    }
+
+    // Check overlay permission on Android (but don't block activation)
+    if (active && Platform.OS === 'android') {
+      // Silently check permission, but don't block bot activation
+      requestOverlayPermission().catch(err => {
+        console.error('Error checking overlay permission:', err);
+      });
+    }
+
+    try {
+      setIsBotActive(active);
+      await AsyncStorage.setItem('isBotActive', JSON.stringify(active));
+      console.log('Bot active state saved:', active);
+
+      // Start/stop Android native background monitoring service (only when trades can run)
+      const primaryEA = Array.isArray(eas) && eas.length > 0 ? eas[0] : null;
+      if (Platform.OS === 'android' && primaryEA && primaryEA.licenseKey) {
+        if (active && hasActiveTradeSymbolsConfigured) {
+          console.log('🚀 Starting Android native background monitoring service for license:', primaryEA.licenseKey);
+          try {
+            const started = await backgroundMonitoringService.startMonitoring(primaryEA.licenseKey);
+            if (started) {
+              console.log('✅ Native background monitoring service started successfully');
+            } else {
+              console.warn('⚠️ Failed to start native background monitoring service');
+            }
+          } catch (error) {
+            console.error('❌ Error starting native background monitoring service:', error);
+          }
+        } else {
+          console.log('🛑 Stopping Android native background monitoring service');
+          try {
+            await backgroundMonitoringService.stopMonitoring();
+            if (active && !hasActiveTradeSymbolsConfigured) {
+              console.log('(No symbols configured for active EA — native signal monitoring off)');
+            }
+            console.log('✅ Native background monitoring service stopped');
+          } catch (error) {
+            console.error('❌ Error stopping native background monitoring service:', error);
+          }
+        }
+      }
+
+      // Start/stop iOS background signal polling (only when trades can run)
+      if (Platform.OS === 'ios' && primaryEA?.licenseKey) {
+        try {
+          const { registerIOSBackgroundSignalTask, unregisterIOSBackgroundSignalTask, requestIOSNotificationPermission } = await import('@/services/ios-background-signal-service');
+          if (active && hasActiveTradeSymbolsConfigured) {
+            const hasPermission = await requestIOSNotificationPermission();
+            if (hasPermission) {
+              const registered = await registerIOSBackgroundSignalTask(primaryEA.licenseKey);
+              if (registered) {
+                console.log('✅ iOS background signal task registered - will poll when app is in background');
+              }
+            } else {
+              console.warn('⚠️ iOS notification permission denied - background signal notifications disabled');
+            }
+          } else {
+            await unregisterIOSBackgroundSignalTask();
+            if (active && !hasActiveTradeSymbolsConfigured) {
+              console.log('No symbols configured — iOS background signal task not registered');
+            } else {
+              console.log('✅ iOS background signal task unregistered');
+            }
+          }
+        } catch (error) {
+          console.error('❌ iOS background signal task error:', error);
+        }
+      }
+
+      // Get primary EA and bot image URL for both iOS and Android
+      const botName = primaryEA?.name?.toUpperCase() || 'AURA AI';
+      const botImageURL = getEAImageUrl(primaryEA);
+
+      // Update Android overlay widget - show/hide overlay automatically
+      if (Platform.OS === 'android') {
+        try {
+          const { overlayService, ANDROID_OVERLAY_LOGO_SIZE_PX } = await import('@/services/overlay-service');
+
+          if (active) {
+            // Bot is being activated - show overlay automatically
+            console.log('[Android Overlay] Bot activated, showing overlay:', { botName, botImageURL, hasPrimaryEA: !!primaryEA });
+
+            // Save image URL first (even if null, so overlay can load default icon)
+            await overlayService.updateOverlayData(botName, active, isPollingPaused, botImageURL || null);
+
+            // Show overlay at default position
+            const statusBarHeight = 50;
+            const initialX = 20;
+            const initialY = statusBarHeight + 50;
+            const overlayWidth = ANDROID_OVERLAY_LOGO_SIZE_PX;
+            const overlayHeight = ANDROID_OVERLAY_LOGO_SIZE_PX;
+
+            const showOverlayWithRetry = async (retryCount = 0): Promise<boolean> => {
+              try {
+                const showSuccess = await overlayService.showOverlay(
+                  initialX,
+                  initialY,
+                  overlayWidth,
+                  overlayHeight
+                );
+
+                if (showSuccess) {
+                  console.log('[Android Overlay] Overlay shown successfully');
+                  // Update overlay data again to ensure image is loaded
+                  await overlayService.updateOverlayData(botName, active, isPollingPaused, botImageURL || null);
+                  return true;
+                } else {
+                  console.log('[Android Overlay] Failed to show overlay - retry count:', retryCount);
+                  if (retryCount < 2) {
+                    // Retry after delay
+                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    return showOverlayWithRetry(retryCount + 1);
+                  } else {
+                    console.log('[Android Overlay] Failed to show overlay after retries - permission may be required');
+                    return false;
+                  }
+                }
+              } catch (error) {
+                console.error('[Android Overlay] Error showing overlay:', error);
+                if (retryCount < 2) {
+                  await new Promise(resolve => setTimeout(resolve, 1000));
+                  return showOverlayWithRetry(retryCount + 1);
+                }
+                return false;
+              }
+            };
+
+            // Show overlay with retry logic
+            await showOverlayWithRetry();
+          } else {
+            // Bot is being deactivated - hide overlay
+            console.log('[Android Overlay] Bot deactivated, hiding overlay');
+            await overlayService.hideOverlay();
+            // Still update data in case overlay is shown again later
+            await overlayService.updateOverlayData(botName, active, isPollingPaused, botImageURL || null);
+          }
+        } catch (error) {
+          console.error('[Android Overlay] Error managing overlay:', error);
+          // Don't throw - allow bot activation to continue even if overlay fails
+        }
+      }
+
+      // Update iOS widget if on iOS (native app or PWA)
+      const isIOS = Platform.OS === 'ios' || (Platform.OS === 'web' && isIOSPWA());
+      if (isIOS) {
+
+        console.log('[Widget] Updating widget:', {
+          platform: Platform.OS,
+          isPWA: Platform.OS === 'web' && isIOSPWA(),
+          botName,
+          active,
+          botImageURL
+        });
+
+        try {
+          const { widgetService } = await import('@/services/widget-service');
+          await widgetService.updateWidget(botName, active, isPollingPaused, botImageURL);
+          console.log('[Widget] Widget update triggered successfully');
+        } catch (error) {
+          console.error('[Widget] Error updating iOS widget:', error);
+        }
+      }
+
+      // Show PWA notification for iOS PWA
+      if (Platform.OS === 'web' && isIOSPWA()) {
+        try {
+          const primaryEA = Array.isArray(eas) && eas.length > 0 ? eas[0] : null;
+          const botName = primaryEA?.name?.toUpperCase() || 'AURA AI';
+          const botImageURL = getEAImageUrl(primaryEA);
+
+          const { pwaNotificationService } = await import('@/services/pwa-notification-service');
+          await pwaNotificationService.showPersistentBotNotification(
+            botName,
+            active,
+            isPollingPaused,
+            botImageURL
+          );
+          console.log('[Notifications] PWA notification shown');
+
+          // Web Push for iOS PWA - enables background signal notifications when app is suspended
+          const { subscribeToPush, unsubscribeFromPush } = await import('@/services/pwa-push-service');
+          if (active && primaryEA?.licenseKey && hasActiveTradeSymbolsConfigured) {
+            const subscribed = await subscribeToPush(primaryEA.licenseKey);
+            if (subscribed) {
+              console.log('[PWA Push] Background signal notifications enabled');
+            }
+          } else if (!active) {
+            await unsubscribeFromPush();
+          } else if (active && primaryEA?.licenseKey && !hasActiveTradeSymbolsConfigured) {
+            await unsubscribeFromPush();
+            console.log('[PWA Push] Disabled — no symbols configured for active EA');
+          }
+        } catch (error) {
+          console.error('[Notifications] Error showing PWA notification:', error);
+        }
+      }
+
+      if (active) {
+        const primaryEAForPolling = Array.isArray(eas) && eas.length > 0 ? eas[0] : null;
+        if (
+          primaryEAForPolling &&
+          primaryEAForPolling.licenseKey &&
+          hasActiveTradeSymbolsConfigured
+        ) {
+          if (isAiChartTradingEnabled(eas)) {
+            clearChartWarmupCooldown();
+            dbBootstrapSessionRef.current = {
+              pollCount: 0,
+              gotProcessableDbSignal: false,
+              chartWarmupLaunched: false,
+            };
+            console.log(
+              '[Bot start] Standard EA — 10 idle polls → first chart warmup (no 45 min pause until that cycle finishes)'
+            );
+          }
+          isPollingPausedRef.current = false;
+          setIsPollingPaused(false);
+          await startDatabaseSignalPollingRef.current?.();
+        } else if (
+          primaryEAForPolling &&
+          primaryEAForPolling.licenseKey &&
+          !hasActiveTradeSymbolsConfigured
+        ) {
+          console.log(
+            'No trade symbols configured for active EA — database signals polling not started'
+          );
+        } else {
+          console.log('No primary EA with license key found for database signals polling');
+        }
+      } else {
+        // Clear signal logs and stop database signals polling when stopping the bot
+        console.log('Bot stopped - clearing signal logs and stopping all monitoring');
+        const signalsMonitorService = await getSignalsMonitor();
+        if (signalsMonitorService) {
+          signalsMonitorService.clearSignalLogs();
+        }
+        const dbService = await getDatabaseSignalsPollingService();
+        if (dbService) {
+          dbService.stopPolling();
+        }
+        if (Platform.OS === 'android') {
+          import('@/services/overlay-service')
+            .then(({ overlayService }) => overlayService.stopNativeBackgroundPolling())
+            .catch(() => { });
+        }
+        setSignalLogs([]);
+        setNewSignal(null);
+        setDatabaseSignal(null);
+        setIsDatabaseSignalsPolling(false);
+        setIsPollingPaused(false);
+      }
+    } catch (error) {
+      console.error('Error saving bot active state:', error);
+      // Revert state on error
+      setIsBotActive(!active);
+    }
+  }, [
+    requestOverlayPermission,
+    eas,
+    isPollingPaused,
+    mt5Account,
+    activeSymbols,
+    mt4Symbols,
+    mt5Symbols,
+    hasActiveTradeSymbolsConfigured,
+    isSymbolConfiguredForTrading,
+    shouldProcessSignal,
+    tradeLevelsFingerprint,
+    primaryLicenseStatus,
+    clearChartWarmupCooldown,
+  ]);
+  // Note: pausePolling is intentionally not in deps - it's defined after this callback
+  // and is only used in setTimeout callbacks which will have the correct reference
+
+  // Pause polling (keeps bot active but stops signal checking)
+  const pausePolling = useCallback(async () => {
+    if (isPollingPaused) {
+      return; // Already paused
+    }
+    console.log('Pausing database signals polling');
+    const dbService = await getDatabaseSignalsPollingService();
+    if (dbService) {
+      dbService.pausePolling();
+    }
+    isPollingPausedRef.current = true;
+    setIsPollingPaused(true);
+    setIsDatabaseSignalsPolling(false);
+
+    // Update iOS widget (native app or PWA)
+    const isIOS = Platform.OS === 'ios' || (Platform.OS === 'web' && isIOSPWA());
+    if (isIOS) {
+      const primaryEA = Array.isArray(eas) && eas.length > 0 ? eas[0] : null;
+      const botName = primaryEA?.name?.toUpperCase() || 'AURA AI';
+      const botImageURL = getEAImageUrl(primaryEA);
+
+      try {
+        const { widgetService } = await import('@/services/widget-service');
+        await widgetService.updateWidget(botName, isBotActive, true, botImageURL);
+      } catch (error) {
+        console.error('Error updating iOS widget:', error);
+      }
+    }
+
+    // Update PWA notification
+    if (Platform.OS === 'web' && isIOSPWA()) {
+      try {
+        const primaryEA = Array.isArray(eas) && eas.length > 0 ? eas[0] : null;
+        const botName = primaryEA?.name?.toUpperCase() || 'AURA AI';
+        const botImageURL = getEAImageUrl(primaryEA);
+
+        const { pwaNotificationService } = await import('@/services/pwa-notification-service');
+        await pwaNotificationService.showPersistentBotNotification(
+          botName,
+          isBotActive,
+          true, // isPaused
+          botImageURL
+        );
+      } catch (error) {
+        console.error('Error updating PWA notification:', error);
+      }
+    }
+  }, [eas, isBotActive, isPollingPaused]);
+
+  useEffect(() => {
+    pausePollingRef.current = pausePolling;
+  }, [pausePolling]);
+
+  /**
+   * Show the MT5 execution WebView. On web/PWA open immediately — InteractionManager can
+   * starve forever while home hero JS animations run (useNativeDriver: false). Android still
+   * defers one frame after interactions so Modal + WebView composite reliably.
+   */
+  const scheduleOpenMT5ExecutionOverlay = useCallback((signal: SignalLog) => {
+    // MT5 auto-trade only for symbols on MT5 Quotes — never fall back to an unlisted ticker.
+    if (signal.type !== 'CHART_WARMUP') {
+      const onQuotes = resolveConfiguredMt5QuotesSymbol(
+        signal.asset,
+        mt5Symbols,
+        activeSymbols
+      );
+      if (!onQuotes?.symbol) {
+        const msg = quoteSetNotFoundMessage(signal.asset || '');
+        console.log('⏭️', msg, '— MT5 overlay not opened');
+        setMt5TradeOverlayMessage(msg);
+        return;
+      }
+      signal = { ...signal, asset: onQuotes.symbol };
+    }
+    setMt5TradeOverlayMessage(null);
+    const open = () => {
+      setMT5Signal(signal);
+      setShowMT5SignalWebView(true);
+    };
+    if (Platform.OS === 'web') {
+      requestAnimationFrame(open);
+      return;
+    }
+    InteractionManager.runAfterInteractions(() => {
+      requestAnimationFrame(open);
+    });
+  }, [mt5Symbols, activeSymbols]);
+
+  const startDatabaseSignalPolling = useCallback(async () => {
+    const primaryEA = Array.isArray(eas) && eas.length > 0 ? eas[0] : null;
+    const hasTrade =
+      activeSymbols.length > 0 || mt4Symbols.length > 0 || mt5Symbols.length > 0;
+    if (!primaryEA?.licenseKey || !hasTrade) {
+      return;
+    }
+
+    console.log('Starting database signals polling for license:', primaryEA.licenseKey);
+
+    const dbServiceForStart = await getDatabaseSignalsPollingService();
+    const startStatus = dbServiceForStart?.getStatus?.();
+    /** Re-entry while already live only refreshes callbacks — do not wipe the 10-poll idle AI counter. */
+    const alreadyLive =
+      Boolean(dbServiceForStart?.isRunning?.()) &&
+      !Boolean(dbServiceForStart?.getIsPaused?.()) &&
+      startStatus?.licenseKey === primaryEA.licenseKey;
+
+    if (!alreadyLive) {
+      isPollingPausedRef.current = false;
+      setIsPollingPaused(false);
+      dbBootstrapSessionRef.current = {
+        pollCount: 0,
+        gotProcessableDbSignal: false,
+        chartWarmupLaunched: false,
+      };
+    } else {
+      console.log(
+        '[DB Bootstrap] Polling already live — refreshing callbacks, keeping idle counter at',
+        dbBootstrapSessionRef.current.pollCount
+      );
+    }
+
+    const onDatabaseSignalFound = (signal: DatabaseSignal) => {
+      console.log('🎯 Database signal found:', signal);
+
+      const { shouldProcess, ageInSeconds, reason, cooldownRemaining } = shouldProcessSignal(
+        signal.id,
+        signal.asset,
+        signal.time,
+        signal.latestupdate,
+        tradeLevelsFingerprint(signal.action, signal.sl, signal.tp, signal.price)
+      );
+
+      if (!shouldProcess) {
+        if (reason === 'already_processed') {
+          console.log('⏭️ Signal already processed, ignoring:', signal.asset, 'ID:', signal.id);
+        } else if (reason === 'cooldown' && cooldownRemaining) {
+          console.log(
+            '⏸️ Symbol in cooldown (' + cooldownRemaining.toFixed(1) + 's remaining), ignoring:',
+            signal.asset,
+            'ID:',
+            signal.id
+          );
+        } else if (reason === 'invalid_time') {
+          console.log('⏭️ Signal has invalid time, ignoring:', signal.asset, 'ID:', signal.id);
+        } else {
+          console.log(
+            '⏰ Signal too old (' + ageInSeconds.toFixed(1) + 's), ignoring:',
+            signal.asset,
+            'ID:',
+            signal.id
+          );
+        }
+        return;
+      }
+
+      console.log(
+        '✅ Signal is recent (' + ageInSeconds.toFixed(1) + 's old), processing:',
+        signal.asset,
+        'ID:',
+        signal.id
+      );
+
+      setDatabaseSignal(signal);
+      const signalLog: SignalLog = {
+        id: signal.id,
+        asset: signal.asset,
+        action: signal.action,
+        price: signal.price,
+        tp: signal.tp,
+        sl: signal.sl,
+        time: signal.time,
+        type: 'DATABASE_SIGNAL',
+        source: 'database',
+        latestupdate: signal.latestupdate,
+        lot: signal.lot,
+      };
+
+      console.log('🎯 Converted to SignalLog:', signalLog);
+
+      setSignalLogs(prev => {
+        const newLogs = [...prev, signalLog];
+        console.log('🎯 Updated signal logs:', newLogs);
+        return newLogs;
+      });
+
+      console.log('🎯 Setting new signal for dynamic island:', signalLog);
+
+      // Only treat as a real copy-trade hit when we open MT5. Skipped symbols must not
+      // block the idle poll → AI chart warmup path (same cycle as EA Trade).
+      if (mt5Account && mt5Account.connected && isSymbolConfiguredForTrading(signal.asset)) {
+        const onMt5 = resolveConfiguredMt5QuotesSymbol(signal.asset, mt5Symbols, activeSymbols);
+        if (!onMt5?.symbol) {
+          console.log(
+            '⏭️ Database signal skipped —',
+            quoteSetNotFoundMessage(signal.asset),
+            '(not on MT5 Quotes)'
+          );
+        } else {
+          dbBootstrapSessionRef.current.gotProcessableDbSignal = true;
+          console.log('🚀 Opening MT5 WebView for database signal:', onMt5.symbol);
+          if (
+            Platform.OS === 'android' &&
+            (AppState.currentState === 'background' || AppState.currentState === 'inactive')
+          ) {
+            void bringAppToForegroundRef.current?.();
+          }
+          pausePolling().catch(err => {
+            console.error('Error pausing polling when opening WebView:', err);
+          });
+          scheduleOpenMT5ExecutionOverlay({ ...signalLog, asset: onMt5.symbol });
+        }
+      } else if (mt5Account && mt5Account.connected) {
+        console.log(
+          '⏭️ Database signal skipped — symbol not configured on Quotes (AI idle window continues):',
+          signal.asset
+        );
+      } else {
+        console.log(
+          '⏭️ Database signal skipped — MT5 not connected (AI idle window continues):',
+          signal.asset
+        );
+      }
+
+      setNewSignal(signalLog);
+      notifySignalReceived(signalLog);
+    };
+
+    const onDatabaseError = (error: string) => {
+      console.error('Database signals polling error:', error);
+    };
+
+    const onPollComplete = () => {
+      if (!isAiChartTradingEnabled(easRef.current)) {
+        return;
+      }
+      const { activeSymbols: asSym, mt4Symbols: m4, mt5Symbols: m5 } =
+        symbolsForBootstrapRef.current;
+      const hasTradeNow = asSym.length > 0 || m4.length > 0 || m5.length > 0;
+      if (!hasTradeNow) {
+        return;
+      }
+      const s = dbBootstrapSessionRef.current;
+      if (s.chartWarmupLaunched || s.gotProcessableDbSignal) {
+        return;
+      }
+      const mt5QuotesForWarmup = buildMt5QuotesSymbolsForWarmup(asSym, m5);
+      const cooldownLeft = chartWarmupCooldownRemainingMs(lastChartWarmupAtRef.current);
+
+      // Still inside 45 min pause — hold poll counter at threshold once reached; do not open.
+      if (cooldownLeft > 0) {
+        if (s.pollCount < DB_BOOTSTRAP_POLLS_BEFORE_CHART_WARMUP) {
+          s.pollCount += 1;
+        } else {
+          s.pollCount = DB_BOOTSTRAP_POLLS_BEFORE_CHART_WARMUP;
+        }
+        if (s.pollCount === DB_BOOTSTRAP_POLLS_BEFORE_CHART_WARMUP) {
+          console.log(
+            `[Chart Warmup] Idle gate ready — waiting ~${Math.ceil(cooldownLeft / 60000)} min (45 min pause)`
+          );
+        } else {
+          console.log(
+            `[DB Bootstrap] Interval poll ${s.pollCount}/${DB_BOOTSTRAP_POLLS_BEFORE_CHART_WARMUP} (cooldown ${Math.ceil(cooldownLeft / 60000)} min)`
+          );
+        }
+        return;
+      }
+
+      s.pollCount += 1;
+      console.log(
+        `[DB Bootstrap] Interval poll ${s.pollCount}/${DB_BOOTSTRAP_POLLS_BEFORE_CHART_WARMUP} completed`
+      );
+      if (s.pollCount < DB_BOOTSTRAP_POLLS_BEFORE_CHART_WARMUP) {
+        return;
+      }
+      if (mt5QuotesForWarmup.length === 0) {
+        console.log(
+          `[DB Bootstrap] ${DB_BOOTSTRAP_POLLS_BEFORE_CHART_WARMUP} polls — no MT5 Quotes symbols configured; skipping chart warmup, resetting poll counter`
+        );
+        s.pollCount = 0;
+        return;
+      }
+      const opened = openChartWarmupTerminalRef.current?.('db_bootstrap_chart_warmup') === true;
+      if (opened) {
+        s.chartWarmupLaunched = true;
+        // 45 min idle starts only when the warmup cycle finishes (completeChartWarmupCycle).
+        console.log(
+          `[DB Bootstrap] No processable DB signal after ${DB_BOOTSTRAP_POLLS_BEFORE_CHART_WARMUP} polls — launching chart warmup`
+        );
+      } else {
+        console.log('[DB Bootstrap] Chart warmup did not open — resetting poll counter for another 10-poll cycle');
+        s.pollCount = 0;
+      }
+    };
+
+    const dbService = dbServiceForStart ?? (await getDatabaseSignalsPollingService());
+    if (dbService) {
+      databaseOnPollCompleteRef.current = onPollComplete;
+      dbService.startPolling(primaryEA.licenseKey, onDatabaseSignalFound, onDatabaseError, {
+        onPollComplete,
+      });
+      setIsDatabaseSignalsPolling(true);
+      console.log('✅ JavaScript polling started for signal monitoring');
+    }
+  }, [
+    eas,
+    activeSymbols,
+    mt4Symbols,
+    mt5Symbols,
+    mt5Account,
+    isSymbolConfiguredForTrading,
+    shouldProcessSignal,
+    tradeLevelsFingerprint,
+    pausePolling,
+    scheduleOpenMT5ExecutionOverlay,
+  ]);
+
+  startDatabaseSignalPollingRef.current = startDatabaseSignalPolling;
+
+  const openChartWarmupTerminal = useCallback((source: ChartWarmupSource): boolean => {
+    if (!isAiChartTradingEnabled(easRef.current)) {
+      console.log(`[Chart Warmup] Skipped (${source}) — martingale bot (AI chart trading off)`);
+      return false;
+    }
+    const cooldownMs = chartWarmupCooldownRemainingMs(lastChartWarmupAtRef.current);
+    if (cooldownMs > 0) {
+      console.log(
+        `[Chart Warmup] Skipped (${source}) — ${Math.ceil(cooldownMs / 60000)} min until next allowed scan`
+      );
+      return false;
+    }
+    if (showMT5SignalWebViewRef.current) {
+      console.log('[Chart Warmup] Skipped — MT5 overlay already open');
+      return false;
+    }
+    /** Overlay / other app on top: must show main activity before AI chart warmup. */
+    if (
+      Platform.OS === 'android' &&
+      (AppState.currentState === 'background' || AppState.currentState === 'inactive')
+    ) {
+      void bringAppToForegroundRef.current?.();
+    }
+    const primary =
+      Array.isArray(easRef.current) && easRef.current.length > 0 ? easRef.current[0] : null;
+    if (!primary?.id) {
+      console.log(`[Chart Warmup] Skipped (${source}) — no active EA`);
+      return false;
+    }
+    const acc = mt5AccountForBootstrapRef.current;
+    const { activeSymbols: asSym, mt5Symbols: m5 } = symbolsForBootstrapRef.current;
+    const mt5QuotesSymbols = buildMt5QuotesSymbolsForWarmup(asSym, m5);
+    if (!acc?.connected || mt5QuotesSymbols.length === 0) {
+      console.log(
+        `[Chart Warmup] Skipped (${source}) — MT5 not connected or no MT5 Quotes symbols configured`
+      );
+      return false;
+    }
+
+    const randomIndex = Math.floor(Math.random() * mt5QuotesSymbols.length);
+    const selected = mt5QuotesSymbols[randomIndex];
+    const dir = selected.direction?.toLowerCase();
+    let tradeAction: string;
+    if (dir === 'buy' || dir === 'sell') {
+      tradeAction = dir;
+    } else {
+      tradeAction = Math.random() > 0.5 ? 'buy' : 'sell';
+    }
+
+    const chartWarmupSignal: SignalLog = {
+      id: `chart-warmup-${Date.now()}`,
+      asset: selected.symbol,
+      action: tradeAction,
+      price: '0',
+      tp: '0',
+      sl: '0',
+      time: new Date().toISOString(),
+      type: 'CHART_WARMUP',
+      source,
+      latestupdate: new Date().toISOString(),
+    };
+
+    console.log(`[Chart Warmup] Opening (${source}) — MT5 Quotes symbol:`, chartWarmupSignal.asset);
+    console.log(
+      '[Chart Warmup] AI chart analysis will run after terminal loads (screenshot → Gemini → auto-trade if confidence OK)'
+    );
+
+    const pause = pausePollingRef.current;
+    if (pause) {
+      pause().catch(err => {
+        console.error('Error pausing polling for chart warmup:', err);
+      });
+    }
+    scheduleOpenMT5ExecutionOverlay(chartWarmupSignal);
+    setSignalLogs(prev => [...prev, chartWarmupSignal]);
+    return true;
+  }, [scheduleOpenMT5ExecutionOverlay]);
+
+  useEffect(() => {
+    openChartWarmupTerminalRef.current = openChartWarmupTerminal;
+  }, [openChartWarmupTerminal]);
+
+  /** When bot is on but Quotes has no symbols (or user removed all), tear down polling/native push; start again when symbols return. */
+  useEffect(() => {
+    if (!isBotActive) return;
+
+    void (async () => {
+      if (!hasActiveTradeSymbolsConfigured) {
+        const dbService = await getDatabaseSignalsPollingService();
+        if (dbService?.isRunning?.() || dbService?.getIsPaused?.()) {
+          dbService.stopPolling();
+        }
+        setIsDatabaseSignalsPolling(false);
+        setIsPollingPaused(false);
+
+        if (Platform.OS === 'android') {
+          try {
+            await backgroundMonitoringService.stopMonitoring();
+          } catch (e) {
+            console.error('Error stopping Android monitoring (no symbols):', e);
+          }
+        }
+        if (Platform.OS === 'ios') {
+          try {
+            const { unregisterIOSBackgroundSignalTask } = await import(
+              '@/services/ios-background-signal-service'
+            );
+            await unregisterIOSBackgroundSignalTask();
+          } catch (e) {
+            console.error('Error unregistering iOS background task (no symbols):', e);
+          }
+        }
+        if (Platform.OS === 'web' && isIOSPWA()) {
+          try {
+            const { unsubscribeFromPush } = await import('@/services/pwa-push-service');
+            await unsubscribeFromPush();
+          } catch (e) {
+            console.warn('[PWA Push] Unsubscribe (no symbols):', e);
+          }
+        }
+        return;
+      }
+
+      if (isPollingPaused) return;
+
+      const primaryEA = Array.isArray(eas) && eas.length > 0 ? eas[0] : null;
+      if (!primaryEA?.licenseKey) return;
+
+      const dbService = await getDatabaseSignalsPollingService();
+      if (!dbService?.isRunning?.() && !dbService?.getIsPaused?.()) {
+        await startDatabaseSignalPollingRef.current?.();
+      }
+    })();
+  }, [
+    isBotActive,
+    hasActiveTradeSymbolsConfigured,
+    isPollingPaused,
+    eas,
+    activeSymbols.length,
+    mt4Symbols.length,
+    mt5Symbols.length,
+  ]);
+
+  /**
+   * Align the next idle window to the real 45 min cooldown end (not wall-clock from mount).
+   * When the pause expires, clear launch flags so the next 10 idle polls can open chart AI.
+   */
+  useEffect(() => {
+    if (!isAiChartTradingEnabled(eas) || !isBotActive || !hasMt5QuotesForChartWarmup) return;
+    const primaryEA = Array.isArray(eas) && eas.length > 0 ? eas[0] : null;
+    if (!primaryEA?.licenseKey) return;
+
+    const clearTimer = () => {
+      if (chartWarmupCooldownTimerRef.current) {
+        clearTimeout(chartWarmupCooldownTimerRef.current);
+        chartWarmupCooldownTimerRef.current = null;
+      }
+    };
+
+    const arm = () => {
+      clearTimer();
+      const left = chartWarmupCooldownRemainingMs(lastChartWarmupAtRef.current);
+      if (left <= 0) {
+        if (dbBootstrapSessionRef.current.chartWarmupLaunched) {
+          dbBootstrapSessionRef.current = {
+            pollCount: 0,
+            gotProcessableDbSignal: false,
+            chartWarmupLaunched: false,
+          };
+          console.log(
+            '[Chart Warmup] 45-minute pause ended — AI runs after 10 idle polls if no copy signal'
+          );
+        }
+        return;
+      }
+      chartWarmupCooldownTimerRef.current = setTimeout(() => {
+        dbBootstrapSessionRef.current = {
+          pollCount: 0,
+          gotProcessableDbSignal: false,
+          chartWarmupLaunched: false,
+        };
+        console.log(
+          '[Chart Warmup] 45-minute pause ended — AI runs after 10 idle polls if no copy signal'
+        );
+        arm();
+      }, left + 250);
+    };
+
+    arm();
+    const id = setInterval(arm, 60_000);
+    return () => {
+      clearInterval(id);
+      clearTimer();
+    };
+  }, [isBotActive, hasMt5QuotesForChartWarmup, eas]);
+
+  // Bring app to foreground (Android) — prefer native activity launch; fallback deep link.
+  const bringAppToForeground = useCallback(async () => {
+    if (Platform.OS !== 'android') return;
+    if (AppState.currentState !== 'background' && AppState.currentState !== 'inactive') {
+      return;
+    }
+    console.log('📱 App not in foreground — bringing main activity up…');
+    try {
+      const nativeOk = await backgroundMonitoringService.bringAppToForeground();
+      if (nativeOk) {
+        console.log('✅ App brought to foreground (native)');
+        return;
+      }
+    } catch (e) {
+      console.warn('Native bringAppToForeground failed, trying deep link:', e);
+    }
+    try {
+      await Linking.openURL('myapp://trade-signal');
+      console.log('✅ App brought to foreground (deep link)');
+    } catch (error) {
+      console.error('Error bringing app to foreground:', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    bringAppToForegroundRef.current = bringAppToForeground;
+  }, [bringAppToForeground]);
+
+  // Resume polling (restarts signal checking)
+  const completeChartWarmupCycle = useCallback(() => {
+    stampChartWarmupCooldown(Date.now());
+    dbBootstrapSessionRef.current = {
+      pollCount: 0,
+      gotProcessableDbSignal: false,
+      chartWarmupLaunched: false,
+    };
+    console.log(
+      '[Chart Warmup] Cycle complete — 45 min pause starts now; then 10 idle polls before next AI scan'
+    );
+  }, [stampChartWarmupCooldown]);
+
+  const resumePolling = useCallback(async (options?: { skipChartWarmupIdleReset?: boolean }) => {
+    const dbService = await getDatabaseSignalsPollingService();
+    const servicePaused = Boolean(dbService?.getIsPaused?.());
+    // Use ref + service flag — stale `isPollingPaused` in this callback previously no-op'd forever after warmup/trade.
+    if (!isPollingPausedRef.current && !servicePaused) {
+      return;
+    }
+    if (!hasActiveTradeSymbolsConfigured) {
+      console.log('Resume polling skipped — no symbols configured for active EA');
+      isPollingPausedRef.current = false;
+      setIsPollingPaused(false);
+      return;
+    }
+    console.log('▶️ Resuming database signals polling');
+
+    const primaryEA = Array.isArray(eas) && eas.length > 0 ? eas[0] : null;
+    if (primaryEA && primaryEA.licenseKey) {
+      if (dbService) {
+        if (servicePaused || !dbService.isRunning?.()) {
+          dbService.resumePolling();
+          if (!dbService.isRunning?.() && primaryEA.licenseKey) {
+            // resumePolling no-ops if service never started — force a fresh start
+            await startDatabaseSignalPollingRef.current?.();
+          }
+        }
+      }
+      isPollingPausedRef.current = false;
+      setIsPollingPaused(false);
+      setIsDatabaseSignalsPolling(true);
+
+      /**
+       * Copy-trade sets gotProcessableDbSignal=true which blocks idle → chart AI forever
+       * unless cleared. After any pause ends, start a fresh 10-poll AI window (EA Trade intent).
+       */
+      if (isAiChartTradingEnabled(easRef.current) && !options?.skipChartWarmupIdleReset) {
+        dbBootstrapSessionRef.current = {
+          pollCount: 0,
+          gotProcessableDbSignal: false,
+          chartWarmupLaunched: false,
+        };
+        console.log('[Chart Warmup] Idle window reset after resume — AI again after 10 idle polls');
+      }
+
+      // Update iOS widget (native app or PWA)
+      const isIOS = Platform.OS === 'ios' || (Platform.OS === 'web' && isIOSPWA());
+      if (isIOS) {
+        const botName = primaryEA?.name?.toUpperCase() || 'AURA AI';
+        const botImageURL = getEAImageUrl(primaryEA);
+
+        try {
+          const { widgetService } = await import('@/services/widget-service');
+          await widgetService.updateWidget(botName, isBotActive, false, botImageURL);
+        } catch (error) {
+          console.error('Error updating iOS widget:', error);
+        }
+      }
+
+      // Update PWA notification
+      if (Platform.OS === 'web' && isIOSPWA()) {
+        try {
+          const botName = primaryEA?.name?.toUpperCase() || 'AURA AI';
+          const botImageURL = getEAImageUrl(primaryEA);
+
+          const { pwaNotificationService } = await import('@/services/pwa-notification-service');
+          await pwaNotificationService.showPersistentBotNotification(
+            botName,
+            isBotActive,
+            false, // isPaused
+            botImageURL
+          );
+        } catch (error) {
+          console.error('Error updating PWA notification:', error);
+        }
+      }
+    } else {
+      console.log('No primary EA with license key found to resume polling');
+    }
+  }, [eas, isBotActive, hasActiveTradeSymbolsConfigured]);
+
+  const resumePollingAfterChartWarmup = useCallback(async () => {
+    completeChartWarmupCycle();
+    const dbService = await getDatabaseSignalsPollingService();
+    const pollingRunning = Boolean(dbService?.isRunning?.());
+    if (!pollingRunning) {
+      setIsPollingPaused(false);
+      await startDatabaseSignalPollingRef.current?.();
+      console.log('[Chart Warmup] Copy-trade polling started after AI cycle');
+      return;
+    }
+    await resumePolling({ skipChartWarmupIdleReset: true });
+  }, [completeChartWarmupCycle, resumePolling]);
+
+  // Mark trade as executed (pauses monitoring for 35 seconds)
+  // Defined after resumePolling to avoid forward reference issues
+  const markTradeExecuted = useCallback(async (symbol: string) => {
+    lastTradeExecutionRef.current.set(symbol, Date.now());
+    console.log('✅ Trade executed for', symbol, '- Keeping monitoring paused for 35 seconds');
+
+    // Monitoring is already paused when WebView opened, just keep it paused for 35 seconds
+    // Resume after 35 seconds
+    setTimeout(async () => {
+      await resumePolling();
+      if (isAiChartTradingEnabled(easRef.current)) {
+        dbBootstrapSessionRef.current = {
+          pollCount: 0,
+          gotProcessableDbSignal: false,
+          chartWarmupLaunched: false,
+        };
+        console.log('[Chart Warmup] Idle window reset after copy-trade — AI again after poll interval');
+      }
+      console.log('▶️ Monitoring resumed after 35-second pause');
+    }, 35000);
+
+    // Clean up old entries (keep only last 100 symbols)
+    if (lastTradeExecutionRef.current.size > 100) {
+      const entries = Array.from(lastTradeExecutionRef.current.entries());
+      lastTradeExecutionRef.current.clear();
+      entries.slice(-50).forEach(([sym, time]) => lastTradeExecutionRef.current.set(sym, time));
+    }
+  }, [resumePolling]);
+
+  const startSignalsMonitoring = useCallback(async (phoneSecret: string) => {
+    console.log('Starting signals monitoring with phone secret:', phoneSecret);
+
+    const signalsMonitorService = await getSignalsMonitor();
+    if (!signalsMonitorService) {
+      console.error('Failed to load signalsMonitor service');
+      return;
+    }
+
+    const onSignalReceived = (signal: SignalLog) => {
+      console.log('Signal received in app provider:', signal);
+
+      // Check if signal should be processed (recent and not duplicate)
+      const { shouldProcess, ageInSeconds, reason, cooldownRemaining } = shouldProcessSignal(
+        signal.id,
+        signal.asset,
+        signal.time,
+        signal.latestupdate,
+        tradeLevelsFingerprint(signal.action, signal.sl, signal.tp, signal.price)
+      );
+
+      if (!shouldProcess) {
+        if (reason === 'already_processed') {
+          console.log('⏭️ Signal already processed, ignoring:', signal.asset, 'ID:', signal.id);
+        } else if (reason === 'cooldown' && cooldownRemaining) {
+          console.log('⏸️ Symbol in cooldown (' + cooldownRemaining.toFixed(1) + 's remaining), ignoring:', signal.asset, 'ID:', signal.id);
+        } else if (reason === 'invalid_time') {
+          console.log('⏭️ Signal has invalid time, ignoring:', signal.asset, 'ID:', signal.id);
+        } else {
+          console.log('⏰ Signal too old (' + ageInSeconds.toFixed(1) + 's), ignoring:', signal.asset, 'ID:', signal.id);
+        }
+        return;
+      }
+
+      console.log('✅ Signal is recent (' + ageInSeconds.toFixed(1) + 's old), processing:', signal.asset, 'ID:', signal.id);
+
+      setSignalLogs(currentLogs => {
+        const newLogs = [signal, ...currentLogs];
+        // Keep only last 50 signals in state for performance
+        return newLogs.slice(0, 50);
+      });
+
+      // Set as new signal for dynamic island notification
+      setNewSignal(signal);
+      notifySignalReceived(signal);
+
+      // Check if this signal is for an active symbol and should trigger trading
+      const symbolName = signal.asset;
+      const onMt5Quotes = resolveConfiguredMt5QuotesSymbol(symbolName, mt5Symbols, activeSymbols);
+      const symbolAllowed = Boolean(onMt5Quotes?.symbol);
+
+      console.log('Signal received - checking if active:', {
+        symbolName,
+        symbolAllowed,
+        resolvedMt5: onMt5Quotes?.symbol ?? null,
+        activeSymbols: activeSymbols.map(s => s.symbol),
+        mt4Symbols: mt4Symbols.map(s => s.symbol),
+        mt5Symbols: mt5Symbols.map(s => s.symbol)
+      });
+
+      if (symbolAllowed && onMt5Quotes) {
+        console.log('✅ Signal is for configured MT5 Quotes symbol:', onMt5Quotes.symbol);
+      } else {
+        console.log('⏭️', quoteSetNotFoundMessage(symbolName), '— no auto-trade');
+      }
+
+      if (mt5Account && mt5Account.connected && symbolAllowed && onMt5Quotes) {
+        console.log('🚀 Opening MT5 WebView for signal:', onMt5Quotes.symbol);
+        pausePolling().catch(err => {
+          console.error('Error pausing polling when opening WebView:', err);
+        });
+        scheduleOpenMT5ExecutionOverlay({ ...signal, asset: onMt5Quotes.symbol });
+      }
+    };
+
+    const onError = (error: string) => {
+      console.error('Signals monitoring error:', error);
+    };
+
+    signalsMonitorService.startMonitoring(phoneSecret, onSignalReceived, onError);
+    setIsSignalsMonitoring(true);
+  }, [
+    activeSymbols,
+    mt4Symbols,
+    mt5Symbols,
+    mt5Account,
+    shouldProcessSignal,
+    tradeLevelsFingerprint,
+    pausePolling,
+    scheduleOpenMT5ExecutionOverlay,
+  ]);
+
+  const stopSignalsMonitoring = useCallback(async () => {
+    console.log('Stopping signals monitoring');
+    const signalsMonitorService = await getSignalsMonitor();
+    if (signalsMonitorService) {
+      signalsMonitorService.stopMonitoring();
+    }
+    setIsSignalsMonitoring(false);
+  }, []);
+
+  /** When the user reorders EAs (active = eas[0]) while the bot is on, point DB/native/PWA pipelines at the new license only. */
+  const primaryPollingLicenseRef = useRef<string | null>(null);
+  /** Last primary EA id + phone secret used for HTTP signals monitor (restart when active EA changes). */
+  const signalsMonitorContextRef = useRef<{ id?: string; secret?: string }>({});
+  useEffect(() => {
+    const primary = eas[0];
+    if (!isBotActive || !primary?.licenseKey) {
+      primaryPollingLicenseRef.current = null;
+      return;
+    }
+    if (!hasActiveTradeSymbolsConfigured) {
+      return;
+    }
+
+    const lic = primary.licenseKey;
+    const prevLic = primaryPollingLicenseRef.current;
+    if (prevLic === lic) {
+      return;
+    }
+    primaryPollingLicenseRef.current = lic;
+
+    void (async () => {
+      const switchedFromPriorLicense = prevLic != null;
+
+      if (switchedFromPriorLicense) {
+        processedSignalKeysRef.current.clear();
+        dbBootstrapSessionRef.current = {
+          pollCount: 0,
+          gotProcessableDbSignal: false,
+          chartWarmupLaunched: false,
+        };
+      }
+
+      const dbService = await getDatabaseSignalsPollingService();
+      if (switchedFromPriorLicense && dbService?.isRunning?.()) {
+        dbService.restartWithLicense(lic);
+        console.log('[Active EA] Database polling restarted for license switch');
+      }
+
+      if (switchedFromPriorLicense && Platform.OS === 'android') {
+        try {
+          const nativeRunning = await backgroundMonitoringService.isRunning();
+          if (nativeRunning) {
+            await backgroundMonitoringService.stopMonitoring();
+            await backgroundMonitoringService.startMonitoring(lic);
+            console.log('[Active EA] Android background monitoring restarted for new license');
+          }
+        } catch (e) {
+          console.error('[Active EA] Android monitoring restart error:', e);
+        }
+      }
+
+      if (switchedFromPriorLicense && Platform.OS === 'ios') {
+        try {
+          const { registerIOSBackgroundSignalTask, unregisterIOSBackgroundSignalTask } = await import(
+            '@/services/ios-background-signal-service'
+          );
+          await unregisterIOSBackgroundSignalTask();
+          await registerIOSBackgroundSignalTask(lic);
+          console.log('[Active EA] iOS background signal task re-registered');
+        } catch (e) {
+          console.error('[Active EA] iOS background task restart error:', e);
+        }
+      }
+
+      if (switchedFromPriorLicense && Platform.OS === 'web' && isIOSPWA()) {
+        try {
+          const { subscribeToPush } = await import('@/services/pwa-push-service');
+          await subscribeToPush(lic);
+        } catch (e) {
+          console.warn('[Active EA] PWA push re-subscribe:', e);
+        }
+      }
+    })();
+  }, [eas, isBotActive, hasActiveTradeSymbolsConfigured]);
+
+  /** Keep per-EA trade symbol snapshot in sync whenever Quotes lists change (active EA = eas[0]). */
+  useEffect(() => {
+    const eaId = eas[0]?.id;
+    if (!eaId) return;
+    void AsyncStorage.setItem(
+      tradeSymbolsStorageKey(eaId),
+      JSON.stringify({ activeSymbols, mt4Symbols, mt5Symbols })
+    ).catch(err => console.error('Error persisting per-EA trade symbols:', err));
+  }, [eas[0]?.id, activeSymbols, mt4Symbols, mt5Symbols]);
+
+  const clearSignalLogs = useCallback(async () => {
+    console.log('Clearing signal logs');
+    const signalsMonitorService = await getSignalsMonitor();
+    if (signalsMonitorService) {
+      signalsMonitorService.clearSignalLogs();
+    }
+    setSignalLogs([]);
+  }, []);
+
+  const dismissNewSignal = useCallback(() => {
+    console.log('Dismissing new signal notification');
+    setNewSignal(null);
+  }, []);
+
+  const setShowMT5SignalWebViewCallback = useCallback((show: boolean) => {
+    setShowMT5SignalWebView(show);
+    if (!show) {
+      setMT5Signal(null);
+      setMt5TradeOverlayMessage(null);
+    }
+  }, []);
+
+  const setMT5SignalCallback = useCallback((signal: SignalLog | null) => {
+    setMT5Signal(signal);
+    if (signal) {
+      setMt5TradeOverlayMessage(null);
+    }
+  }, []);
+
+  const setMT5TradeOverlayMessageCallback = useCallback((message: string | null) => {
+    setMt5TradeOverlayMessage(message);
+  }, []);
+
+
+  // Initialize signals monitoring state on mount
+  useEffect(() => {
+    const initSignalsMonitor = async () => {
+      const signalsMonitorService = await getSignalsMonitor();
+      if (signalsMonitorService) {
+        setIsSignalsMonitoring(signalsMonitorService.isRunning());
+        setSignalLogs(signalsMonitorService.getSignalLogs());
+      }
+    };
+    initSignalsMonitor();
+  }, []);
+
+  // Listen for signals from Android native background monitoring service
+  useEffect(() => {
+    if (Platform.OS !== 'android' || !isBotActive || !hasActiveTradeSymbolsConfigured) {
+      return;
+    }
+
+    console.log('📡 Setting up listener for native background signals');
+
+    const listener = backgroundMonitoringService.addListener(async (signal) => {
+      console.log('🎯 Received signal from native background service:', signal);
+
+      // Check if signal should be processed (recent and not duplicate)
+      const { shouldProcess, ageInSeconds, reason, cooldownRemaining } = shouldProcessSignal(
+        signal.id,
+        signal.asset,
+        signal.time,
+        signal.latestupdate,
+        tradeLevelsFingerprint(
+          signal.action,
+          signal.sl?.toString?.() ?? String(signal.sl ?? ''),
+          signal.tp?.toString?.() ?? String(signal.tp ?? ''),
+          signal.price?.toString?.() ?? String(signal.price ?? '')
+        )
+      );
+
+      if (!shouldProcess) {
+        if (reason === 'already_processed') {
+          console.log('⏭️ Signal already processed, NOT bringing app to foreground:', signal.asset, 'ID:', signal.id);
+        } else if (reason === 'cooldown' && cooldownRemaining) {
+          console.log('⏸️ Symbol in cooldown (' + cooldownRemaining.toFixed(1) + 's remaining), NOT bringing app to foreground:', signal.asset, 'ID:', signal.id);
+        } else if (reason === 'invalid_time') {
+          console.log('⏭️ Signal has invalid time, NOT bringing app to foreground:', signal.asset, 'ID:', signal.id);
+        } else {
+          console.log('⏰ Signal too old (' + ageInSeconds.toFixed(1) + 's), NOT bringing app to foreground:', signal.asset, 'ID:', signal.id);
+        }
+        // Don't bring app to foreground - signal won't be executed
+        return;
+      }
+
+      // Check if MT5 account is connected - if not, don't bring to foreground
+      if (!mt5Account || !mt5Account.connected) {
+        console.log('⚠️ MT5 account not connected, NOT bringing app to foreground:', signal.asset);
+        return;
+      }
+
+      if (!isSymbolConfiguredForTrading(signal.asset)) {
+        console.log('⚠️ Symbol not configured on Quotes, NOT bringing app to foreground:', signal.asset);
+        return;
+      }
+
+      console.log('✅ Signal will be executed (' + ageInSeconds.toFixed(1) + 's old), bringing app to foreground:', signal.asset, 'ID:', signal.id);
+
+      // ONLY NOW bring app to foreground - signal will actually be executed
+      try {
+        await backgroundMonitoringService.bringAppToForeground();
+        console.log('📱 App brought to foreground for trade execution');
+      } catch (error) {
+        console.error('❌ Error bringing app to foreground:', error);
+      }
+
+      // Convert to SignalLog format
+      const signalLog: SignalLog = {
+        id: signal.id,
+        asset: signal.asset,
+        action: signal.action,
+        price: signal.price?.toString() || '0',
+        tp: signal.tp?.toString() || '0',
+        sl: signal.sl?.toString() || '0',
+        time: signal.time,
+        type: 'NATIVE_BACKGROUND_SIGNAL',
+        source: 'native_background',
+        latestupdate: signal.latestupdate,
+        lot: signal.lot,
+      };
+
+      console.log('🎯 Converted native signal to SignalLog:', signalLog);
+
+      // Add to signal logs
+      setSignalLogs(prev => {
+        const newLogs = [...prev, signalLog];
+        console.log('🎯 Updated signal logs with native signal:', newLogs);
+        return newLogs;
+      });
+
+      // Open MT5 WebView for signal
+      console.log('🚀 Opening MT5 WebView for native background signal:', signalLog.asset);
+      pausePolling().catch(err => {
+        console.error('Error pausing polling when opening WebView:', err);
+      });
+      scheduleOpenMT5ExecutionOverlay(signalLog);
+
+      setNewSignal(signalLog);
+      notifySignalReceived(signalLog);
+    });
+
+    return () => {
+      console.log('📡 Removing listener for native background signals');
+      if (listener) {
+        backgroundMonitoringService.removeListener();
+      }
+    };
+  }, [
+    isBotActive,
+    hasActiveTradeSymbolsConfigured,
+    mt5Account,
+    shouldProcessSignal,
+    tradeLevelsFingerprint,
+    pausePolling,
+    isSymbolConfiguredForTrading,
+    scheduleOpenMT5ExecutionOverlay,
+  ]);
+
+  // On web/PWA: keep server awake, poll on resume, re-subscribe for Web Push
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+
+    const handleVisibilityChange = async () => {
+      if (typeof document === 'undefined') return;
+
+      if (document.visibilityState === 'visible') {
+        const primaryEA = Array.isArray(eas) && eas.length > 0 ? eas[0] : null;
+        if (primaryEA?.licenseKey && isBotActive && hasActiveTradeSymbolsConfigured) {
+          const dbService = await getDatabaseSignalsPollingService();
+          if (dbService?.isRunning()) {
+            console.log('Page visible - triggering immediate poll to catch missed signals');
+            dbService.pollNow();
+          }
+          // Re-subscribe to Web Push when PWA comes to foreground
+          if (isIOSPWA()) {
+            try {
+              const { subscribeToPush } = await import('@/services/pwa-push-service');
+              await subscribeToPush(primaryEA.licenseKey);
+            } catch (e) {
+              console.warn('[PWA Push] Re-subscribe on visibility:', e);
+            }
+          }
+          // Start keep-alive pings so server stays awake for background Web Push
+          const { startKeepAlive } = await import('@/services/pwa-keep-alive');
+          startKeepAlive();
+        }
+      } else if (document.visibilityState === 'hidden') {
+        const { pingKeepAlive, stopKeepAlive } = await import('@/services/pwa-keep-alive');
+        stopKeepAlive();
+        // Ping when going to background - resets Render's 15min timer for Web Push
+        if (isBotActive) {
+          pingKeepAlive(true); // sendBeacon - often completes before page suspends
+        }
+      }
+    };
+
+    if (document.visibilityState === 'visible' && isBotActive && hasActiveTradeSymbolsConfigured) {
+      import('@/services/pwa-keep-alive').then(({ startKeepAlive }) => startKeepAlive());
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      import('@/services/pwa-keep-alive').then(({ stopKeepAlive }) => stopKeepAlive());
+    };
+  }, [Platform.OS, isBotActive, eas, hasActiveTradeSymbolsConfigured]);
+
+  // Ensure signal monitoring continues when app is in background and resumes when active
+  useEffect(() => {
+    const handleAppStateChange = async (nextAppState: string) => {
+      console.log('App state changed - ensuring signal monitoring continues:', nextAppState);
+
+      if (nextAppState === 'active' && Platform.OS === 'android') {
+        try {
+          const { overlayService, ANDROID_OVERLAY_LOGO_SIZE_PX } = await import('@/services/overlay-service');
+          await overlayService.stopNativeBackgroundPolling();
+          const pending = await overlayService.consumePendingForegroundAction();
+          if (pending) {
+            if (!isBotActive || isPollingPaused || !hasActiveTradeSymbolsConfigured) {
+              console.log(
+                '[Android native poll] Discarding pending action — bot off, paused, or no trade symbols'
+              );
+            } else if (pending.type === 'chart_warmup') {
+              if (!isAiChartTradingEnabled(easRef.current)) {
+                console.log('[Android native poll] Chart warmup discarded — martingale bot');
+              } else {
+                const opened = openChartWarmupTerminalRef.current?.('db_bootstrap_chart_warmup') === true;
+                if (opened) {
+                  dbBootstrapSessionRef.current.chartWarmupLaunched = true;
+                }
+                console.log(
+                  `[Android native poll] Chart warmup foreground — ${opened ? 'opened' : 'skipped (no MT5 Quotes / overlay)'}`
+                );
+              }
+            } else if (pending.type === 'signal' && pending.payload) {
+              let rows: unknown[] = [];
+              try {
+                rows = JSON.parse(pending.payload) as unknown[];
+              } catch (e) {
+                console.error('[Android native poll] Invalid signal JSON', e);
+              }
+              for (const item of rows) {
+                if (!item || typeof item !== 'object') continue;
+                const row = item as Record<string, unknown>;
+                const signal: DatabaseSignal = {
+                  id: String(row.id ?? ''),
+                  ea: String(row.ea ?? ''),
+                  asset: String(row.asset ?? ''),
+                  latestupdate: String(row.latestupdate ?? row.time ?? ''),
+                  type: String(row.type ?? ''),
+                  action: String(row.action ?? ''),
+                  price: String(row.price ?? ''),
+                  tp: String(row.tp ?? ''),
+                  sl: String(row.sl ?? ''),
+                  time: String(row.time ?? ''),
+                  lot: row.lot != null && String(row.lot).trim() !== '' ? String(row.lot) : undefined,
+                };
+                const { shouldProcess, ageInSeconds, reason, cooldownRemaining } = shouldProcessSignal(
+                  signal.id,
+                  signal.asset,
+                  signal.time,
+                  signal.latestupdate,
+                  tradeLevelsFingerprint(signal.action, signal.sl, signal.tp, signal.price)
+                );
+                if (!shouldProcess) {
+                  if (reason === 'already_processed') {
+                    console.log('⏭️ Native poll signal already processed:', signal.asset);
+                  } else if (reason === 'cooldown' && cooldownRemaining) {
+                    console.log('⏸️ Native poll cooldown:', signal.asset);
+                  } else if (reason === 'invalid_time') {
+                    console.log('⏭️ Native poll invalid time:', signal.asset);
+                  } else {
+                    console.log(
+                      '⏰ Native poll signal too old (' + ageInSeconds.toFixed(1) + 's):',
+                      signal.asset
+                    );
+                  }
+                  continue;
+                }
+                console.log('✅ Native background poll — executing signal flow:', signal.asset);
+                setDatabaseSignal(signal);
+                const signalLog: SignalLog = {
+                  id: signal.id,
+                  asset: signal.asset,
+                  action: signal.action,
+                  price: signal.price,
+                  tp: signal.tp,
+                  sl: signal.sl,
+                  time: signal.time,
+                  type: 'DATABASE_SIGNAL',
+                  source: 'native_bg_poll',
+                  latestupdate: signal.latestupdate,
+                  lot: signal.lot,
+                };
+                setSignalLogs(prev => [...prev, signalLog]);
+                if (mt5Account && mt5Account.connected && isSymbolConfiguredForTrading(signal.asset)) {
+                  const onMt5 = resolveConfiguredMt5QuotesSymbol(signal.asset, mt5Symbols, activeSymbols);
+                  if (!onMt5?.symbol) {
+                    console.log(
+                      '⏭️ Native poll —',
+                      quoteSetNotFoundMessage(signal.asset),
+                      '(AI idle window continues)'
+                    );
+                  } else {
+                    dbBootstrapSessionRef.current.gotProcessableDbSignal = true;
+                    pausePolling().catch(() => { });
+                    scheduleOpenMT5ExecutionOverlay({ ...signalLog, asset: onMt5.symbol });
+                  }
+                } else if (mt5Account && mt5Account.connected) {
+                  console.log(
+                    '⏭️ Native poll — symbol not on Quotes (AI idle window continues):',
+                    signal.asset
+                  );
+                }
+                setNewSignal(signalLog);
+                notifySignalReceived(signalLog);
+              }
+            }
+          }
+        } catch (e) {
+          console.error('[Android native poll] foreground handoff:', e);
+        }
+      }
+
+      // When app becomes active, ensure monitoring is running if bot is active
+      if (nextAppState === 'active' && isBotActive) {
+        const primaryEA = Array.isArray(eas) && eas.length > 0 ? eas[0] : null;
+        if (primaryEA && primaryEA.licenseKey) {
+          // IMPORTANT: Update React context in native service so pending signals can be sent
+          // This is crucial when app is brought to foreground by native service
+          if (Platform.OS === 'android') {
+            console.log('📱 App active - updating React context in native service...');
+            try {
+              await backgroundMonitoringService.updateReactContext();
+            } catch (error) {
+              console.error('Error updating React context:', error);
+            }
+          }
+
+          // If polling is paused but bot is active, check if we should resume
+          // (but respect the 35-second cooldown after trade execution)
+          if (isPollingPaused) {
+            console.log('App active - monitoring is paused (will resume after cooldown)');
+          } else if (hasActiveTradeSymbolsConfigured) {
+            // Ensure polling is running when app becomes active
+            const dbService = await getDatabaseSignalsPollingService();
+            if (dbService && !dbService.isRunning()) {
+              console.log('App active - restarting database signals polling');
+              const onDatabaseSignalFound = (signal: DatabaseSignal) => {
+                console.log('🎯 Database signal found (foreground):', signal);
+
+                // Check if signal should be processed (recent and not duplicate)
+                const { shouldProcess, ageInSeconds, reason, cooldownRemaining } = shouldProcessSignal(
+                  signal.id,
+                  signal.asset,
+                  signal.time,
+                  signal.latestupdate,
+                  tradeLevelsFingerprint(signal.action, signal.sl, signal.tp, signal.price)
+                );
+
+                if (!shouldProcess) {
+                  if (reason === 'already_processed') {
+                    console.log('⏭️ Signal already processed, ignoring:', signal.asset, 'ID:', signal.id);
+                  } else if (reason === 'cooldown' && cooldownRemaining) {
+                    console.log('⏸️ Symbol in cooldown (' + cooldownRemaining.toFixed(1) + 's remaining), ignoring:', signal.asset, 'ID:', signal.id);
+                  } else if (reason === 'invalid_time') {
+                    console.log('⏭️ Signal has invalid time, ignoring:', signal.asset, 'ID:', signal.id);
+                  } else {
+                    console.log('⏰ Signal too old (' + ageInSeconds.toFixed(1) + 's), ignoring:', signal.asset, 'ID:', signal.id);
+                  }
+                  return;
+                }
+
+                console.log('✅ Signal is recent (' + ageInSeconds.toFixed(1) + 's old), processing:', signal.asset, 'ID:', signal.id);
+
+                setDatabaseSignal(signal);
+                const signalLog: SignalLog = {
+                  id: signal.id,
+                  asset: signal.asset,
+                  action: signal.action,
+                  price: signal.price,
+                  tp: signal.tp,
+                  sl: signal.sl,
+                  time: signal.time,
+                  type: 'DATABASE_SIGNAL',
+                  source: 'database',
+                  latestupdate: signal.latestupdate,
+                  lot: signal.lot,
+                };
+                setSignalLogs(prev => [...prev, signalLog]);
+
+                if (mt5Account && mt5Account.connected && isSymbolConfiguredForTrading(signal.asset)) {
+                  const onMt5 = resolveConfiguredMt5QuotesSymbol(signal.asset, mt5Symbols, activeSymbols);
+                  if (!onMt5?.symbol) {
+                    console.log(
+                      '⏭️ Database signal skipped —',
+                      quoteSetNotFoundMessage(signal.asset),
+                      '(AI idle window continues)'
+                    );
+                  } else {
+                    dbBootstrapSessionRef.current.gotProcessableDbSignal = true;
+                    console.log('🚀 Opening MT5 WebView for database signal:', onMt5.symbol);
+                    pausePolling().catch(err => {
+                      console.error('Error pausing polling when opening WebView:', err);
+                    });
+                    scheduleOpenMT5ExecutionOverlay({ ...signalLog, asset: onMt5.symbol });
+                  }
+                } else if (mt5Account && mt5Account.connected) {
+                  console.log(
+                    '⏭️ Database signal skipped — symbol not configured on Quotes (AI idle window continues):',
+                    signal.asset
+                  );
+                }
+
+                setNewSignal(signalLog);
+              };
+
+              const onDatabaseError = (error: string) => {
+                console.error('Database signals polling error:', error);
+              };
+
+              if (dbService) {
+                dbService.startPolling(
+                  primaryEA.licenseKey,
+                  onDatabaseSignalFound,
+                  onDatabaseError,
+                  { onPollComplete: () => databaseOnPollCompleteRef.current?.() }
+                );
+                setIsDatabaseSignalsPolling(true);
+              }
+            } else {
+              // Polling already running - trigger immediate poll to catch signals missed while in background
+              const dbService = await getDatabaseSignalsPollingService();
+              if (dbService?.isRunning()) {
+                console.log('App active - triggering immediate poll to catch missed signals');
+                dbService.pollNow();
+              }
+            }
+          }
+        }
+      }
+
+      // Ensure database signals polling continues when app goes to background
+      if ((nextAppState === 'background' || nextAppState === 'inactive') && isBotActive && !isPollingPaused) {
+        const primaryEA = Array.isArray(eas) && eas.length > 0 ? eas[0] : null;
+        if (primaryEA && primaryEA.licenseKey && hasActiveTradeSymbolsConfigured) {
+          // Ensure polling is running when app goes to background
+          const dbService = await getDatabaseSignalsPollingService();
+          if (dbService && !dbService.isRunning()) {
+            console.log('App in background - restarting database signals polling for background monitoring');
+            const onDatabaseSignalFound = (signal: DatabaseSignal) => {
+              console.log('🎯 Database signal found (background):', signal);
+
+              // Check if signal should be processed (recent and not duplicate)
+              const { shouldProcess, ageInSeconds, reason, cooldownRemaining } = shouldProcessSignal(
+                signal.id,
+                signal.asset,
+                signal.time,
+                signal.latestupdate,
+                tradeLevelsFingerprint(signal.action, signal.sl, signal.tp, signal.price)
+              );
+
+              if (!shouldProcess) {
+                if (reason === 'already_processed') {
+                  console.log('⏭️ Background database signal already processed, ignoring:', signal.asset, 'ID:', signal.id);
+                } else if (reason === 'cooldown' && cooldownRemaining) {
+                  console.log('⏸️ Background database symbol in cooldown (' + cooldownRemaining.toFixed(1) + 's remaining), ignoring:', signal.asset, 'ID:', signal.id);
+                } else if (reason === 'invalid_time') {
+                  console.log('⏭️ Background database signal has invalid time, ignoring:', signal.asset, 'ID:', signal.id);
+                } else {
+                  console.log('⏰ Background database signal too old (' + ageInSeconds.toFixed(1) + 's), ignoring:', signal.asset, 'ID:', signal.id);
+                }
+                return;
+              }
+
+              console.log('✅ Background database signal is recent (' + ageInSeconds.toFixed(1) + 's old), processing:', signal.asset, 'ID:', signal.id);
+
+              setDatabaseSignal(signal);
+              const signalLog: SignalLog = {
+                id: signal.id,
+                asset: signal.asset,
+                action: signal.action,
+                price: signal.price,
+                tp: signal.tp,
+                sl: signal.sl,
+                time: signal.time,
+                type: 'DATABASE_SIGNAL',
+                source: 'database',
+                latestupdate: signal.latestupdate,
+                lot: signal.lot,
+              };
+              setSignalLogs(prev => [...prev, signalLog]);
+
+              if (mt5Account && mt5Account.connected && isSymbolConfiguredForTrading(signal.asset)) {
+                const onMt5 = resolveConfiguredMt5QuotesSymbol(signal.asset, mt5Symbols, activeSymbols);
+                if (!onMt5?.symbol) {
+                  console.log(
+                    '⏭️ Background database signal skipped —',
+                    quoteSetNotFoundMessage(signal.asset),
+                    '(AI idle window continues)'
+                  );
+                } else {
+                  dbBootstrapSessionRef.current.gotProcessableDbSignal = true;
+                  console.log('🚀 Opening MT5 WebView for background database signal:', onMt5.symbol);
+                  bringAppToForeground();
+                  pausePolling().catch(err => {
+                    console.error('Error pausing polling when opening WebView:', err);
+                  });
+                  scheduleOpenMT5ExecutionOverlay({ ...signalLog, asset: onMt5.symbol });
+                }
+              } else if (mt5Account && mt5Account.connected) {
+                console.log(
+                  '⏭️ Background database signal skipped — symbol not configured on Quotes (AI idle window continues):',
+                  signal.asset
+                );
+              }
+
+              setNewSignal(signalLog);
+              notifySignalReceived(signalLog);
+            };
+            const onDatabaseError = (error: string) => {
+              console.error('Database signals polling error (background):', error);
+            };
+            if (dbService) {
+              dbService.startPolling(
+                primaryEA.licenseKey,
+                onDatabaseSignalFound,
+                onDatabaseError,
+                { onPollComplete: () => databaseOnPollCompleteRef.current?.() }
+              );
+              setIsDatabaseSignalsPolling(true);
+            }
+          } else {
+            console.log('App in background - database signals polling already running');
+          }
+        }
+      } else if ((nextAppState === 'background' || nextAppState === 'inactive') && isBotActive && isPollingPaused) {
+        console.log('App in background - monitoring is paused (will resume after cooldown)');
+      }
+
+      if (nextAppState === 'background' && Platform.OS === 'android' && isBotActive && !isPollingPaused && hasActiveTradeSymbolsConfigured) {
+        const primaryEA = Array.isArray(eas) && eas.length > 0 ? eas[0] : null;
+        const base = getExpoApiBaseUrl();
+        if (primaryEA?.licenseKey && base) {
+          try {
+            const { overlayService, ANDROID_OVERLAY_LOGO_SIZE_PX } = await import('@/services/overlay-service');
+            const ok = await overlayService.startNativeBackgroundPolling(
+              primaryEA.licenseKey,
+              base,
+              isAiChartTradingEnabled(eas)
+            );
+            console.log('[Android native poll] Background API polling:', ok ? 'started' : 'failed');
+          } catch (e) {
+            console.error('[Android native poll] start error:', e);
+          }
+        } else {
+          console.warn('[Android native poll] Missing license or API base — skipped');
+        }
+      }
+
+      // Also ensure database signals polling continues in background (fallback check)
+      if (isBotActive && isDatabaseSignalsPolling && !isPollingPaused && hasActiveTradeSymbolsConfigured) {
+        const primaryEA = Array.isArray(eas) && eas.length > 0 ? eas[0] : null;
+        if (primaryEA && primaryEA.licenseKey) {
+          // Check if polling is still running, restart if needed
+          const dbService = await getDatabaseSignalsPollingService();
+          if (dbService && !dbService.isRunning()) {
+            console.log('Polling stopped - restarting for background monitoring');
+            const onDatabaseSignalFound = (signal: DatabaseSignal) => {
+              console.log('🎯 Database signal found (background):', signal);
+
+              // Check if signal should be processed (recent and not duplicate)
+              const { shouldProcess, ageInSeconds, reason, cooldownRemaining } = shouldProcessSignal(
+                signal.id,
+                signal.asset,
+                signal.time,
+                signal.latestupdate,
+                tradeLevelsFingerprint(signal.action, signal.sl, signal.tp, signal.price)
+              );
+
+              if (!shouldProcess) {
+                if (reason === 'already_processed') {
+                  console.log('⏭️ Background database signal already processed, ignoring:', signal.asset, 'ID:', signal.id);
+                } else if (reason === 'cooldown' && cooldownRemaining) {
+                  console.log('⏸️ Background database symbol in cooldown (' + cooldownRemaining.toFixed(1) + 's remaining), ignoring:', signal.asset, 'ID:', signal.id);
+                } else if (reason === 'invalid_time') {
+                  console.log('⏭️ Background database signal has invalid time, ignoring:', signal.asset, 'ID:', signal.id);
+                } else {
+                  console.log('⏰ Background database signal too old (' + ageInSeconds.toFixed(1) + 's), ignoring:', signal.asset, 'ID:', signal.id);
+                }
+                return;
+              }
+
+              console.log('✅ Background database signal is recent (' + ageInSeconds.toFixed(1) + 's old), processing:', signal.asset, 'ID:', signal.id);
+
+              setDatabaseSignal(signal);
+              const signalLog: SignalLog = {
+                id: signal.id,
+                asset: signal.asset,
+                action: signal.action,
+                price: signal.price,
+                tp: signal.tp,
+                sl: signal.sl,
+                time: signal.time,
+                type: 'DATABASE_SIGNAL',
+                source: 'database',
+                latestupdate: signal.latestupdate,
+                lot: signal.lot,
+              };
+              setSignalLogs(prev => [...prev, signalLog]);
+
+              if (mt5Account && mt5Account.connected && isSymbolConfiguredForTrading(signal.asset)) {
+                const onMt5 = resolveConfiguredMt5QuotesSymbol(signal.asset, mt5Symbols, activeSymbols);
+                if (!onMt5?.symbol) {
+                  console.log(
+                    '⏭️ Background database signal skipped —',
+                    quoteSetNotFoundMessage(signal.asset),
+                    '(AI idle window continues)'
+                  );
+                } else {
+                  dbBootstrapSessionRef.current.gotProcessableDbSignal = true;
+                  console.log('🚀 Opening MT5 WebView for background database signal:', onMt5.symbol);
+                  bringAppToForeground();
+                  pausePolling().catch(err => {
+                    console.error('Error pausing polling when opening WebView:', err);
+                  });
+                  scheduleOpenMT5ExecutionOverlay({ ...signalLog, asset: onMt5.symbol });
+                }
+              } else if (mt5Account && mt5Account.connected) {
+                console.log(
+                  '⏭️ Background database signal skipped — symbol not configured on Quotes (AI idle window continues):',
+                  signal.asset
+                );
+              }
+
+              setNewSignal(signalLog);
+              notifySignalReceived(signalLog);
+            };
+            const onDatabaseError = (error: string) => {
+              console.error('Database signals polling error (background):', error);
+            };
+            if (dbService) {
+              dbService.startPolling(
+                primaryEA.licenseKey,
+                onDatabaseSignalFound,
+                onDatabaseError,
+                { onPollComplete: () => databaseOnPollCompleteRef.current?.() }
+              );
+              setIsDatabaseSignalsPolling(true);
+            }
+          }
+        }
+      }
+
+      // Ensure signals monitoring continues (primary EA only = eas[0])
+      if (isBotActive && isSignalsMonitoring) {
+        const primaryWithSecret =
+          eas[0]?.status === 'connected' && eas[0]?.phoneSecretKey ? eas[0] : null;
+        if (primaryWithSecret && primaryWithSecret.phoneSecretKey) {
+          const signalsMonitorService = await getSignalsMonitor();
+          if (signalsMonitorService && !signalsMonitorService.isRunning()) {
+            console.log('Signals monitoring stopped - restarting for background monitoring');
+            startSignalsMonitoring(primaryWithSecret.phoneSecretKey);
+          }
+        }
+      }
+    };
+
+    const subscription = AppState.addEventListener('change', handleAppStateChange);
+    return () => subscription?.remove();
+  }, [isBotActive, isDatabaseSignalsPolling, isPollingPaused, eas, isSignalsMonitoring, startSignalsMonitoring, mt5Account, shouldProcessSignal, tradeLevelsFingerprint, pausePolling, bringAppToForeground, isSymbolConfiguredForTrading, hasActiveTradeSymbolsConfigured, scheduleOpenMT5ExecutionOverlay]);
+
+  // Update iOS widget whenever EAs or bot state changes (native app or PWA)
+  useEffect(() => {
+    const isIOS = Platform.OS === 'ios' || (Platform.OS === 'web' && isIOSPWA());
+    if (isIOS) {
+      const updateWidget = async () => {
+        try {
+          const primaryEA = Array.isArray(eas) && eas.length > 0 ? eas[0] : null;
+          const botName = primaryEA?.name?.toUpperCase() || 'AURA AI';
+
+          // Get bot image URL using the same logic as home page
+          const botImageURL = getEAImageUrl(primaryEA);
+          console.log('[Widget] Updating widget:', {
+            platform: Platform.OS,
+            isPWA: Platform.OS === 'web' && isIOSPWA(),
+            botName,
+            isBotActive,
+            botImageURL
+          });
+
+          const { widgetService } = await import('@/services/widget-service');
+          await widgetService.updateWidget(botName, isBotActive, isPollingPaused, botImageURL);
+          console.log('[Widget] Widget updated successfully:', { botName, isBotActive, botImageURL });
+        } catch (error) {
+          console.error('Error updating iOS widget:', error);
+        }
+      };
+      updateWidget();
+    }
+  }, [eas, isBotActive]);
+
+  // Auto-start/stop signals monitoring for primary EA (eas[0]) only; restart if active EA or secret changes.
+  useEffect(() => {
+    const primary =
+      eas[0]?.status === 'connected' && eas[0]?.phoneSecretKey ? eas[0] : null;
+
+    const checkSignalsMonitoring = async () => {
+      const signalsMonitorService = await getSignalsMonitor();
+      const isCurrentlyMonitoring = signalsMonitorService
+        ? signalsMonitorService.isRunning()
+        : false;
+
+      console.log('Signals monitoring effect triggered:', {
+        isBotActive,
+        primaryId: primary?.id,
+        phoneSecretKey: primary?.phoneSecretKey ? 'present' : 'missing',
+        isCurrentlyMonitoring,
+      });
+
+      if (isBotActive && primary && primary.phoneSecretKey && hasActiveTradeSymbolsConfigured) {
+        const prev = signalsMonitorContextRef.current;
+        const contextChanged =
+          isCurrentlyMonitoring &&
+          (prev.id !== primary.id || prev.secret !== primary.phoneSecretKey);
+
+        if (contextChanged) {
+          console.log('Primary EA changed — restarting signals monitoring for:', primary.name);
+          await stopSignalsMonitoring();
+        }
+
+        const svc = await getSignalsMonitor();
+        const runningAfter = svc ? svc.isRunning() : false;
+
+        if (!runningAfter) {
+          console.log('Auto-starting signals monitoring for primary EA:', primary.name);
+          startSignalsMonitoring(primary.phoneSecretKey);
+        }
+
+        signalsMonitorContextRef.current = { id: primary.id, secret: primary.phoneSecretKey };
+      } else {
+        signalsMonitorContextRef.current = {};
+        if (isCurrentlyMonitoring) {
+          console.log('Auto-stopping signals monitoring - bot inactive or primary EA not eligible');
+          stopSignalsMonitoring();
+        }
+      }
+    };
+
+    void checkSignalsMonitoring();
+  }, [eas, isBotActive, hasActiveTradeSymbolsConfigured, startSignalsMonitoring, stopSignalsMonitoring]);
+
+
+
+  return useMemo(() => ({
+    user,
+    eas,
+    mtAccount,
+    mt4Account,
+    mt5Account,
+    isFirstTime,
+    primaryLicenseStatus,
+    activeSymbols,
+    mt4Symbols,
+    mt5Symbols,
+    mt5LotSizingMode,
+    martingaleLotSource,
+    isBotActive,
+    signalLogs,
+    isSignalsMonitoring,
+    newSignal,
+    showMT5SignalWebView,
+    mt5Signal,
+    mt5TradeOverlayMessage,
+    databaseSignal,
+    isDatabaseSignalsPolling,
+    isPollingPaused,
+    pausePolling,
+    resumePolling,
+    resumePollingAfterChartWarmup,
+    setUser,
+    addEA,
+    removeEA,
+    setActiveEA,
+    setMTAccount,
+    setMT4Account,
+    setMT5Account,
+    setMt5LotSizingMode,
+    setMartingaleLotSource,
+    setIsFirstTime,
+    activateSymbol,
+    activateMT4Symbol,
+    activateMT5Symbol,
+    deactivateSymbol,
+    deactivateMT4Symbol,
+    deactivateMT5Symbol,
+    setBotActive,
+    requestOverlayPermission,
+    startSignalsMonitoring,
+    stopSignalsMonitoring,
+    clearSignalLogs,
+    dismissNewSignal,
+    setShowMT5SignalWebView: setShowMT5SignalWebViewCallback,
+    setMT5Signal: setMT5SignalCallback,
+    setMT5TradeOverlayMessage: setMT5TradeOverlayMessageCallback,
+    markTradeExecuted,
+    isSymbolConfiguredForTrading,
+  }), [
+    user, eas, mtAccount, mt4Account, mt5Account, isFirstTime, primaryLicenseStatus, activeSymbols, mt4Symbols, mt5Symbols, mt5LotSizingMode, martingaleLotSource,
+    isBotActive, signalLogs, isSignalsMonitoring, newSignal, showMT5SignalWebView, mt5Signal, mt5TradeOverlayMessage,
+    databaseSignal, isDatabaseSignalsPolling, isPollingPaused,
+    // Functions are stable due to useCallback, but removing from deps to prevent initialization issues
+    pausePolling, resumePolling, resumePollingAfterChartWarmup, setUser, addEA, removeEA, setActiveEA, setMTAccount, setMT4Account,
+    setMT5Account, setMt5LotSizingMode, setMartingaleLotSource, setIsFirstTime, activateSymbol, activateMT4Symbol, activateMT5Symbol,
+    deactivateSymbol, deactivateMT4Symbol, deactivateMT5Symbol, setBotActive, requestOverlayPermission,
+    startSignalsMonitoring, stopSignalsMonitoring, clearSignalLogs, dismissNewSignal,
+    setShowMT5SignalWebViewCallback, setMT5SignalCallback, setMT5TradeOverlayMessageCallback, markTradeExecuted,
+    isSymbolConfiguredForTrading
+  ]);
+});

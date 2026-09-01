@@ -1,0 +1,357 @@
+/**
+ * Aura AI VPS — platform design system
+ * Fresh cyan/navy spatial UI (not EA Trade).
+ */
+@import url("https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap");
+@import url("/assets/css/brand.css");
+
+:root {
+  --aura-font-display: "Outfit", system-ui, sans-serif;
+  --aura-font-body: "Outfit", system-ui, sans-serif;
+  --aura-radius: 12px;
+  --aura-radius-sm: 8px;
+  --aura-page-max: 1080px;
+  --aura-gutter: clamp(1.25rem, 5vw, 2.5rem);
+  --aura-nav-h: 72px;
+  --aura-shadow: none;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body.aura-platform {
+  margin: 0;
+  min-height: 100vh;
+  font-family: var(--aura-font-body);
+  color: var(--aura-text);
+  background: var(--aura-navy-deep);
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+body.aura-platform a { color: inherit; text-decoration: none; }
+body.aura-platform img { max-width: 100%; height: auto; display: block; }
+
+.aura-atmosphere {
+  display: none;
+}
+
+.aura-wrap {
+  position: relative;
+  z-index: 1;
+  width: min(var(--aura-page-max), calc(100% - (var(--aura-gutter) * 2)));
+  margin-inline: auto;
+}
+
+/* ——— Site chrome ——— */
+.aura-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  padding: 1.15rem 0 0.9rem;
+  height: auto;
+  background: #000;
+  border-bottom: 1px solid transparent;
+}
+.aura-topbar__inner {
+  width: min(var(--aura-page-max), calc(100% - (var(--aura-gutter) * 2)));
+  margin: 0 auto;
+  display: grid;
+  justify-items: center;
+  gap: 0.65rem;
+}
+.aura-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  font-family: var(--aura-font-display);
+  font-weight: 600;
+  font-size: 1.05rem;
+  letter-spacing: -0.04em;
+}
+.aura-brand img {
+  width: 36px;
+  height: 36px;
+  object-fit: contain;
+  filter: none;
+}
+.aura-brand span b { color: var(--aura-cyan); font-weight: 600; }
+.aura-nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.aura-nav a {
+  color: var(--aura-muted);
+  font-size: 0.78rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.aura-nav a + a::before {
+  content: "·";
+  color: var(--aura-muted-dim);
+  margin: 0 0.85rem;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.aura-nav a:hover { color: var(--aura-text); }
+
+.aura-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  padding: 0.8rem 1.35rem;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-weight: 600;
+  font-size: 0.92rem;
+  font-family: var(--aura-font-body);
+  cursor: pointer;
+  transition: filter 0.2s ease, border-color 0.2s ease;
+}
+.aura-btn:hover { filter: brightness(1.08); }
+.aura-btn-primary {
+  background: var(--aura-cyan);
+  color: #000 !important;
+  box-shadow: none;
+}
+.aura-btn-ghost {
+  background: transparent;
+  border-color: var(--aura-border);
+  color: var(--aura-text) !important;
+}
+.aura-btn-block { width: 100%; }
+.aura-btn-pill { border-radius: 999px; padding-inline: 1.1rem; }
+
+.aura-footer {
+  position: relative;
+  z-index: 1;
+  margin-top: 4rem;
+  padding: 2rem 0 2.5rem;
+  border-top: 1px solid var(--aura-border);
+  color: var(--aura-muted-dim);
+  font-size: 0.9rem;
+}
+.aura-footer__inner {
+  width: min(var(--aura-page-max), calc(100% - (var(--aura-gutter) * 2)));
+  margin: 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  justify-content: space-between;
+  align-items: center;
+}
+.aura-footer nav { display: flex; flex-wrap: wrap; gap: 1rem; }
+.aura-footer a:hover { color: var(--aura-cyan); }
+
+/* ——— Auth / centered card pages ——— */
+body.aura-auth {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+}
+.aura-auth-shell {
+  position: relative;
+  z-index: 1;
+  width: min(440px, 100%);
+}
+.aura-auth-card {
+  background: transparent;
+  border: 1px solid var(--aura-border);
+  border-radius: var(--aura-radius);
+  box-shadow: none;
+  padding: 2rem 1.6rem 1.75rem;
+}
+.aura-auth-logo {
+  text-align: center;
+  margin-bottom: 1.4rem;
+}
+.aura-auth-logo img {
+  width: min(320px, 82%);
+  margin: 0 auto 0.65rem;
+  filter: none;
+}
+.aura-auth-logo h1 {
+  margin: 0;
+  font-family: var(--aura-font-display);
+  font-size: 1.35rem;
+  letter-spacing: -0.03em;
+}
+.aura-auth-logo p {
+  margin: 0.35rem 0 0;
+  color: var(--aura-muted);
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.aura-auth-card h2 {
+  margin: 0 0 0.35rem;
+  font-family: var(--aura-font-display);
+  font-size: 1.45rem;
+  letter-spacing: -0.03em;
+}
+.aura-auth-card .lead {
+  margin: 0 0 1.35rem;
+  color: var(--aura-muted);
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+.aura-field { margin-bottom: 1rem; }
+.aura-field label {
+  display: block;
+  margin-bottom: 0.4rem;
+  color: #cbd5e1;
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+.aura-input {
+  width: 100%;
+  background: #000 !important;
+  border: 1px solid var(--aura-border-solid) !important;
+  color: #fff !important;
+  border-radius: 12px !important;
+  padding: 0.9rem 1rem !important;
+  font-size: 1rem !important;
+  font-family: var(--aura-font-body) !important;
+  outline: none;
+}
+.aura-input:focus {
+  border-color: var(--aura-cyan) !important;
+  box-shadow: 0 0 0 3px var(--aura-cyan-soft) !important;
+}
+.aura-alert {
+  border-radius: 12px;
+  padding: 0.85rem 1rem;
+  margin-bottom: 1rem;
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+.aura-alert-danger {
+  background: rgba(239, 68, 68, 0.12);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  color: #fca5a5;
+}
+.aura-alert-success {
+  background: rgba(34, 197, 94, 0.12);
+  border: 1px solid rgba(34, 197, 94, 0.35);
+  color: #86efac;
+}
+.aura-auth-links {
+  margin-top: 1.25rem;
+  text-align: center;
+  color: var(--aura-muted);
+  font-size: 0.9rem;
+}
+.aura-auth-links a { color: var(--aura-cyan); font-weight: 600; }
+
+/* ——— Legal / content pages ——— */
+.aura-page {
+  position: relative;
+  z-index: 1;
+  padding: 2.5rem 0 4rem;
+}
+.aura-page__header {
+  margin-bottom: 2rem;
+  max-width: 40rem;
+}
+.aura-kicker {
+  margin: 0 0 0.6rem;
+  color: var(--aura-cyan);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.aura-page__header h1 {
+  margin: 0 0 0.65rem;
+  font-family: var(--aura-font-display);
+  font-size: clamp(1.8rem, 4vw, 2.6rem);
+  letter-spacing: -0.035em;
+  line-height: 1.1;
+}
+.aura-page__header p {
+  margin: 0;
+  color: var(--aura-muted);
+  line-height: 1.55;
+}
+.aura-prose {
+  background: transparent;
+  border: 1px solid var(--aura-border);
+  border-radius: var(--aura-radius);
+  padding: clamp(1.4rem, 3vw, 2.2rem);
+  box-shadow: none;
+  max-width: 820px;
+}
+.aura-prose h2 {
+  font-family: var(--aura-font-display);
+  font-size: 1.25rem;
+  margin: 1.6rem 0 0.55rem;
+  letter-spacing: -0.02em;
+}
+.aura-prose h2:first-child { margin-top: 0; }
+.aura-prose p, .aura-prose li {
+  color: var(--aura-muted);
+  line-height: 1.65;
+  font-size: 0.98rem;
+}
+.aura-prose ul { padding-left: 1.2rem; }
+.aura-prose a { color: var(--aura-cyan); }
+
+/* ——— Shop / payment ——— */
+.aura-shop-hero {
+  padding: 2.5rem 0 1.5rem;
+}
+.aura-shop-hero h1 {
+  margin: 0 0 0.55rem;
+  font-family: var(--aura-font-display);
+  font-size: clamp(1.9rem, 4vw, 2.8rem);
+  letter-spacing: -0.035em;
+}
+.aura-shop-hero p {
+  margin: 0;
+  color: var(--aura-muted);
+  max-width: 36rem;
+  line-height: 1.55;
+}
+.aura-panel {
+  background: transparent;
+  border: 1px solid var(--aura-border);
+  border-radius: var(--aura-radius);
+  box-shadow: none;
+  padding: clamp(1.25rem, 3vw, 1.85rem);
+}
+.aura-price {
+  font-family: var(--aura-font-display);
+  font-size: 2.4rem;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  color: var(--aura-cyan);
+}
+.aura-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.7rem;
+  border-radius: 999px;
+  background: var(--aura-cyan-soft);
+  border: 1px solid var(--aura-border);
+  color: var(--aura-cyan);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+@media (max-width: 800px) {
+  .aura-nav { display: none; }
+  .aura-footer__inner { flex-direction: column; align-items: flex-start; }
+}

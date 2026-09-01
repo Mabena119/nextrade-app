@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="description" content="Install NexTradeAI on Android, iPhone, or PC — APK, Home Screen, or Chrome Install as app." />
+    <meta name="theme-color" content="#000000" />
+    <title>How to Install | NexTradeAI</title>
+    <link rel="icon" type="image/png" href="/assets/img/sitelogo.png" />
+    <link rel="apple-touch-icon" href="/assets/img/sitelogo.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <style>
+        :root {
+            --ink: #f2f4f7;
+            --ink-soft: #8b95a5;
+            --ink-dim: #5c6573;
+            --void: #000000;
+            --depth: #000000;
+            --panel: transparent;
+            --line: rgba(255, 255, 255, 0.08);
+            --cyan: #00a8ff;
+            --cyan-hot: #00a8ff;
+            --cyan-dim: #0077cc;
+            --glow: transparent;
+            --font-display: "Outfit", system-ui, sans-serif;
+            --font-body: "Outfit", system-ui, sans-serif;
+            --radius: 28px;
+            --ease: cubic-bezier(0.22, 1, 0.36, 1);
+            --page-max: 1280px;
+            --page-gutter: clamp(1.5rem, 4vw, 3rem);
+            --nav-h: 64px;
+        }
+
+        *, *::before, *::after { box-sizing: border-box; }
+        html { scroll-behavior: smooth; }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            font-family: var(--font-body);
+            color: var(--ink);
+            background: var(--void);
+            -webkit-font-smoothing: antialiased;
+            overflow-x: hidden;
+        }
+        a { color: inherit; text-decoration: none; }
+        img { max-width: 100%; height: auto; display: block; }
+        strong { color: var(--ink); font-weight: 700; }
+
+        .atmosphere {
+            display: none;
+        }
+
+        .wrap {
+            position: relative;
+            z-index: 1;
+            width: min(var(--page-max), calc(100% - (var(--page-gutter) * 2)));
+            margin-inline: auto;
+        }
+
+        .topbar {
+            position: sticky;
+            top: 0;
+            z-index: 50;
+            padding: 1.15rem 0 0.9rem;
+            background: #000;
+            height: auto;
+            border-bottom: 1px solid transparent;
+        }
+        .topbar.is-scrolled { border-bottom-color: var(--line); }
+        .topbar__inner {
+            width: min(var(--page-max), calc(100% - (var(--page-gutter) * 2)));
+            margin: 0 auto;
+            display: grid;
+            justify-items: center;
+            gap: 0.65rem;
+        }
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 0.65rem;
+            font-family: var(--font-display);
+            font-weight: 600;
+            font-size: 1.05rem;
+            letter-spacing: -0.04em;
+        }
+        .brand img {
+            width: 36px;
+            height: 36px;
+            object-fit: contain;
+        }
+        .brand span b { color: var(--cyan); font-weight: 600; }
+        .nav-links {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            list-style: none;
+            margin: 0;
+            padding: 0;
+        }
+        .nav-links li { display: flex; align-items: center; }
+        .nav-links li + li::before {
+            content: "·";
+            color: var(--ink-dim);
+            margin: 0 0.85rem;
+        }
+        .nav-links a {
+            font-size: 0.78rem;
+            font-weight: 500;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--ink-soft);
+        }
+        .nav-links a:hover { color: var(--ink); }
+
+        .page {
+            padding: clamp(2.5rem, 6vw, 4.5rem) 0 1rem;
+        }
+        .page-head {
+            max-width: 40rem;
+            margin-bottom: 2rem;
+        }
+        .kicker {
+            display: inline-block;
+            margin: 0 0 0.75rem;
+            font-size: 0.72rem;
+            font-weight: 700;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            color: var(--cyan);
+        }
+        .page-head h1 {
+            font-family: var(--font-display);
+            font-size: clamp(2rem, 4vw, 3rem);
+            font-weight: 800;
+            letter-spacing: -0.045em;
+            line-height: 1.08;
+            margin: 0 0 0.85rem;
+        }
+        .page-head p {
+            margin: 0;
+            font-size: 1.05rem;
+            line-height: 1.55;
+            color: var(--ink-soft);
+        }
+
+        .jump {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.55rem;
+            margin: 0 0 2.25rem;
+        }
+        .jump a {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.5rem 1rem;
+            border-radius: 999px;
+            border: 1px solid var(--line);
+            background: rgba(255, 255, 255, 0.03);
+            color: var(--cyan);
+            font-size: 0.88rem;
+            font-weight: 600;
+            transition: border-color 0.25s, transform 0.25s var(--ease), background 0.25s;
+        }
+        .jump a:hover {
+            border-color: var(--cyan);
+            background: rgba(0, 168, 255, 0.08);
+            transform: translateY(-1px);
+        }
+
+        .guides {
+            display: grid;
+            gap: 1.25rem;
+            max-width: 820px;
+        }
+        .guide {
+            scroll-margin-top: calc(var(--nav-h) + 1rem);
+            border-radius: 12px;
+            padding: clamp(1.4rem, 3vw, 2rem);
+            background: transparent;
+            border: 1px solid var(--line);
+            box-shadow: none;
+        }
+        .guide__label {
+            display: inline-block;
+            margin: 0 0 0.55rem;
+            font-size: 0.7rem;
+            font-weight: 700;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: var(--cyan);
+        }
+        .guide h2 {
+            font-family: var(--font-display);
+            font-size: clamp(1.35rem, 2.5vw, 1.7rem);
+            letter-spacing: -0.03em;
+            margin: 0 0 0.45rem;
+        }
+        .guide > p {
+            margin: 0 0 1.25rem;
+            color: var(--ink-soft);
+            line-height: 1.55;
+        }
+
+        .path {
+            display: grid;
+            gap: 0;
+            position: relative;
+            margin: 0 0 1.35rem;
+        }
+        .path::before {
+            content: "";
+            position: absolute;
+            left: 15px;
+            top: 8px;
+            bottom: 8px;
+            width: 2px;
+            background: linear-gradient(var(--cyan), transparent);
+            opacity: 0.45;
+        }
+        .step {
+            display: grid;
+            grid-template-columns: 32px 1fr;
+            gap: 1.1rem;
+            padding: 0.85rem 0;
+        }
+        .step__n {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: grid;
+            place-items: center;
+            background: #000;
+            border: 1px solid var(--cyan);
+            color: var(--cyan);
+            font-weight: 600;
+            font-size: 0.8rem;
+            box-shadow: none;
+            z-index: 1;
+        }
+        .step p {
+            margin: 0;
+            color: var(--ink-soft);
+            line-height: 1.55;
+            padding-top: 0.25rem;
+        }
+
+        .shots {
+            display: grid;
+            gap: 0.85rem;
+            margin: 0 0 1.35rem;
+        }
+        .shot {
+            margin: 0;
+            border-radius: 18px;
+            overflow: hidden;
+            border: 1px solid var(--line);
+            background: rgba(0, 0, 0, 0.28);
+            box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
+        }
+        .shot img {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+        .shot figcaption {
+            padding: 0.7rem 0.95rem;
+            font-size: 0.85rem;
+            color: var(--ink-dim);
+            line-height: 1.4;
+            border-top: 1px solid rgba(255, 255, 255, 0.06);
+        }
+
+        .actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.7rem;
+        }
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            padding: 0.8rem 1.35rem;
+            border-radius: 999px;
+            font-weight: 600;
+            font-size: 0.92rem;
+            border: 1px solid transparent;
+            transition: filter 0.2s, border-color 0.2s;
+        }
+        .btn:hover { filter: brightness(1.08); }
+        .btn-primary {
+            background: var(--cyan);
+            color: #000;
+            box-shadow: none;
+        }
+        .btn-ghost {
+            background: transparent;
+            border-color: var(--line);
+            color: var(--ink);
+        }
+        .btn-ghost:hover {
+            border-color: rgba(255,255,255,0.22);
+            box-shadow: none;
+
+        footer {
+            position: relative;
+            z-index: 1;
+            margin-top: 3.5rem;
+            padding: 2.5rem 0 3rem;
+            border-top: 1px solid var(--line);
+            color: var(--ink-dim);
+            font-size: 0.9rem;
+        }
+        .foot {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .foot nav {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+        .foot a:hover { color: var(--cyan); }
+
+        @media (max-width: 720px) {
+            .page-head h1 { font-size: clamp(1.85rem, 8vw, 2.4rem); }
+        }
+    </style>
+</head>
+<body>
+    <div class="atmosphere" aria-hidden="true"></div>
+
+    <header class="topbar" id="topbar">
+        <div class="topbar__inner">
+            <a class="brand" href="/">
+                <img src="/assets/img/sitelogo.png" alt="" width="42" height="42" />
+                <span>Nex<b>Trade</b>AI</span>
+            </a>
+            <ul class="nav-links">
+                <li><a href="/">Home</a></li>
+                <li><a href="/#download">Download</a></li>
+                <li><a href="/#setup">Install</a></li>
+            </ul>
+        </div>
+    </header>
+
+    <main class="page">
+        <div class="wrap">
+            <div class="page-head">
+                <p class="kicker">Setup</p>
+                <h1>How to install NexTradeAI</h1>
+                <p>Android APK, iPhone Home Screen, Mac Safari Add to Dock, or Chrome Install as app.</p>
+            </div>
+
+            <nav class="jump" aria-label="Jump to guide">
+                <a href="#android">Android</a>
+                <a href="#ios">iPhone &amp; iPad</a>
+                <a href="#mac">Mac · Safari</a>
+                <a href="#pc">PC · Chrome</a>
+            </nav>
+
+            <div class="guides">
+                <section class="guide" id="android">
+                    <p class="guide__label">Mobile</p>
+                    <h2>Android</h2>
+                    <p>Install the APK directly on your phone.</p>
+                    <div class="path">
+                        <div class="step">
+                            <div class="step__n">1</div>
+                            <p>Tap <strong>Download Android APK</strong> below.</p>
+                        </div>
+                        <div class="step">
+                            <div class="step__n">2</div>
+                            <p>Open the file and allow install from unknown sources if prompted.</p>
+                        </div>
+                        <div class="step">
+                            <div class="step__n">3</div>
+                            <p>Launch NexTradeAI and sign in with your license.</p>
+                        </div>
+                    </div>
+                    <div class="actions">
+                        <a class="btn btn-primary" href="/admin/downloads/auraai.apk">Download Android APK</a>
+                        <a class="btn btn-ghost" href="/#download">Back to download</a>
+                    </div>
+                </section>
+
+                <section class="guide" id="ios">
+                    <p class="guide__label">Apple</p>
+                    <h2>iPhone &amp; iPad</h2>
+                    <p>Add the web app to your Home Screen in Safari.</p>
+                    <div class="path">
+                        <div class="step">
+                            <div class="step__n">1</div>
+                            <p>Open the app in <strong>Safari</strong> (not Chrome).</p>
+                        </div>
+                        <div class="step">
+                            <div class="step__n">2</div>
+                            <p>Tap <strong>Share</strong> → <strong>Add to Home Screen</strong>.</p>
+                        </div>
+                        <div class="step">
+                            <div class="step__n">3</div>
+                            <p>Open the new icon, then enable notifications if asked.</p>
+                        </div>
+                        <div class="step">
+                            <div class="step__n">4</div>
+                            <p>Sign in with your licensed email / mentor key.</p>
+                        </div>
+                    </div>
+                    <div class="actions">
+                        <a class="btn btn-primary" href="https://aura-ai-app.onrender.com" target="_blank" rel="noopener noreferrer">Open iOS web app</a>
+                        <a class="btn btn-ghost" href="/#download">Back to download</a>
+                    </div>
+                </section>
+
+                <section class="guide" id="mac">
+                    <p class="guide__label">Mac</p>
+                    <h2>Mac — Safari Add to Dock</h2>
+                    <p>Install NexTradeAI as a Dock app in Safari on macOS.</p>
+                    <div class="path">
+                        <div class="step">
+                            <div class="step__n">1</div>
+                            <p>Open the web app in <strong>Safari</strong>.</p>
+                        </div>
+                        <div class="step">
+                            <div class="step__n">2</div>
+                            <p>In the menu bar, choose <strong>File</strong> → <strong>Add to Dock…</strong>.</p>
+                        </div>
+                        <div class="step">
+                            <div class="step__n">3</div>
+                            <p>Confirm the name and URL, then click <strong>Add</strong>. An icon appears in your Dock and Launchpad.</p>
+                        </div>
+                        <div class="step">
+                            <div class="step__n">4</div>
+                            <p>Open it from the Dock and sign in with your licensed email / mentor key.</p>
+                        </div>
+                    </div>
+                    <div class="shots">
+                        <figure class="shot">
+                            <img src="/assets/img/install/safari-mac-add-to-dock-menu.png" alt="Safari File menu with Add to Dock selected" width="1200" height="750" loading="lazy" />
+                            <figcaption>Safari → File → Add to Dock…</figcaption>
+                        </figure>
+                        <figure class="shot">
+                            <img src="/assets/img/install/safari-mac-add-to-dock-dialog.png" alt="Safari Add to Dock dialog for NexTradeAI" width="1200" height="750" loading="lazy" />
+                            <figcaption>Confirm name and URL, then click Add</figcaption>
+                        </figure>
+                    </div>
+                    <div class="actions">
+                        <a class="btn btn-primary" href="https://aura-ai-app.onrender.com" target="_blank" rel="noopener noreferrer">Open Mac web app</a>
+                        <a class="btn btn-ghost" href="/#download">Back to download</a>
+                    </div>
+                </section>
+
+                <section class="guide" id="pc">
+                    <p class="guide__label">Windows · Chrome</p>
+                    <h2>PC — install as a Chrome web app</h2>
+                    <p>Use Google Chrome on Windows, Mac, or Linux to install NexTradeAI like a desktop app.</p>
+                    <div class="path">
+                        <div class="step">
+                            <div class="step__n">1</div>
+                            <p>On your computer, open <strong>Chrome</strong>.</p>
+                        </div>
+                        <div class="step">
+                            <div class="step__n">2</div>
+                            <p>Open the NexTradeAI web app.</p>
+                        </div>
+                        <div class="step">
+                            <div class="step__n">3</div>
+                            <p>At the top right, select <strong>More</strong> (⋮) → <strong>Cast, save, and share</strong> → <strong>Install page as app…</strong>. On some sites, use the <strong>Install</strong> icon in the address bar.</p>
+                        </div>
+                        <div class="step">
+                            <div class="step__n">4</div>
+                            <p>Follow the on-screen prompts. NexTradeAI opens in its own window from your desktop or launcher.</p>
+                        </div>
+                        <div class="step">
+                            <div class="step__n">5</div>
+                            <p>Sign in with your licensed email / mentor key.</p>
+                        </div>
+                    </div>
+                    <div class="actions">
+                        <a class="btn btn-primary" href="https://aura-ai-app.onrender.com" target="_blank" rel="noopener noreferrer">Open PC web app</a>
+                        <a class="btn btn-ghost" href="https://support.google.com/chrome/answer/9658361?hl=en&amp;co=GENIE.Platform%3DDesktop" target="_blank" rel="noopener noreferrer">Chrome install guide</a>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </main>
+
+    <footer>
+        <div class="wrap foot">
+            <p>© <span id="year"></span> NexTradeAI</p>
+            <nav>
+                <a href="/privacy-policy.html">Privacy</a>
+                <a href="/terms-of-service.html">Terms</a>
+            </nav>
+        </div>
+    </footer>
+
+    <script>
+        document.getElementById('year').textContent = new Date().getFullYear();
+        var topbar = document.getElementById('topbar');
+        window.addEventListener('scroll', function () {
+            topbar.classList.toggle('is-scrolled', window.scrollY > 8);
+        }, { passive: true });
+        if (window.matchMedia('(max-width: 720px)').matches) {
+            var cta = document.getElementById('mobile-cta');
+            if (cta) cta.style.display = 'inline-flex';
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,50 @@
+---
+description: NexTradeAI local development — do not deploy website to Aura VPS
+alwaysApply: true
+---
+
+# NexTradeAI — local only
+
+This workspace is **NexTradeAI** app + marketing site for **local development**.
+
+## Local dev (one command)
+
+```bash
+bun run local
+```
+
+| Service | URL |
+|---------|-----|
+| Marketing site | http://localhost:8080 |
+| App (Expo web) | http://localhost:8081 |
+| API | http://localhost:3000 |
+
+Auth/DB calls proxy read-only to `auraai-vps.com` — no deploys, no DB writes from this repo.
+
+## Do not deploy from here
+
+**Do not run** `./scripts/deploy-website-full.sh` or other Aura VPS deploy scripts from this repo unless the user explicitly asks. The live site at **auraai-vps.com** is the **Aura AI** site (see `aura-ai-app/`).
+
+## NexTrade Lightsail (nextradeai.io)
+
+| Field | Value |
+|-------|-------|
+| Host alias | `nextrade` |
+| IP | `35.168.213.207` |
+| User | `ec2-user` |
+| Key | `~/.ssh/nextrade.pem` |
+| Domain | `nextradeai.io` (cPanel user `xghchgcjhfy`) |
+| Web root | `/home/xghchgcjhfy/public_html` |
+| MySQL DB | `xghchgcjhfy_nextradeai` |
+| MySQL user | `xghchgcjhfy_nextradeai` |
+
+```bash
+./scripts/connect-nextrade.sh
+./scripts/deploy-nextrade-website.sh      # sync website/ to Lightsail
+./scripts/setup-nextrade-db.sh          # secrets + schema (first-time)
+python3 scripts/extract-schema.py dump.sql > /tmp/nextradeai-schema.sql
+```
+
+**DNS:** Point `nextradeai.io` A record → `35.168.213.207`. Until DNS propagates, cPanel shows the default placeholder page (files are already in `public_html`).
+
+**Do not** run Aura deploy scripts (`deploy-website-full.sh`, `setup-cpanel-db.sh`) against this server.

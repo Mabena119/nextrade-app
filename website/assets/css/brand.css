@@ -1,0 +1,36 @@
+/**
+ * NexTradeAI — shared brand tokens.
+ * Void black, electric blue, quiet chrome.
+ */
+:root {
+  --aura-cyan: #00a8ff;
+  --aura-cyan-hot: #00a8ff;
+  --aura-cyan-dark: #0077cc;
+  --aura-cyan-glow: transparent;
+  --aura-cyan-soft: rgba(0, 168, 255, 0.1);
+  --aura-navy: #000000;
+  --aura-navy-deep: #000000;
+  --aura-navy-elevated: #0a0a0c;
+  --aura-border: rgba(255, 255, 255, 0.08);
+  --aura-border-solid: #1c1c22;
+  --aura-text: #f2f4f7;
+  --aura-muted: #8b95a5;
+  --aura-muted-dim: #5c6573;
+
+  /* Legacy aliases used across cloned EA Trade pages */
+  --eat-bg: var(--aura-navy-deep);
+  --eat-bg-elevated: var(--aura-navy-elevated);
+  --eat-bg-card: linear-gradient(135deg, var(--aura-navy-elevated) 0%, var(--aura-navy) 100%);
+  --eat-border: var(--aura-border-solid);
+  --eat-border-soft: var(--aura-border);
+  --eat-text: var(--aura-text);
+  --eat-muted: var(--aura-muted);
+  --eat-muted-dim: var(--aura-muted-dim);
+  --eat-blue: var(--aura-cyan);
+  --eat-blue-dark: var(--aura-cyan-dark);
+  --eat-blue-glow: var(--aura-cyan-glow);
+  --eat-green: #22c55e;
+  --eat-radius: 16px;
+  --eat-radius-sm: 12px;
+  --eat-shadow: 0 20px 60px rgba(0, 0, 0, 0.55);
+}

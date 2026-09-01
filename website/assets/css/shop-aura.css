@@ -1,0 +1,98 @@
+/* Shop override — Aura AI VPS platform look */
+@import url("/assets/css/platform.css");
+
+body {
+  font-family: var(--aura-font-body) !important;
+  background: transparent !important;
+  color: var(--aura-text) !important;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: #000;
+}
+
+nav {
+  background: #000 !important;
+  border-bottom: 1px solid var(--aura-border) !important;
+  backdrop-filter: none;
+  padding: 0.85rem 0 !important;
+}
+.navbar-brand span {
+  font-family: var(--aura-font-display) !important;
+  font-weight: 700 !important;
+}
+.navbar-brand img {
+  filter: none;
+  height: 40px !important;
+  width: auto !important;
+}
+.nav-links a { color: var(--aura-muted) !important; }
+.nav-links a:hover { color: var(--aura-cyan) !important; }
+
+.product-card,
+.payment-section {
+  background: transparent !important;
+  border: 1px solid var(--aura-border) !important;
+  border-radius: 12px !important;
+  box-shadow: none !important;
+}
+.product-title,
+.payment-title {
+  font-family: var(--aura-font-display) !important;
+  letter-spacing: -0.03em !important;
+}
+.product-badge {
+  background: rgba(0, 168, 255, 0.12) !important;
+  border: 1px solid var(--aura-border) !important;
+  color: var(--aura-cyan) !important;
+  border-radius: 999px !important;
+}
+.shop-header-price .amount,
+.amount {
+  color: var(--aura-cyan) !important;
+  font-family: var(--aura-font-display) !important;
+}
+#customerEmail,
+.email-field input,
+.form-control {
+  background: rgba(0, 0, 0, 0.9) !important;
+  border: 1px solid #1a3a52 !important;
+  color: #fff !important;
+  border-radius: 12px !important;
+}
+#customerEmail:focus {
+  border-color: var(--aura-cyan) !important;
+  box-shadow: 0 0 0 3px rgba(0, 168, 255, 0.14) !important;
+}
+.checkout-btn,
+.checkout-btn-paystack,
+.payment-gate-btn {
+  background: #00a8ff !important;
+  color: #000 !important;
+  border: none !important;
+  border-radius: 999px !important;
+  font-weight: 600 !important;
+  box-shadow: none !important;
+}
+.feature-list li {
+  background: rgba(0, 168, 255, 0.06) !important;
+  border: 1px solid var(--aura-border) !important;
+  border-radius: 12px !important;
+}
+footer {
+  background: transparent !important;
+  border-top: 1px solid var(--aura-border) !important;
+  color: var(--aura-muted-dim) !important;
+}
+.footer-logo {
+  height: 36px !important;
+  width: auto !important;
+  margin-right: 0.65rem;
+  filter: drop-shadow(0 0 10px rgba(94, 246, 255, 0.35));
+}
+a { color: var(--aura-cyan); }
