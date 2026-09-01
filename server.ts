@@ -25,12 +25,23 @@ const PORT = Number(process.env.PORT || 3000);
 /** VPS Bun API — used when Render cannot reach cPanel MySQL (port 3306 closed). */
 const NEXTRADE_API_ORIGIN = 'http://35.168.213.207';
 const NEXTRADE_SITE_ORIGIN = 'https://nextradeai.io';
+
+function resolveApiUpstream(): string {
+  const fromEnv = (process.env.API_UPSTREAM_URL || process.env.NEXTRADE_API_UPSTREAM_URL || '')
+    .trim()
+    .replace(/\/$/, '');
+  if (process.env.RENDER) {
+    // Render must hit Lightsail by IP — domain DNS is unreliable server-side and in browsers.
+    if (!fromEnv || fromEnv.includes('auraai-vps.com') || fromEnv.includes('nextradeai.io')) {
+      return NEXTRADE_API_ORIGIN;
+    }
+    return fromEnv;
+  }
+  return fromEnv;
+}
+
 /** When set (Render), proxy /api/* to NexTrade Lightsail PHP API. */
-const API_UPSTREAM = (
-  process.env.API_UPSTREAM_URL ||
-  process.env.NEXTRADE_API_UPSTREAM_URL ||
-  (process.env.RENDER ? NEXTRADE_API_ORIGIN : '')
-).replace(/\/$/, '');
+const API_UPSTREAM = resolveApiUpstream();
 
 /**
  * Fetch MT5 terminal / assets. Some brokers (RCG) omit intermediate certs so
