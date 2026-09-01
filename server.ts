@@ -223,15 +223,29 @@ async function proxyApiToUpstream(request: Request): Promise<Response> {
     init.body = await request.arrayBuffer();
   }
 
-  const upstream = await fetch(target, init);
-  const outHeaders = new Headers(upstream.headers);
-  outHeaders.delete('transfer-encoding');
+  const controller = new AbortController();
+  const timeoutMs = Number(process.env.API_UPSTREAM_TIMEOUT_MS || 12000);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
 
-  return new Response(upstream.body, {
-    status: upstream.status,
-    statusText: upstream.statusText,
-    headers: outHeaders,
-  });
+  try {
+    const upstream = await fetch(target, { ...init, signal: controller.signal });
+    const outHeaders = new Headers(upstream.headers);
+    outHeaders.delete('transfer-encoding');
+
+    return new Response(upstream.body, {
+      status: upstream.status,
+      statusText: upstream.statusText,
+      headers: outHeaders,
+    });
+  } catch (error) {
+    console.error(`❌ API upstream timeout/error (${target}):`, error);
+    return new Response(
+      JSON.stringify({ found: 0, used: 0, paid: 0, invalidMentor: 0, degraded: 1 }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } }
+    );
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 const { host: DB_HOST, user: DB_USER, password: DB_PASSWORD, database: DB_NAME, port: DB_PORT } =
