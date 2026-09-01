@@ -1,7 +1,7 @@
 <?php
 /**
  * Paystack Webhook - processes charge.success
- * - R649 (64900): add to members (NexTradeAI)
+ * - R499 (49900): add to members (NexTradeAI)
  *   Paystack shop: https://paystack.shop/pay/qhnur7yjsr
  * - R350 (35000): unlock AI Scanner (members.scanner = 1)
  *   Paystack shop: https://paystack.shop/pay/204p1hwqij (Basic Lite)
@@ -11,14 +11,15 @@
  * - 3700 (370000): add to members + GET forward email to financialmarketstraders.com/kairo
  * - 2500 (250000): add to members + GET forward email to financialmarketstraders.com/owl
  * - 1500 (150000): add to members + GET forward email to financialmarketstraders.com/ftsa
- * Webhook URL: https://auraai-vps.com/shop/webhook1.php
+ * Webhook URL: https://nextradeai.io/shop/webhook1.php
  */
 
 const PAYSTACK_SCANNER_AMOUNT = 35000;
-/** VPS membership — R649 (Paystack amount in cents). */
-const PAYSTACK_VPS_AMOUNT = 64900;
-/** Legacy R550 still accepted so in-flight checkouts still activate. */
+/** VPS membership — R499 (Paystack amount in cents). */
+const PAYSTACK_VPS_AMOUNT = 49900;
+/** Legacy R550 + R649 still accepted so in-flight checkouts still activate. */
 const PAYSTACK_VPS_AMOUNT_LEGACY = 55000;
+const PAYSTACK_VPS_AMOUNT_LEGACY_649 = 64900;
 const PAYSTACK_SCANNER_SHOP_SLUGS = ['204p1hwqij', 'za670n3c51'];
 const PAYSTACK_VPS_SHOP_SLUGS = ['qhnur7yjsr', 'ym2dagnjpv'];
 
@@ -56,7 +57,11 @@ function paystackIsScannerPayment($event, int $amount): bool
 
 function paystackIsVpsPayment($event, int $amount): bool
 {
-    if ($amount === PAYSTACK_VPS_AMOUNT || $amount === PAYSTACK_VPS_AMOUNT_LEGACY) {
+    if (
+        $amount === PAYSTACK_VPS_AMOUNT
+        || $amount === PAYSTACK_VPS_AMOUNT_LEGACY
+        || $amount === PAYSTACK_VPS_AMOUNT_LEGACY_649
+    ) {
         return true;
     }
     return paystackReferrerHasSlug(paystackReferrer($event), PAYSTACK_VPS_SHOP_SLUGS);
@@ -129,14 +134,15 @@ function paystackWebhookInfo(): array
     return [
         'ok' => true,
         'endpoint' => 'paystack_webhook',
-        'url' => 'https://auraai-vps.com/shop/webhook1.php',
+        'url' => 'https://nextradeai.io/shop/webhook1.php',
         'method' => 'POST',
         'header' => 'X-Paystack-Signature',
         'event' => 'charge.success',
         'handlers' => [
             ['amount_zar' => 350, 'amount_raw' => PAYSTACK_SCANNER_AMOUNT, 'action' => 'scanner_unlock', 'result' => 'members.scanner = 1 when email exists; member_not_found otherwise'],
-            ['amount_zar' => 649, 'amount_raw' => PAYSTACK_VPS_AMOUNT, 'action' => 'vps_membership', 'result' => 'members paid=1, scanner=0', 'shop' => 'https://paystack.shop/pay/qhnur7yjsr'],
+            ['amount_zar' => 499, 'amount_raw' => PAYSTACK_VPS_AMOUNT, 'action' => 'vps_membership', 'result' => 'members paid=1, scanner=0', 'shop' => 'https://paystack.shop/pay/qhnur7yjsr'],
             ['amount_zar' => 550, 'amount_raw' => PAYSTACK_VPS_AMOUNT_LEGACY, 'action' => 'vps_membership_legacy', 'result' => 'members paid=1, scanner=0'],
+            ['amount_zar' => 649, 'amount_raw' => PAYSTACK_VPS_AMOUNT_LEGACY_649, 'action' => 'vps_membership_legacy', 'result' => 'members paid=1, scanner=0'],
             ['amount_zar' => 1500, 'amount_raw' => 150000, 'action' => 'bundle_ftsa'],
             ['amount_zar' => 2500, 'amount_raw' => 250000, 'action' => 'bundle_owl'],
             ['amount_zar' => 3700, 'amount_raw' => 370000, 'action' => 'bundle_kairo'],
@@ -144,7 +150,7 @@ function paystackWebhookInfo(): array
             ['amount_zar' => 449.99, 'amount_raw' => 44999, 'action' => 'forward_hkdk'],
             ['amount_zar' => 499.99, 'amount_raw' => 49999, 'action' => 'forward_hkdk'],
         ],
-        'note' => 'GET shows this help. Paystack must POST JSON payloads. R350 scanner and R649 VPS skip signature verification; other amounts still require X-Paystack-Signature when PAYSTACK_SECRET_KEY is set.',
+        'note' => 'GET shows this help. Paystack must POST JSON payloads. R350 scanner and R499 VPS skip signature verification; other amounts still require X-Paystack-Signature when PAYSTACK_SECRET_KEY is set.',
     ];
 }
 
@@ -203,7 +209,7 @@ $amount = isset($event->data->amount) ? (int) $event->data->amount : 0;
 $isScannerChargeSuccess = ($event->event === 'charge.success' && paystackIsScannerPayment($event, $amount));
 $isVpsChargeSuccess = ($event->event === 'charge.success' && paystackIsVpsPayment($event, $amount));
 
-// R350 scanner + R649 VPS use Paystack shop links that may not share this account's secret — skip signature for those flows.
+// R350 scanner + R499 VPS use Paystack shop links that may not share this account's secret — skip signature for those flows.
 if (!$isScannerChargeSuccess && !$isVpsChargeSuccess && defined('PAYSTACK_SECRET_KEY') && PAYSTACK_SECRET_KEY !== '') {
     if (!auraai_sec_paystack_verify($input, PAYSTACK_SECRET_KEY)) {
         error_log('Paystack Webhook: Signature verification failed');
@@ -214,7 +220,7 @@ if (!$isScannerChargeSuccess && !$isVpsChargeSuccess && defined('PAYSTACK_SECRET
         ]);
     }
 } elseif ($isVpsChargeSuccess) {
-    error_log('Paystack Webhook: R649 VPS charge.success — signature not required; upserting member');
+    error_log('Paystack Webhook: R499 VPS charge.success — signature not required; upserting member');
 } elseif ($isScannerChargeSuccess) {
     error_log('Paystack Webhook: R350 scanner charge.success — signature not required (alternate Paystack account)');
 }
@@ -511,7 +517,7 @@ if ($amount === 44999) {
         ]);
     }
 
-    // VPS membership — R649 (shop qhnur7yjsr); also R550 legacy + slug match
+    // VPS membership — R499 (shop qhnur7yjsr); also R550 legacy + slug match
     if (paystackIsVpsPayment($event, $amount)) {
         $customerEmail = paystackExtractEmail($event);
         if ($customerEmail === '') {
@@ -560,7 +566,7 @@ if ($amount === 44999) {
         echo json_encode([
             'status' => 'received',
             'action' => 'vps_membership',
-            'amount_zar' => $amount > 0 ? round($amount / 100, 2) : 649,
+            'amount_zar' => $amount > 0 ? round($amount / 100, 2) : 499,
             'amount_raw' => $amount,
             'email' => $customerEmail,
             'scanner' => 0,

@@ -19,7 +19,7 @@ function auraai_smtp_validate_message(string $subject, string $htmlBody): array
     if (strpos($subject, 'NexTradeAI —') !== 0) {
         return ['ok' => false, 'error' => 'Subject must start with "NexTradeAI —"'];
     }
-    if (stripos($htmlBody, 'NexTradeAI') === false && stripos($htmlBody, 'auraai-vps.com') === false) {
+    if (stripos($htmlBody, 'NexTradeAI') === false && stripos($htmlBody, 'nextradeai.io') === false) {
         return ['ok' => false, 'error' => 'Email body must be an NexTradeAI template'];
     }
     if (preg_match('/casino|BigWins|bonus powitalny|ZAREJESTRUJ/i', $subject . $htmlBody)) {

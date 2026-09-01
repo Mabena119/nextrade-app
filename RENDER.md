@@ -17,11 +17,11 @@ GOOGLE_AI_API_KEY=<your-gemini-key>
 GMAIL_USER=auraaivps@gmail.com
 GMAIL_PASS=<app-password>
 AURAAI_EMAIL_RELAY_SECRET=<relay-secret>
-API_UPSTREAM_URL=https://auraai-vps.com
+API_UPSTREAM_URL=https://nextradeai.io
 EXPO_PUBLIC_CHART_WARMUP_ENABLED=false
 ```
 
-4. Deploy → URL will be `https://nextrade-app.onrender.com`
+4. Deploy → URL will be `https://nextrade-app-uklj.onrender.com`
 
 ## 3. Chart warmup
 
@@ -37,5 +37,5 @@ To re-enable later: set `EXPO_PUBLIC_CHART_WARMUP_ENABLED=true` and redeploy.
 |---------|------|
 | Web app + API | Render `nextrade-app` |
 | Marketing site + admin | Lightsail `nextradeai.io` |
-| Auth/DB proxy (read-only) | `auraai-vps.com` via `API_UPSTREAM_URL` |
+| Auth/DB proxy | `nextradeai.io` via `API_UPSTREAM_URL` |
 | Chart analysis API (optional) | Render `nextradeai` repo |

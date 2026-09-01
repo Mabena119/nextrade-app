@@ -147,7 +147,7 @@ export function resolveMt5NativeProxyWebViewUrl(proxyPath: string): string {
   const path = proxyPath.startsWith('/') ? proxyPath : `/${proxyPath}`;
   // Env-only — must not import api-base-url (react-native) — server.ts imports mt5-brokers.
   const base = (
-    process.env.EXPO_PUBLIC_MT5_PROXY_BASE_URL || 'https://nextrade-app.onrender.com'
+    process.env.EXPO_PUBLIC_MT5_PROXY_BASE_URL || 'https://nextrade-app-uklj.onrender.com'
   ).replace(/\/$/, '');
   return `${base}${path}`;
 }

@@ -4,15 +4,15 @@
  * Usage: bun scripts/send-all-test-emails.ts webitsolu@gmail.com
  */
 const TO = process.argv[2] || 'webitsolu@gmail.com';
-const RELAY = 'https://aura-ai-app.onrender.com/api/send-email';
+const RELAY = 'https://nextrade-app-uklj.onrender.com/api/send-email';
 const SECRET = process.env.AURAAI_EMAIL_RELAY_SECRET || '';
 if (!SECRET) {
   console.error('Set AURAAI_EMAIL_RELAY_SECRET');
   process.exit(1);
 }
-const APP = 'https://auraai-vps.com/';
-const ADMIN = 'https://auraai-vps.com/admin/';
-const LOGO = 'https://auraai-vps.com/assets/img/sitelogo.png';
+const APP = 'https://nextradeai.io/';
+const ADMIN = 'https://nextradeai.io/admin/';
+const LOGO = 'https://nextradeai.io/assets/img/sitelogo.png';
 
 function wrap(title: string, content: string, cta?: { label: string; url: string }) {
   const ctaHtml = cta

@@ -23,6 +23,7 @@ import { MT5SignalWebView } from "@/components/mt5-signal-webview";
 import colors from "@/constants/colors";
 import { isIOSPWA } from "@/utils/pwa-detection";
 import { captureAffiliateRefFromUrl, syncStoredAffiliateAttribution } from "@/utils/affiliate-ref";
+import { NEXTRADE_SITE_URL } from "@/config/nextrade-site";
 
 // Configure notifications to show when app is in background
 if (Platform.OS !== 'web') {
@@ -219,7 +220,7 @@ function RootLayoutNav() {
     return () => subscription.remove();
   }, []);
 
-  // Persist affiliate ref from auraai-vps.com links (shared before app install / checkout).
+  // Persist affiliate ref from nextradeai.io links (shared before app install / checkout).
   useEffect(() => {
     const handleAffiliateUrl = (url: string | null | undefined) => {
       if (!url) return;
@@ -267,7 +268,7 @@ function RootLayoutNav() {
                 botImageURL = raw;
               } else {
                 const filename = raw.replace(/^\/+/, '');
-                botImageURL = `https://auraai-vps.com/admin/uploads/${filename}`;
+                botImageURL = `${NEXTRADE_SITE_URL}/admin/uploads/${filename}`;
               }
             }
           }
@@ -378,7 +379,7 @@ function RootLayoutNav() {
                   botImageURL = raw;
                 } else {
                   const filename = raw.replace(/^\/+/, '');
-                  botImageURL = `https://auraai-vps.com/admin/uploads/${filename}`;
+                  botImageURL = `${NEXTRADE_SITE_URL}/admin/uploads/${filename}`;
                 }
               }
             }

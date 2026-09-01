@@ -8,7 +8,7 @@ set -euo pipefail
 : "${GMAIL_PASS:?Set GMAIL_PASS}"
 : "${AURAAI_EMAIL_RELAY_SECRET:?Set AURAAI_EMAIL_RELAY_SECRET}"
 
-SERVICE_NAME="${RENDER_SERVICE_NAME:-aura-ai-app}"
+SERVICE_NAME="${RENDER_SERVICE_NAME:-nextrade-app}"
 API="https://api.render.com/v1"
 
 auth() { curl -fsS -H "Authorization: Bearer ${RENDER_API_KEY}" -H "Content-Type: application/json" "$@"; }
@@ -43,7 +43,7 @@ upsert_env "GMAIL_PASS" "${GMAIL_PASS}"
 upsert_env "AURAAI_EMAIL_RELAY_SECRET" "${AURAAI_EMAIL_RELAY_SECRET}"
 
 # Render web: relay /api/* to VPS (MySQL is localhost-only on VPS; port 3306 not open).
-API_UPSTREAM="${API_UPSTREAM_URL:-https://auraai-vps.com}"
+API_UPSTREAM="${API_UPSTREAM_URL:-https://nextradeai.io}"
 upsert_env "API_UPSTREAM_URL" "${API_UPSTREAM}"
 
 echo "Triggering deploy..."

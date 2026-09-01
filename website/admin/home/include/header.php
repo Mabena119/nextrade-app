@@ -40,7 +40,7 @@
     <aside class="aura-console-sidebar" id="auraSidebar" aria-label="Console navigation">
       <div class="aura-console-brand">
         <img src="../assets/sitelogo.png" alt="NexTradeAI" />
-        <strong>Aura<span style="color:var(--aura-cyan)">AI</span>VPS</strong>
+        <strong>Nex<span style="color:var(--aura-cyan)">Trade</span>AI</strong>
         <span>Mentor console</span>
       </div>
       <ul class="aura-console-nav">

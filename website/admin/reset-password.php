@@ -73,7 +73,7 @@ $csrfField = auraai_sec_csrf_field();
         <div class="aura-auth-card">
             <div class="aura-auth-logo">
                 <img src="assets/sitelogo.png" alt="NexTradeAI" />
-                <h1>Aura<span style="color:var(--aura-cyan)">AI</span>VPS</h1>
+                <h1>Nex<span style="color:var(--aura-cyan)">Trade</span>AI</h1>
                 <p>Set a new password</p>
             </div>
             <h2>Reset password</h2>

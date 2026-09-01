@@ -22,8 +22,8 @@ fi
 if port_in_use 3000; then
   echo "✓ API already on http://localhost:3000"
 else
-  echo "→ Starting API on http://localhost:3000 (proxies auth to auraai-vps.com)"
-  API_UPSTREAM_URL="${API_UPSTREAM_URL:-https://auraai-vps.com}" bun server.ts &
+  echo "→ Starting API on http://localhost:3000 (proxies auth to nextradeai.io)"
+  API_UPSTREAM_URL="${API_UPSTREAM_URL:-https://nextradeai.io}" bun server.ts &
   sleep 2
 fi
 

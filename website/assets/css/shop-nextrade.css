@@ -1,0 +1,115 @@
+/* NexTradeAI shop — matches marketing site + platform tokens */
+.shop-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  background: rgba(0, 0, 0, 0.92);
+  border-bottom: 1px solid var(--aura-border);
+  backdrop-filter: blur(12px);
+}
+.shop-topbar__inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0.85rem clamp(1rem, 4vw, 2rem);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+.shop-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  font-family: var(--aura-font-display);
+  font-weight: 700;
+  font-size: 1rem;
+  color: var(--aura-text);
+  text-decoration: none;
+}
+.shop-brand b { color: var(--aura-cyan); }
+.shop-brand img { filter: drop-shadow(0 0 12px var(--aura-cyan-glow)); }
+.shop-nav {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 1rem;
+}
+.shop-nav a {
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--aura-muted);
+  text-decoration: none;
+}
+.shop-nav a:hover,
+.shop-nav a[aria-current="page"] {
+  color: var(--aura-cyan);
+}
+.shop-shell {
+  min-height: calc(100vh - 120px);
+}
+.shop-footer {
+  border-top: 1px solid var(--aura-border);
+  padding: 1.25rem clamp(1rem, 4vw, 2rem);
+  background: #000;
+}
+.shop-footer__inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  color: var(--aura-muted-dim);
+  font-size: 0.85rem;
+}
+.shop-footer nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.25rem;
+}
+.shop-footer a {
+  color: var(--aura-cyan);
+  text-decoration: none;
+}
+.shop-app-cta {
+  margin-top: 1.25rem;
+  padding: 1rem 1.1rem;
+  border-radius: 14px;
+  border: 1px solid var(--aura-border);
+  background: rgba(0, 229, 255, 0.06);
+}
+.shop-app-cta p {
+  margin: 0 0 0.65rem;
+  color: var(--aura-muted);
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+.shop-app-cta a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-weight: 700;
+  color: var(--aura-cyan);
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+.ticket-note {
+  margin: 0.85rem 0 0;
+  padding: 0.75rem 0.85rem;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--aura-border);
+  color: var(--aura-muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+.ticket-note a { color: var(--aura-cyan); }
+
+@media (max-width: 720px) {
+  .shop-topbar__inner { justify-content: center; }
+  .shop-nav { justify-content: center; }
+}

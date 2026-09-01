@@ -6,7 +6,7 @@
     "start": "bunx expo start --tunnel",
     "start-web": "bunx expo start --web --tunnel",
     "start-web-dev": "DEBUG=expo* bunx expo start --web --tunnel",
-    "start-web-local": "API_UPSTREAM_URL=https://auraai-vps.com bun server.ts & bunx expo start --web --port 8081",
+    "start-web-local": "API_UPSTREAM_URL=https://nextradeai.io bun server.ts & bunx expo start --web --port 8081",
     "website": "python3 scripts/serve-website.py",
     "local": "bash scripts/dev-local.sh",
     "dev:local": "bash scripts/dev-local.sh",

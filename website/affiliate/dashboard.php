@@ -350,7 +350,7 @@ $tierProgress = $commission['at_max']
         </div>
 
         <footer class="site-footer">
-            &copy; <?php echo date('Y'); ?> <a href="https://auraai-vps.com/">NexTradeAI</a> · Affiliate Program
+            &copy; <?php echo date('Y'); ?> <a href="<?php echo htmlspecialchars(NEXTRADE_SITE_URL, ENT_QUOTES, 'UTF-8'); ?>/">NexTradeAI</a> · Affiliate Program
         </footer>
     </div>
 </div>

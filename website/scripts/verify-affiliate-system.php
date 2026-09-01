@@ -48,7 +48,7 @@ echo "Affiliate: {$affiliate['full_name']} ($code)\n\n";
 
 // 1. Shop link format
 $link = auraai_affiliate_shop_link($code);
-check('Shop link is landing URL', str_contains($link, 'https://auraai-vps.com/?ref=' . rawurlencode($code)));
+check('Shop link is landing URL', str_contains($link, 'https://nextradeai.io/?ref=' . rawurlencode($code)));
 
 // 2. Tables exist
 $tables = ['affiliate_ip_attributions', 'affiliate_visitor_attributions', 'affiliate_attributions', 'affiliate_conversions'];
@@ -81,7 +81,7 @@ $directEmail = "verify.direct.{$ts}@test.auraai-vps.com";
 auraai_affiliate_bind_email($con, $directEmail, $code);
 $prior = auraai_affiliate_confirmed_sales_count($con, $affiliateId);
 $rate = auraai_affiliate_commission_rate_from_sales($prior);
-$amount = 64900;
+$amount = 49900;
 $expectedComm = (int) round($amount * $rate);
 $gwRef = "VERIFY_{$ts}_DIRECT";
 $ok = auraai_affiliate_process_member_payment($con, $directEmail, 'paystack', $gwRef, $amount, 'vps', null, null, 'ZAR');
@@ -157,7 +157,7 @@ $okWhop = auraai_affiliate_process_member_payment(
     $whopEmail,
     'whop',
     $gwRefWhop,
-    64900,
+    49900,
     'vps',
     $whopCtx['referrer'],
     $whopCtx['custom_fields'],

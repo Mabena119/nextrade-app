@@ -3,7 +3,7 @@
  * Whop webhook endpoint (notifyb.php).
  * Ozow uses notify.php — do not point Whop here.
  *
- * Whop dashboard URL: https://auraai-vps.com/shop/notifyb.php
+ * Whop dashboard URL: https://nextradeai.io/shop/notifyb.php
  * Events: membership.activated, payment.succeeded
  *
  * Product routing (membership.activated / payment.succeeded):

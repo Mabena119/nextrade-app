@@ -143,7 +143,7 @@ function auraai_email_mentor_status_changed(string $email, string $displayName, 
             'title' => 'Account blocked',
             'body' => '<p style="margin:0 0 14px;">Hi <strong>' . $name . '</strong>,</p>'
                 . '<p style="margin:0 0 14px;">Your NexTradeAI mentor account has been <strong style="color:#ef4444;">blocked</strong>.</p>'
-                . '<p style="margin:0;">If you believe this is a mistake, please contact support at <a href="mailto:support@auraai-vps.com" style="color:#60a5fa;">support@auraai-vps.com</a>.</p>',
+                . '<p style="margin:0;">If you believe this is a mistake, please contact support at <a href="mailto:' . NEXTRADE_SUPPORT_EMAIL . '" style="color:#60a5fa;">' . NEXTRADE_SUPPORT_EMAIL . '</a>.</p>',
             'cta' => null,
             'url' => null,
         ],
@@ -444,7 +444,7 @@ function auraai_email_password_reset_confirmation(string $email): bool
     $content = '<p style="margin:0 0 14px;color:#1f2937;">Hi,</p>'
         . '<p style="margin:0 0 14px;color:#1f2937;">Your NexTradeAI admin password for <strong>' . auraai_email_escape($email) . '</strong> was changed successfully.</p>'
         . '<p style="margin:0;color:#1f2937;">You can sign in with your new password. If you did not make this change, contact support immediately at '
-        . '<a href="mailto:support@auraai-vps.com" style="color:#00B8D4;">support@auraai-vps.com</a>.</p>';
+        . '<a href="mailto:' . NEXTRADE_SUPPORT_EMAIL . '" style="color:#00B8D4;">' . NEXTRADE_SUPPORT_EMAIL . '</a>.</p>';
 
     return auraai_email_send(
         $email,
@@ -470,7 +470,7 @@ function auraai_email_scanner_payment_result(string $email, bool $memberFound): 
         . '<p style="margin:0 0 14px;color:#1f2937;">We received your <strong>AI Scanner</strong> payment for <strong>'
         . auraai_email_escape($email) . '</strong>.</p>'
         . '<p style="margin:0 0 14px;color:#1f2937;">We could not find an active NexTradeAI membership for this email yet. Complete your VPS membership first using the same email address — your scanner access will unlock automatically once membership is active.</p>'
-        . '<p style="margin:0;color:#1f2937;">Need help? Contact <a href="mailto:support@auraai-vps.com" style="color:#00B8D4;">support@auraai-vps.com</a>.</p>';
+        . '<p style="margin:0;color:#1f2937;">Need help? Contact <a href="mailto:' . NEXTRADE_SUPPORT_EMAIL . '" style="color:#00B8D4;">' . NEXTRADE_SUPPORT_EMAIL . '</a>.</p>';
 
     return auraai_email_send(
         $email,

@@ -23,7 +23,8 @@ declare const Bun: any;
 const DIST_DIR = path.join(process.cwd(), 'dist');
 const PORT = Number(process.env.PORT || 3000);
 /** VPS Bun API — used when Render cannot reach cPanel MySQL (port 3306 closed). */
-const DEFAULT_VPS_API = 'https://auraai-vps.com';
+const DEFAULT_VPS_API = 'https://nextradeai.io';
+const NEXTRADE_SITE_ORIGIN = DEFAULT_VPS_API;
 /** When set (Render), proxy /api/* to VPS — same-origin web app without remote MySQL. */
 const API_UPSTREAM = (
   process.env.API_UPSTREAM_URL ||
@@ -128,6 +129,7 @@ const LOCAL_API_PREFIXES = [
 function isMt5ProxyPublicHost(hostname: string): boolean {
   return (
     hostname.includes('onrender.com') ||
+    hostname.includes('nextradeai.io') ||
     hostname.includes('auraai-vps.com') ||
     hostname === 'localhost' ||
     hostname === '127.0.0.1'
@@ -545,13 +547,16 @@ async function handleApi(request: Request): Promise<Response> {
         if (rawUrl) {
           const u = new URL(rawUrl);
           if (
-            (u.hostname === 'auraai-vps.com' || u.hostname === 'www.auraai-vps.com') &&
+            (u.hostname === 'nextradeai.io' ||
+              u.hostname === 'www.nextradeai.io' ||
+              u.hostname === 'auraai-vps.com' ||
+              u.hostname === 'www.auraai-vps.com') &&
             u.pathname.startsWith('/admin/uploads/')
           ) {
             target = u.toString();
           }
         } else if (rawPath && !rawPath.includes('..') && /^[A-Za-z0-9._/\-]+$/.test(rawPath)) {
-          target = `https://auraai-vps.com/admin/uploads/${rawPath}`;
+          target = `${NEXTRADE_SITE_ORIGIN}/admin/uploads/${rawPath}`;
         }
         if (!target) {
           return new Response('Bad request', { status: 400 });
@@ -560,7 +565,7 @@ async function handleApi(request: Request): Promise<Response> {
           headers: {
             'User-Agent':
               'Mozilla/5.0 (compatible; AuraAIBrandProxy/1.0)',
-            Referer: 'https://auraai-vps.com/',
+            Referer: `${NEXTRADE_SITE_ORIGIN}/`,
             Accept: '*/*',
           },
         });

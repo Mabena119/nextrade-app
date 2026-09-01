@@ -19,7 +19,7 @@ services:
       - key: EXPO_PUBLIC_CHART_WARMUP_ENABLED
         value: "false"
       - key: API_UPSTREAM_URL
-        value: "https://auraai-vps.com"
+        value: "https://nextradeai.io"
       - key: GOOGLE_AI_API_KEY
         sync: false
       - key: GMAIL_USER

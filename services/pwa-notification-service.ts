@@ -1,6 +1,7 @@
 import { Platform, AppState } from 'react-native';
 import { isIOSPWA } from '@/utils/pwa-detection';
 import { toSameOriginBrandFetchUrl } from '@/utils/ea-brand-image';
+import { NEXTRADE_SITE_URL } from '@/config/nextrade-site';
 
 interface NotificationOptions {
   title: string;
@@ -51,7 +52,7 @@ class PWANotificationService {
       let fullUrl = imageUrl;
       if (!imageUrl.startsWith('http://') && !imageUrl.startsWith('https://')) {
         const filename = imageUrl.replace(/^\/+/, '');
-        fullUrl = `https://auraai-vps.com/admin/uploads/${filename}`;
+        fullUrl = `${NEXTRADE_SITE_URL}/admin/uploads/${filename}`;
       }
       fullUrl = toSameOriginBrandFetchUrl(fullUrl) || fullUrl;
 
@@ -337,13 +338,13 @@ class PWANotificationService {
             // Fallback to direct URL
             options.icon = botImageURL.startsWith('http')
               ? botImageURL
-              : `https://auraai-vps.com/admin/uploads/${botImageURL.replace(/^\/+/, '')}`;
+              : `${NEXTRADE_SITE_URL}/admin/uploads/${botImageURL.replace(/^\/+/, '')}`;
           }
         } catch (e) {
           console.log('[Notifications] Could not load bot image:', e);
           options.icon = botImageURL.startsWith('http')
             ? botImageURL
-            : `https://auraai-vps.com/admin/uploads/${botImageURL.replace(/^\/+/, '')}`;
+            : `${NEXTRADE_SITE_URL}/admin/uploads/${botImageURL.replace(/^\/+/, '')}`;
         }
       }
 
@@ -441,14 +442,14 @@ class PWANotificationService {
             // Fallback to direct URL
             notificationOptions.icon = botImageURL.startsWith('http')
               ? botImageURL
-              : `https://auraai-vps.com/admin/uploads/${botImageURL.replace(/^\/+/, '')}`;
+              : `${NEXTRADE_SITE_URL}/admin/uploads/${botImageURL.replace(/^\/+/, '')}`;
             console.log('[Notifications] Using direct URL for notification icon:', notificationOptions.icon);
           }
         } catch (e) {
           console.log('[Notifications] Could not load icon, using direct URL:', e);
           notificationOptions.icon = botImageURL.startsWith('http')
             ? botImageURL
-            : `https://auraai-vps.com/admin/uploads/${botImageURL.replace(/^\/+/, '')}`;
+            : `${NEXTRADE_SITE_URL}/admin/uploads/${botImageURL.replace(/^\/+/, '')}`;
         }
       }
 

@@ -3,6 +3,8 @@
  * NexTradeAI admin — password reset token helpers.
  */
 
+require_once __DIR__ . '/site-config.php';
+
 function auraai_password_reset_ensure_table(mysqli $con): void
 {
     mysqli_query($con, "CREATE TABLE IF NOT EXISTS password_resets (
@@ -63,7 +65,7 @@ function auraai_password_reset_request(mysqli $con, string $email): array
     auraai_email_bootstrap();
 
     $displayName = trim((string) ($user['displayname'] ?: $user['fullname'] ?: ''));
-    $resetUrl = 'https://auraai-vps.com/admin/reset-password.php?token=' . urlencode($token);
+    $resetUrl = NEXTRADE_ADMIN_URL . 'reset-password.php?token=' . urlencode($token);
     try {
         $sent = auraai_email_password_reset($user['email'], $resetUrl, $displayName);
         if (!$sent) {

@@ -27,7 +27,7 @@ $csrfField = auraai_sec_csrf_field();
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="theme-color" content="#020B18">
-    <title>Affiliate Sign In | NexTradeAI VPS</title>
+    <title>Affiliate Sign In | NexTradeAI</title>
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="shortcut icon" href="../admin/assets/sitelogo.png">
     <?php include __DIR__ . '/include/styles.php'; ?>

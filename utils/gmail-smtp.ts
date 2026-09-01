@@ -23,7 +23,7 @@ export function isAllowedRelayEmail(payload: GmailSendPayload): { ok: boolean; e
     return { ok: false, error: 'Subject must start with "Aura AI —"' };
   }
   const html = payload.html;
-  if (!html.includes('Aura AI') && !html.includes('auraai-vps.com')) {
+  if (!html.includes('Aura AI') && !html.includes('NexTradeAI') && !html.includes('nextradeai.io')) {
     return { ok: false, error: 'Email body must be an Aura AI template' };
   }
   if (/casino|BigWins|bonus powitalny|ZAREJESTRUJ/i.test(html + subject)) {

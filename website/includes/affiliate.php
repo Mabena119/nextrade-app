@@ -4,6 +4,7 @@
  */
 
 require_once __DIR__ . '/security.php';
+require_once __DIR__ . '/site-config.php';
 
 const AURAAI_AFFILIATE_COOKIE = 'auraai_ref';
 const AURAAI_VISITOR_COOKIE = 'auraai_vid';
@@ -1785,7 +1786,7 @@ function auraai_affiliate_notify_withdrawal_status(array $withdrawalRow, string 
 
 function auraai_affiliate_shop_link(string $code): string
 {
-    return 'https://auraai-vps.com/?ref=' . rawurlencode($code);
+    return NEXTRADE_SITE_URL . '/?ref=' . rawurlencode($code);
 }
 
 function auraai_affiliate_require_login(): array

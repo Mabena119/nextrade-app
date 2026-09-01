@@ -1,12 +1,13 @@
 import type { ImageSourcePropType } from 'react-native';
 import { Platform } from 'react-native';
+import { isNextradeSiteHost, NEXTRADE_SITE_URL } from '@/config/nextrade-site';
 
 /** Default EA app icon shown when no connected bot logo is available or remote load fails. */
 export const EA_BRAND_HERO_LOCAL = require('@/assets/images/icon.png');
 
 /** Sent with AV / FileSystem CDN access so picky Apache setups accept range requests vs Image. */
 export const EA_BRAND_CDN_HEADERS: Record<string, string> = {
-  Referer: 'https://auraai-vps.com/',
+  Referer: `${NEXTRADE_SITE_URL}/`,
   Accept: '*/*',
 };
 
@@ -38,7 +39,7 @@ export function normalizeEaBrandLogoHttpUrl(rawInput: string | null | undefined)
   const rel = raw.replace(/^\/+/, '');
   const parts = rel.split('/').filter(Boolean).map(encodePathSegment);
   if (parts.length === 0) return null;
-  return `https://auraai-vps.com/admin/uploads/${parts.join('/')}`;
+  return `${NEXTRADE_SITE_URL}/admin/uploads/${parts.join('/')}`;
 }
 
 /**
@@ -54,10 +55,7 @@ export function toSameOriginBrandFetchUrl(imageUrl: string | null | undefined): 
   }
   try {
     const u = new URL(normalized);
-    if (
-      (u.hostname === 'auraai-vps.com' || u.hostname === 'www.auraai-vps.com') &&
-      u.pathname.startsWith('/admin/uploads/')
-    ) {
+    if (isNextradeSiteHost(u.hostname) && u.pathname.startsWith('/admin/uploads/')) {
       const path = u.pathname.replace(/^\/admin\/uploads\//, '');
       return `/api/brand-asset?path=${encodeURIComponent(path)}`;
     }

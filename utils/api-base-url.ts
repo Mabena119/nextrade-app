@@ -2,10 +2,10 @@ import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
 /** Web/PWA API — co-hosted with the static app (Render). */
-const DEFAULT_WEB_API = 'https://nextrade-app.onrender.com';
+const DEFAULT_WEB_API = 'https://nextrade-app-uklj.onrender.com';
 
 /** Native Android/iOS API — same Render host (proxies auth/DB to upstream). */
-const DEFAULT_NATIVE_API = 'https://nextrade-app.onrender.com';
+const DEFAULT_NATIVE_API = 'https://nextrade-app-uklj.onrender.com';
 
 function stripTrailingSlash(url: string): string {
   return url.replace(/\/$/, '');
@@ -45,7 +45,7 @@ export function getAndroidMt5ProxyBaseUrl(): string {
  * - Web/PWA: same-origin absolute `window.location.origin` so `/api/*` never hits CORS
  *   (EA Trade uses EXPO_PUBLIC on the same Render host; Aura mirrors that with the live origin).
  * - Expo web dev (:8081): Render absolute API (Metro has no API routes).
- * - Android/iOS native: VPS API at auraai-vps.com (cPanel DB).
+ * - Android/iOS native: Render API (proxies to nextradeai.io cPanel DB).
  */
 export function resolveApiBaseUrl(): string {
   if (Platform.OS !== 'web') {

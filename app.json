@@ -157,8 +157,8 @@
       "typedRoutes": true
     },
     "extra": {
-      "EXPO_PUBLIC_API_BASE_URL": "https://nextrade-app.onrender.com",
-      "EXPO_PUBLIC_NATIVE_API_BASE_URL": "https://nextrade-app.onrender.com",
+      "EXPO_PUBLIC_API_BASE_URL": "https://nextrade-app-uklj.onrender.com",
+      "EXPO_PUBLIC_NATIVE_API_BASE_URL": "https://nextrade-app-uklj.onrender.com",
       "EXPO_PUBLIC_CHART_WARMUP_ENABLED": false,
       "router": {}
     },

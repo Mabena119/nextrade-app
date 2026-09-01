@@ -5,6 +5,8 @@
  * Secrets live outside public_html in ~/nextradeai-secrets.php (see private/nextradeai-secrets.php.example).
  */
 
+require_once __DIR__ . '/site-config.php';
+
 function auraai_email_load_secrets(): void
 {
     static $loaded = false;
@@ -42,19 +44,14 @@ if (!defined('GMAIL_FROM_NAME')) {
     define('GMAIL_FROM_NAME', 'NexTradeAI');
 }
 if (!defined('LOGO_URL')) {
-    define('LOGO_URL', 'https://auraai-vps.com/assets/img/sitelogo.png');
+    define('LOGO_URL', NEXTRADE_SITE_URL . '/assets/img/sitelogo.png');
 }
 
 define('MAIL_FROM_EMAIL', GMAIL_USER);
 define('MAIL_REPLY_TO', GMAIL_USER);
 define('ADMIN_NOTIFY_EMAIL', GMAIL_USER);
 
-define('AURAAI_EMAIL_RELAY_URL', 'https://aura-ai-app.onrender.com/api/send-email');
+define('AURAAI_EMAIL_RELAY_URL', NEXTRADE_APP_URL . '/api/send-email');
 if (!defined('AURAAI_EMAIL_RELAY_SECRET') || AURAAI_EMAIL_RELAY_SECRET === '') {
     throw new RuntimeException('AURAAI_EMAIL_RELAY_SECRET not configured. Create ~/nextradeai-secrets.php on the server.');
 }
-
-define('AURAAI_SHOP_URL', 'https://auraai-vps.com/shop/');
-define('AURAAI_APP_URL', 'https://auraai-vps.com/');
-define('AURAAI_ADMIN_LOGIN', 'https://auraai-vps.com/admin/');
-define('AURAAI_AFFILIATE_URL', 'https://auraai-vps.com/affiliate/');

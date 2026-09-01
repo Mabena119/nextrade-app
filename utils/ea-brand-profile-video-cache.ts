@@ -1,5 +1,6 @@
 import * as FileSystem from 'expo-file-system';
 
+import { NEXTRADE_SITE_URL } from '@/config/nextrade-site';
 import { EA_BRAND_CDN_HEADERS } from '@/utils/ea-brand-image';
 
 const CACHE_SUBDIR = 'ea-brand-profile-videos/';
@@ -9,7 +10,7 @@ const MIN_MP4_BYTES = 128;
 const CDN_DOWNLOAD_HEADER_ATTEMPTS: Record<string, string>[] = [
   EA_BRAND_CDN_HEADERS,
   {
-    Referer: 'https://auraai-vps.com/',
+    Referer: `${NEXTRADE_SITE_URL}/`,
     Accept: '*/*',
     'User-Agent':
       'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',

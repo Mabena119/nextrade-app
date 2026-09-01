@@ -201,7 +201,7 @@ export function getOzowConfigFromEnv(): OzowCheckoutConfig | null {
     apiKey,
     privateKey,
     notifyUrl,
-    returnUrl: process.env.OZOW_RETURN_URL || 'https://auraai-vps.com/',
+    returnUrl: process.env.OZOW_RETURN_URL || 'https://nextradeai.io/',
     amount: process.env.OZOW_AMOUNT || OZOW_AMOUNT_DEFAULT,
     // Production default: only explicit OZOW_IS_TEST=true enables Ozow test mode.
     isTest: String(process.env.OZOW_IS_TEST || 'false').toLowerCase() === 'true',

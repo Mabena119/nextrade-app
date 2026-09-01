@@ -4,8 +4,10 @@ const REF_STORAGE_KEY = 'auraai_affiliate_ref';
 const VISITOR_STORAGE_KEY = 'auraai_visitor_id';
 const REF_PATTERN = /^AFF[A-F0-9]{5,}$/i;
 const VISITOR_PATTERN = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
-const ATTRIBUTION_PING_URL = 'https://auraai-vps.com/shop/attribution-ping.php';
-const PAYMENT_ATTRIBUTION_URL = 'https://auraai-vps.com/shop/payment-attribution.php';
+import { NEXTRADE_SITE_URL } from '@/config/nextrade-site';
+
+const ATTRIBUTION_PING_URL = `${NEXTRADE_SITE_URL}/shop/attribution-ping.php`;
+const PAYMENT_ATTRIBUTION_URL = `${NEXTRADE_SITE_URL}/shop/payment-attribution.php`;
 
 export function normalizeAffiliateRef(value: string | null | undefined): string | null {
   const trimmed = String(value ?? '').trim().toUpperCase();
@@ -138,5 +140,5 @@ export function buildShopPaymentUrl(email: string, ref?: string | null, visitorI
   if (normalizedVisitor) {
     params.set('vid', normalizedVisitor);
   }
-  return `https://auraai-vps.com/shop/?${params.toString()}`;
+  return `${NEXTRADE_SITE_URL}/shop/?${params.toString()}`;
 }

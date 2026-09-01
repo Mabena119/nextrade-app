@@ -1,6 +1,8 @@
 <?php
 require_once $_SERVER['DOCUMENT_ROOT'] . '/includes/ip-block-guard.php';
 require_once $_SERVER['DOCUMENT_ROOT'] . '/includes/affiliate.php';
+require_once $_SERVER['DOCUMENT_ROOT'] . '/includes/site-config.php';
+require_once $_SERVER['DOCUMENT_ROOT'] . '/includes/shop-chrome.php';
 
 $email = '';
 $visitorId = auraai_affiliate_ensure_visitor_cookie(
@@ -39,7 +41,7 @@ if ($email !== '') {
     }
 }
 
-$shopPriceDisplay = '649';
+$shopPriceDisplay = (string) NEXTRADE_SHOP_PRICE_ZAR;
 $paystackCheckoutBase = 'https://paystack.shop/pay/qhnur7yjsr';
 $paystackCheckoutUrl = $paystackCheckoutBase;
 if ($email !== '') {
@@ -51,18 +53,16 @@ if ($email !== '') {
     $paystackCheckoutUrl .= '?ref=' . rawurlencode($affiliateRef);
 }
 $emailEsc = htmlspecialchars($email, ENT_QUOTES, 'UTF-8');
+$appUrlEsc = htmlspecialchars(NEXTRADE_APP_URL, ENT_QUOTES, 'UTF-8');
+$apkUrlEsc = htmlspecialchars(NEXTRADE_APK_URL, ENT_QUOTES, 'UTF-8');
 ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#020B18">
-  <title>Checkout · NexTradeAI</title>
-  <link rel="icon" type="image/png" href="../assets/img/sitelogo.png" />
-  <link rel="stylesheet" href="/assets/css/platform.css" />
+  <?php nextrade_shop_head('Access · R' . $shopPriceDisplay . ' · NexTradeAI'); ?>
   <style>
-    body.checkout {
+    body.checkout,
+    .shop-shell.checkout {
       min-height: 100vh;
       margin: 0;
       display: grid;
@@ -234,7 +234,8 @@ $emailEsc = htmlspecialchars($email, ENT_QUOTES, 'UTF-8');
     .checkout-loading.is-active { display: flex; }
 
     @media (max-width: 900px) {
-      body.checkout { grid-template-columns: 1fr; }
+      body.checkout,
+      .shop-shell.checkout { grid-template-columns: 1fr; }
       .stage-left { min-height: auto; border-right: 0; border-bottom: 1px solid var(--aura-border); }
       .hero-copy { margin: 1.5rem 0; }
       .stage-right { min-height: auto; padding-bottom: 2.5rem; }
@@ -243,11 +244,12 @@ $emailEsc = htmlspecialchars($email, ENT_QUOTES, 'UTF-8');
 </head>
 <body class="aura-platform checkout">
   <div class="aura-atmosphere" aria-hidden="true"></div>
-
+  <?php nextrade_shop_topbar(); ?>
+  <div class="shop-shell checkout">
   <section class="stage-left">
     <a class="brand-row" href="/">
-      <img src="../assets/img/sitelogo.png" alt="NexTradeAI" />
-      <span>Aura<b>AI</b>VPS</span>
+      <img src="/assets/img/sitelogo.png" alt="NexTradeAI" />
+      <span>Nex<b>Trade</b>AI</span>
     </a>
 
     <div class="hero-copy">
@@ -255,14 +257,21 @@ $emailEsc = htmlspecialchars($email, ENT_QUOTES, 'UTF-8');
       <h1>Unlock your always-on trading VPS</h1>
       <p>One payment. Instant membership. Run MetaTrader EAs from your phone — 24/7.</p>
       <ul class="perks">
+        <li><i>✓</i><span>One-time <strong>R<?php echo htmlspecialchars($shopPriceDisplay); ?></strong> — no subscription</span></li>
         <li><i>✓</i><span>High-performance cloud VPS access</span></li>
         <li><i>✓</i><span>Activated automatically after payment</span></li>
         <li><i>✓</i><span>Mobile-first control for traders</span></li>
       </ul>
+      <div class="shop-app-cta">
+        <p>After payment, open the app with the same email you use here.</p>
+        <a href="<?php echo $appUrlEsc; ?>" target="_blank" rel="noopener noreferrer">Open NexTradeAI app →</a>
+        · <a href="<?php echo $apkUrlEsc; ?>">Android APK</a>
+      </div>
     </div>
 
     <p class="foot-mini">
-      Need help? <a href="mailto:auraaiio@gmail.com">auraaiio@gmail.com</a>
+      Need help? <a href="mailto:<?php echo htmlspecialchars(NEXTRADE_SUPPORT_EMAIL, ENT_QUOTES, 'UTF-8'); ?>"><?php echo htmlspecialchars(NEXTRADE_SUPPORT_EMAIL, ENT_QUOTES, 'UTF-8'); ?></a>
+      · <a href="/how-to-install/">Install guide</a>
       · <a href="/">Back home</a>
     </p>
   </section>
@@ -271,7 +280,7 @@ $emailEsc = htmlspecialchars($email, ENT_QUOTES, 'UTF-8');
     <div class="ticket">
       <div class="ticket-top">
         <div>
-          <span class="chip">One-time</span>
+          <span class="chip">One-time · R<?php echo htmlspecialchars($shopPriceDisplay); ?></span>
           <h2>NexTradeAI</h2>
         </div>
         <div class="price-block">
@@ -291,7 +300,7 @@ $emailEsc = htmlspecialchars($email, ENT_QUOTES, 'UTF-8');
           <div class="checks">
             <label>
               <input type="checkbox" id="termsCheck" name="termsCheck" required />
-              <span>I agree to the <a href="../privacy-policy.html" target="_blank" rel="noopener">Privacy Policy</a>, <a href="../terms-of-service.html" target="_blank" rel="noopener">Terms</a>, and <a href="../terms-of-service.html#refund" target="_blank" rel="noopener">Refund Policy</a>.</span>
+              <span>I agree to the <a href="/privacy-policy.html" target="_blank" rel="noopener">Privacy Policy</a>, <a href="/terms-of-service.html" target="_blank" rel="noopener">Terms</a>, and <a href="/terms-of-service.html#refund" target="_blank" rel="noopener">Refund Policy</a>.</span>
             </label>
             <label>
               <input type="checkbox" id="vpsLicenseCheck" name="vpsLicenseCheck" required />
@@ -302,9 +311,10 @@ $emailEsc = htmlspecialchars($email, ENT_QUOTES, 'UTF-8');
           <button type="button"
              class="pay-btn payment-gate-btn" id="paystackBtn"
              data-base-url="<?php echo htmlspecialchars($paystackCheckoutBase); ?>">
-            Continue to secure checkout
+            Pay R<?php echo htmlspecialchars($shopPriceDisplay); ?> — secure checkout
           </button>
           <p class="secure">Card payments via Paystack · Encrypted checkout</p>
+          <p class="ticket-note">Membership activates on this email. Then open the <a href="<?php echo $appUrlEsc; ?>" target="_blank" rel="noopener noreferrer">NexTradeAI app</a> or follow the <a href="/how-to-install/">install guide</a>.</p>
         </div>
 
         <div class="checkout-pay-panel" id="checkoutPayPanel" aria-hidden="true">
@@ -323,7 +333,8 @@ $emailEsc = htmlspecialchars($email, ENT_QUOTES, 'UTF-8');
       </div>
     </div>
   </section>
-
+  </div>
+  <?php nextrade_shop_footer(); ?>
   <script>
     document.addEventListener('DOMContentLoaded', function () {
       const termsCheck = document.getElementById('termsCheck');

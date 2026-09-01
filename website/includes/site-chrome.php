@@ -27,6 +27,9 @@ HTML;
             echo '<a href="/#product">Product</a>';
             echo '<a href="/#download">Download</a>';
             echo '<a href="/#setup">Install</a>';
+            echo '<a href="/shop/">Access</a>';
+            echo '<a href="/admin/">Mentor login</a>';
+            echo '<a href="/affiliate/">Affiliates</a>';
             echo '</nav>';
         }
         echo '</div></header>';
@@ -40,6 +43,9 @@ HTML;
   <div class="aura-footer__inner">
     <p>© {$year} NexTradeAI · AI Powered · Cloud VPS · Built for Traders</p>
     <nav>
+      <a href="/shop/">Access</a>
+      <a href="/admin/">Mentor login</a>
+      <a href="/affiliate/">Affiliates</a>
       <a href="/privacy-policy.html">Privacy</a>
       <a href="/terms-of-service.html">Terms</a>
     </nav>

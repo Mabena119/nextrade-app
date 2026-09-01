@@ -49,7 +49,7 @@ $attributed = auraai_affiliate_handle_member_payment_success(
     $email,
     'app',
     $gatewayRef,
-    64900,
+    49900,
     'vps',
     null,
     $code !== null ? [(object) ['variable_name' => 'ref', 'value' => $code]] : null,
