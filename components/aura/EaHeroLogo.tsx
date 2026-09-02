@@ -4,26 +4,24 @@ import { Image } from 'expo-image';
 import {
   EA_BRAND_CDN_HEADERS,
   EA_BRAND_HERO_LOCAL,
-  resolveEaOwnerLogoUrl,
-  toSameOriginBrandFetchUrl,
+  resolveEaOwnerProfileLogoUrl,
 } from '@/utils/ea-brand-image';
 
 type Props = {
+  /** Raw `owner.logo` from licence auth (basename, path, or full URL). */
+  ownerLogo?: string | null;
+  /** @deprecated pass `ownerLogo` instead */
   imageUrl?: string | null;
   size: number;
   testID?: string;
 };
 
 /**
- * Home hero logo — mentor upload when available, otherwise NexTrade mark.
- * Plain image (no video crossfade) so the logo never disappears on a black frame.
+ * Home hero logo — mentor profile photo when set, otherwise NexTrade app logo.
  */
-export function EaHeroLogo({ imageUrl, size, testID }: Props) {
-  const remoteUrl = useMemo(() => {
-    const normalized = resolveEaOwnerLogoUrl(imageUrl);
-    if (!normalized) return null;
-    return toSameOriginBrandFetchUrl(normalized) ?? normalized;
-  }, [imageUrl]);
+export function EaHeroLogo({ ownerLogo, imageUrl, size, testID }: Props) {
+  const rawLogo = ownerLogo ?? imageUrl;
+  const remoteUrl = useMemo(() => resolveEaOwnerProfileLogoUrl(rawLogo), [rawLogo]);
   const [useFallback, setUseFallback] = useState(() => !remoteUrl);
 
   useEffect(() => {

@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, Dimensi
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Notifications from 'expo-notifications';
 import { Plus, ChevronRight } from 'lucide-react-native';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { useApp, type EA } from '@/providers/app-provider';
@@ -17,7 +17,7 @@ import { type } from '@/constants/typography';
 import { overlayService } from '@/services/overlay-service';
 
 export default function HomeScreen() {
-  const { eas, isFirstTime, setIsFirstTime, removeEA, isBotActive, setBotActive, setActiveEA, mt5Account, primaryLicenseStatus } = useApp();
+  const { eas, isFirstTime, setIsFirstTime, removeEA, isBotActive, setBotActive, setActiveEA, mt5Account, primaryLicenseStatus, refreshPrimaryEaProfile } = useApp();
   const { theme, toggleTheme } = useTheme();
 
   // Safely get the primary EA (first one in the list)
@@ -139,12 +139,21 @@ export default function HomeScreen() {
     checkAuthenticationStatus();
   }, [isFirstTime, eas.length]); // Re-run when isFirstTime or eas changes
 
-  const getEAImageUrl = useCallback((ea: EA | null): string | null => {
+  useFocusEffect(
+    useCallback(() => {
+      void refreshPrimaryEaProfile();
+    }, [refreshPrimaryEaProfile])
+  );
+
+  const primaryEAOwnerLogo = useMemo(
+    () => (primaryEA?.userData?.owner?.logo ?? '').trim() || null,
+    [primaryEA?.userData?.owner?.logo]
+  );
+
+  const getEAOwnerLogo = useCallback((ea: EA | null): string | null => {
     if (!ea?.userData?.owner) return null;
     return (ea.userData.owner.logo ?? '').trim() || null;
   }, []);
-
-  const primaryEAImage = useMemo(() => getEAImageUrl(primaryEA), [getEAImageUrl, primaryEA]);
 
   const handleStartNow = async () => {
     try {
@@ -288,7 +297,7 @@ export default function HomeScreen() {
             primaryEA.description ||
             null
           }
-          imageUrl={primaryEAImage}
+          ownerLogo={primaryEAOwnerLogo}
           isBotActive={isBotActive}
           licenseExpired={licenseExpired}
           onLogoTap={handleLogoTap}
@@ -317,7 +326,7 @@ export default function HomeScreen() {
                   key={`${ea.id}-${index}`}
                   testID={`ea-module-${index}`}
                   name={ea.name}
-                  imageUri={getEAImageUrl(ea as unknown as EA)}
+                  ownerLogo={getEAOwnerLogo(ea as unknown as EA)}
                   ownerName={
                     (ea.userData?.owner as { name?: string } | undefined)?.name ||
                     ea.description ||

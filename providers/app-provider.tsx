@@ -15,7 +15,7 @@ import {
   sanitizeManualLotSize,
   sanitizeManualTradesCount,
 } from '@/utils/equity-trade-preset';
-import { resolveEaOwnerLogoUrl } from '@/utils/ea-brand-image';
+import { resolveEaOwnerLogoUrl, resolveEaOwnerProfileLogoUrl } from '@/utils/ea-brand-image';
 import {
   isAiChartTradingEnabled,
   isMartingaleEa,
@@ -421,6 +421,7 @@ interface AppState {
   resumePolling: () => void;
   /** After chart AI warmup finishes — reset poll cycle and resume DB polling (standard bots only). */
   resumePollingAfterChartWarmup: () => void;
+  refreshPrimaryEaProfile: () => Promise<void>;
   setUser: (user: User) => void;
   addEA: (ea: EA) => Promise<boolean>;
   removeEA: (id: string) => Promise<boolean>;
@@ -692,7 +693,7 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
   // Shared helper function to get EA image URL (same as home page)
   const getEAImageUrl = useCallback((ea: EA | null): string | null => {
     if (!ea?.userData?.owner) return null;
-    return resolveEaOwnerLogoUrl(ea.userData.owner.logo);
+    return resolveEaOwnerProfileLogoUrl(ea.userData.owner.logo);
   }, []);
 
   /** Reconcile primary licence with server; blur/stop bot when expired; remove robot when deleted. */
@@ -784,6 +785,12 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
       revalidatingLicenseRef.current = false;
     }
   }, []);
+
+  const refreshPrimaryEaProfile = useCallback(async (): Promise<void> => {
+    const snap = easRef.current;
+    if (snap.length === 0) return;
+    await refreshEaProfilesFromServer(snap);
+  }, [refreshEaProfilesFromServer]);
 
   useEffect(() => {
     let t: ReturnType<typeof setTimeout> | undefined;
@@ -3685,6 +3692,7 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
     pausePolling,
     resumePolling,
     resumePollingAfterChartWarmup,
+    refreshPrimaryEaProfile,
     setUser,
     addEA,
     removeEA,
@@ -3717,7 +3725,7 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
     isBotActive, signalLogs, isSignalsMonitoring, newSignal, showMT5SignalWebView, mt5Signal, mt5TradeOverlayMessage,
     databaseSignal, isDatabaseSignalsPolling, isPollingPaused,
     // Functions are stable due to useCallback, but removing from deps to prevent initialization issues
-    pausePolling, resumePolling, resumePollingAfterChartWarmup, setUser, addEA, removeEA, setActiveEA, setMTAccount, setMT4Account,
+    pausePolling, resumePolling, resumePollingAfterChartWarmup, refreshPrimaryEaProfile, setUser, addEA, removeEA, setActiveEA, setMTAccount, setMT4Account,
     setMT5Account, setMt5LotSizingMode, setMartingaleLotSource, setIsFirstTime, activateSymbol, activateMT4Symbol, activateMT5Symbol,
     deactivateSymbol, deactivateMT4Symbol, deactivateMT5Symbol, setBotActive, requestOverlayPermission,
     startSignalsMonitoring, stopSignalsMonitoring, clearSignalLogs, dismissNewSignal,

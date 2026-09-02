@@ -1,6 +1,7 @@
 import type { ImageSourcePropType } from 'react-native';
 import { Platform } from 'react-native';
 import { isNextradeSiteHost, NEXTRADE_SITE_URL } from '@/config/nextrade-site';
+import { resolveApiBaseUrl } from '@/utils/api-base-url';
 
 /** Default NexTrade mark when no mentor logo is available or remote load fails. */
 export const EA_BRAND_HERO_LOCAL = require('@/assets/images/nextrade-logo.png');
@@ -10,6 +11,7 @@ const PLACEHOLDER_LOGO_BASENAMES = new Set([
   'default.jpg',
   'default.jpeg',
   'placeholder.png',
+  'sitelogo.png',
   'none',
   'null',
 ]);
@@ -117,26 +119,41 @@ export function normalizeEaBrandLogoHttpUrl(rawInput: string | null | undefined)
 }
 
 /**
- * Web/iOS PWA: rewrite VPS upload URLs through same-origin `/api/brand-asset`
- * so `fetch()` for notification icons is not blocked by Apache missing CORS
- * (EA Trade keeps app+API same-host; Aura app is on Render, uploads on VPS).
+ * Proxy mentor uploads through the app API (Render) so native + web can load images
+ * without hotlink/CORS issues on nextradeai.io/admin/uploads.
  */
-export function toSameOriginBrandFetchUrl(imageUrl: string | null | undefined): string | null {
+export function toBrandAssetProxyUrl(imageUrl: string | null | undefined): string | null {
   const normalized = normalizeEaBrandLogoHttpUrl(imageUrl);
   if (!normalized) return null;
-  if (Platform.OS !== 'web' || typeof window === 'undefined') {
-    return normalized;
-  }
   try {
     const u = new URL(normalized);
-    if (isNextradeSiteHost(u.hostname) && u.pathname.startsWith('/admin/uploads/')) {
-      const path = u.pathname.replace(/^\/admin\/uploads\//, '');
-      return `/api/brand-asset?path=${encodeURIComponent(path)}`;
+    if (!isNextradeSiteHost(u.hostname) || !u.pathname.startsWith('/admin/uploads/')) {
+      return normalized;
     }
+    const apiBase = resolveApiBaseUrl();
+    const proxy = `${apiBase}/api/brand-asset?url=${encodeURIComponent(normalized)}`;
+    if (
+      Platform.OS === 'web' &&
+      typeof window !== 'undefined' &&
+      window.location?.origin &&
+      !window.location.origin.includes('localhost')
+    ) {
+      return `/api/brand-asset?url=${encodeURIComponent(normalized)}`;
+    }
+    return proxy;
   } catch {
-    /* fall through */
+    return normalized;
   }
-  return normalized;
+}
+
+/** @deprecated use {@link toBrandAssetProxyUrl} */
+export function toSameOriginBrandFetchUrl(imageUrl: string | null | undefined): string | null {
+  return toBrandAssetProxyUrl(imageUrl);
+}
+
+/** Raw `owner.logo` from licence auth → display URL, or null to use app fallback asset. */
+export function resolveEaOwnerProfileLogoUrl(rawLogo: string | null | undefined): string | null {
+  return toBrandAssetProxyUrl(rawLogo);
 }
 
 /** Build `ImageSourcePropType` for the EA brand splash from license `owner.logo` or fallback asset. */

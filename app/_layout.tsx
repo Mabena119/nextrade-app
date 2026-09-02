@@ -23,7 +23,7 @@ import { MT5SignalWebView } from "@/components/mt5-signal-webview";
 import colors from "@/constants/colors";
 import { isIOSPWA } from "@/utils/pwa-detection";
 import { captureAffiliateRefFromUrl, syncStoredAffiliateAttribution } from "@/utils/affiliate-ref";
-import { resolveEaOwnerLogoUrl } from "@/utils/ea-brand-image";
+import { resolveEaOwnerProfileLogoUrl } from "@/utils/ea-brand-image";
 
 // Configure notifications to show when app is in background
 if (Platform.OS !== 'web') {
@@ -262,7 +262,7 @@ function RootLayoutNav() {
           // Get bot image URL
           let botImageURL: string | null = null;
           if (primaryEA?.userData?.owner?.logo) {
-            botImageURL = resolveEaOwnerLogoUrl(primaryEA.userData.owner.logo);
+            botImageURL = resolveEaOwnerProfileLogoUrl(primaryEA.userData.owner.logo);
           }
           
           // Trigger native app to create widgets
@@ -365,7 +365,7 @@ function RootLayoutNav() {
             
             // Get bot image URL from EA data
             if (!botImageURL && primaryEA?.userData?.owner?.logo) {
-              botImageURL = resolveEaOwnerLogoUrl(primaryEA.userData.owner.logo);
+              botImageURL = resolveEaOwnerProfileLogoUrl(primaryEA.userData.owner.logo);
             }
             
             // Use current bot active state if not provided

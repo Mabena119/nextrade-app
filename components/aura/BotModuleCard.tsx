@@ -1,13 +1,21 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { Image } from 'expo-image';
 import { ChevronRight } from 'lucide-react-native';
 import { authColors } from '@/constants/auth-layout';
 import { type } from '@/constants/typography';
 import { useTheme } from '@/providers/theme-provider';
-import { EA_BRAND_HERO_LOCAL } from '@/utils/ea-brand-image';
+import {
+  EA_BRAND_CDN_HEADERS,
+  EA_BRAND_HERO_LOCAL,
+  resolveEaOwnerProfileLogoUrl,
+} from '@/utils/ea-brand-image';
 
 type Props = {
   name: string;
+  /** Raw `owner.logo` from licence auth. */
+  ownerLogo?: string | null;
+  /** @deprecated use ownerLogo */
   imageUri?: string | null;
   ownerName?: string | null;
   index?: number;
@@ -17,19 +25,25 @@ type Props = {
 
 export function BotModuleCard({
   name,
+  ownerLogo,
   imageUri,
   ownerName,
   onPress,
   testID,
 }: Props) {
   const { theme } = useTheme();
-  const [imageFailed, setImageFailed] = useState(false);
+  const rawLogo = ownerLogo ?? imageUri;
+  const remoteUrl = useMemo(() => resolveEaOwnerProfileLogoUrl(rawLogo), [rawLogo]);
+  const [useFallback, setUseFallback] = useState(() => !remoteUrl);
 
   useEffect(() => {
-    setImageFailed(false);
-  }, [imageUri]);
+    setUseFallback(!remoteUrl);
+  }, [remoteUrl]);
 
-  const showRemoteLogo = Boolean(imageUri) && !imageFailed;
+  const source =
+    !useFallback && remoteUrl
+      ? { uri: remoteUrl, headers: EA_BRAND_CDN_HEADERS }
+      : EA_BRAND_HERO_LOCAL;
 
   return (
     <TouchableOpacity
@@ -39,15 +53,12 @@ export function BotModuleCard({
       style={[styles.card, { borderColor: authColors.cardBorder, backgroundColor: authColors.card }]}
     >
       <View style={[styles.avatarShell, { borderColor: authColors.cardBorder }]}>
-        {showRemoteLogo ? (
-          <Image
-            source={{ uri: imageUri! }}
-            style={styles.avatar}
-            onError={() => setImageFailed(true)}
-          />
-        ) : (
-          <Image source={EA_BRAND_HERO_LOCAL} style={styles.avatar} resizeMode="cover" />
-        )}
+        <Image
+          source={source}
+          style={styles.avatar}
+          contentFit="cover"
+          onError={() => setUseFallback(true)}
+        />
       </View>
       <View style={styles.meta}>
         <Text style={[styles.name, { color: theme.colors.textPrimary }]} numberOfLines={1}>
@@ -80,15 +91,19 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1,
   },
-  avatar: { width: 44, height: 44 },
-  meta: { flex: 1, minWidth: 0 },
+  avatar: {
+    width: '100%',
+    height: '100%',
+  },
+  meta: {
+    flex: 1,
+    minWidth: 0,
+  },
   name: {
-    ...type.bodyMedium,
-    fontSize: 16,
-    letterSpacing: -0.2,
+    ...type.bodyStrong,
+    marginBottom: 2,
   },
   owner: {
     ...type.caption,
-    marginTop: 2,
   },
 });

@@ -18,6 +18,9 @@ import { LicenseBlockedOverlay } from '@/components/license-blocked-overlay';
 type Props = {
   name: string;
   ownerName?: string | null;
+  /** Raw `owner.logo` from licence auth. */
+  ownerLogo?: string | null;
+  /** @deprecated use ownerLogo */
   imageUrl?: string | null;
   isBotActive: boolean;
   licenseExpired: boolean;
@@ -30,6 +33,7 @@ type Props = {
 export function HomeWorkspaceHero({
   name,
   ownerName,
+  ownerLogo,
   imageUrl,
   isBotActive,
   licenseExpired,
@@ -54,7 +58,7 @@ export function HomeWorkspaceHero({
           accessibilityRole="button"
           accessibilityLabel="Automation logo, triple-tap to change theme"
         >
-          <EaHeroLogo imageUrl={imageUrl} size={logoSize} testID="ea-logo-hero" />
+          <EaHeroLogo ownerLogo={ownerLogo ?? imageUrl} size={logoSize} testID="ea-logo-hero" />
         </TouchableOpacity>
 
         <View style={[styles.statusPill, { borderColor: authColors.cardBorder, backgroundColor: authColors.card }]}>
