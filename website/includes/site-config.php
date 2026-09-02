@@ -21,10 +21,13 @@ if (!defined('NEXTRADE_AFFILIATE_URL')) {
     define('NEXTRADE_AFFILIATE_URL', NEXTRADE_SITE_URL . '/affiliate/');
 }
 if (!defined('NEXTRADE_SUPPORT_EMAIL')) {
-    define('NEXTRADE_SUPPORT_EMAIL', 'auraaiio@gmail.com');
+    define('NEXTRADE_SUPPORT_EMAIL', 'nextradeaiapp@gmail.com');
 }
 if (!defined('NEXTRADE_SHOP_PRICE_ZAR')) {
     define('NEXTRADE_SHOP_PRICE_ZAR', 499);
+}
+if (!defined('NEXTRADE_LOGO_URL')) {
+    define('NEXTRADE_LOGO_URL', '/assets/img/sitelogo.png');
 }
 
 /** Legacy aliases used by email + affiliate helpers. */

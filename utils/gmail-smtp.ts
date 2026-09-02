@@ -7,12 +7,12 @@ export type GmailSendPayload = {
   text?: string;
 };
 
-const ALLOWED_SUBJECT_PREFIX = 'Aura AI —';
+const ALLOWED_SUBJECT_PREFIX = 'NexTradeAI —';
 
 function getGmailConfig() {
   const user = process.env.GMAIL_USER || '';
   const pass = process.env.GMAIL_PASS || process.env.GMAIL_APP_PASSWORD || '';
-  const fromName = process.env.GMAIL_FROM_NAME || 'Aura AI App';
+  const fromName = process.env.GMAIL_FROM_NAME || 'NexTradeAI';
   if (!user || !pass) return null;
   return { user, pass, fromName };
 }
@@ -20,7 +20,7 @@ function getGmailConfig() {
 export function isAllowedRelayEmail(payload: GmailSendPayload): { ok: boolean; error?: string } {
   const subject = payload.subject.trim();
   if (!subject.startsWith(ALLOWED_SUBJECT_PREFIX)) {
-    return { ok: false, error: 'Subject must start with "Aura AI —"' };
+    return { ok: false, error: 'Subject must start with "NexTradeAI —"' };
   }
   const html = payload.html;
   if (!html.includes('Aura AI') && !html.includes('NexTradeAI') && !html.includes('nextradeai.io')) {
