@@ -10,9 +10,7 @@
  *
  * Body: { "email": "client@example.com" }
  *
- * Response 200:
- *   { "ok": true, "email": "...", "key": "ABC-...", "ea_name": "KILLZONE 3",
- *     "plan": "lifetime", "created": true, "email_sent": true }
+ * Response 200 (text/plain): ABC-DEF-GHI-JKL
  */
 require __DIR__ . '/bootstrap.php';
 require_once __DIR__ . '/warroom-lib.php';
@@ -50,24 +48,18 @@ try {
         nextrade_api_json(502, ['ok' => false, 'error' => $result['error'] ?? 'Failed to issue key']);
     }
 
-    $payload = [
-        'ok' => true,
-        'email' => $email,
-        'key' => $result['key'],
-        'ea_name' => $result['ea_name'] ?? nextrade_warroom_ea_name(),
-        'plan' => 'lifetime',
-        'created' => (bool) ($result['created'] ?? false),
-        'email_sent' => (bool) ($result['email_sent'] ?? false),
-    ];
-
-    if (!$payload['email_sent']) {
-        nextrade_api_json(502, array_merge($payload, [
+    if (empty($result['email_sent'])) {
+        nextrade_api_json(502, [
             'ok' => false,
             'error' => 'Key created but email could not be sent',
-        ]));
+            'key' => $result['key'],
+        ]);
     }
 
-    nextrade_api_json(200, $payload);
+    header('Content-Type: text/plain; charset=utf-8');
+    http_response_code(200);
+    echo $result['key'];
+    exit;
 } catch (Throwable $e) {
     error_log('[NexTradeAI API] warroom: ' . $e->getMessage());
     nextrade_api_json(500, ['ok' => false, 'error' => 'Server error']);

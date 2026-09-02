@@ -276,7 +276,7 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView
-      style={[styles.container, { backgroundColor: authColors.bg }]}
+      style={[styles.container, { backgroundColor: safeScreenBg }]}
       edges={['top', 'right', 'bottom', 'left']}
     >
       <ScrollView

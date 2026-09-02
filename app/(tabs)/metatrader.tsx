@@ -523,8 +523,8 @@ export default function MetaTraderScreen() {
   const stableBottomInset = useRef(Math.min(Math.max(insets.bottom, 0), 48));
   const softSurface = theme.colors.cardBackground;
   const formCardSurface = authColors.card;
-  const pageChromeBg = authColors.bg;
-  const pageSurface = authColors.bg;
+  const pageChromeBg = theme.colors.background;
+  const pageSurface = theme.colors.background;
   const toastSurface = authColors.card;
   const softBorder = authColors.cardBorder;
   const mt5TabGradActive = [`${theme.colors.accent}33`, `${theme.colors.accent}14`] as [string, string];

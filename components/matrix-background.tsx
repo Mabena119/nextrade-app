@@ -166,7 +166,7 @@ const MATRIX_RAIN_TINT: Record<
   { digit: string; textShadow: string }
 > = {
   green: { digit: '#00FF66', textShadow: 'rgba(0, 255, 102, 0.35)' },
-  red: { digit: '#FF3B4D', textShadow: 'rgba(255, 50, 75, 0.38)' },
+  red: { digit: '#B80000', textShadow: 'rgba(184, 0, 0, 0.42)' },
   purple: { digit: '#C084FC', textShadow: 'rgba(192, 132, 252, 0.42)' },
 };
 

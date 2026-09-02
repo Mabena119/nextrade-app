@@ -123,49 +123,123 @@ export const quietTheme: Theme = {
   },
 };
 
-/** Crimson accent — premium red on void black (third theme in cycle). */
+/** Blood red accent — deep crimson on void black (not pink). */
 export const redTheme: Theme = {
   name: 'red',
   isDark: true,
   colors: {
     background: '#000000',
-    backgroundSecondary: '#0C0406',
-    cardBackground: 'rgba(255, 45, 85, 0.06)',
+    backgroundSecondary: '#0A0202',
+    cardBackground: 'rgba(139, 0, 0, 0.08)',
 
-    primaryGradient: ['#1A0508', '#0C0406', '#000000'],
-    cardGradient: ['rgba(28, 6, 10, 0.94)', 'rgba(12, 4, 6, 0.88)', 'rgba(0, 0, 0, 0.92)'],
-    glowGradient: ['rgba(255, 45, 85, 0.32)', 'rgba(255, 45, 85, 0.12)', 'transparent'],
+    primaryGradient: ['#1A0303', '#0A0202', '#000000'],
+    cardGradient: ['rgba(26, 3, 3, 0.94)', 'rgba(10, 2, 2, 0.88)', 'rgba(0, 0, 0, 0.92)'],
+    glowGradient: ['rgba(139, 0, 0, 0.36)', 'rgba(139, 0, 0, 0.14)', 'transparent'],
 
     textPrimary: '#F2F4F7',
-    textSecondary: '#A89BA0',
-    textMuted: 'rgba(168, 155, 160, 0.72)',
+    textSecondary: '#A89A9A',
+    textMuted: 'rgba(168, 154, 154, 0.72)',
 
-    accent: '#FF2D55',
+    accent: '#B80000',
     onAccent: '#FFFFFF',
-    accentSecondary: '#FF6B85',
+    accentSecondary: '#E02020',
+    success: '#3AE374',
+    error: '#FF3333',
+    warning: '#FBBF24',
+
+    borderColor: 'rgba(139, 0, 0, 0.2)',
+    glowColor: 'rgba(184, 0, 0, 0.42)',
+    overlayColor: 'rgba(0, 0, 0, 0.9)',
+
+    statusActive: '#3AE374',
+    statusInactive: 'rgba(168, 154, 154, 0.45)',
+
+    navBackground: 'rgba(12, 2, 2, 0.94)',
+    navActiveColor: '#B80000',
+    navInactiveColor: 'rgba(168, 154, 154, 0.5)',
+  },
+};
+
+/** Amber accent — gold yellow on void black. */
+export const yellowTheme: Theme = {
+  name: 'yellow',
+  isDark: true,
+  colors: {
+    background: '#000000',
+    backgroundSecondary: '#0C0A04',
+    cardBackground: 'rgba(245, 197, 24, 0.06)',
+
+    primaryGradient: ['#141004', '#0C0A04', '#000000'],
+    cardGradient: ['rgba(20, 16, 4, 0.94)', 'rgba(12, 10, 4, 0.88)', 'rgba(0, 0, 0, 0.92)'],
+    glowGradient: ['rgba(245, 197, 24, 0.32)', 'rgba(245, 197, 24, 0.12)', 'transparent'],
+
+    textPrimary: '#F2F4F7',
+    textSecondary: '#A8A095',
+    textMuted: 'rgba(168, 160, 149, 0.72)',
+
+    accent: '#F5C518',
+    onAccent: '#000000',
+    accentSecondary: '#FFE566',
     success: '#3AE374',
     error: '#FF5C7A',
     warning: '#FBBF24',
 
-    borderColor: 'rgba(255, 45, 85, 0.14)',
-    glowColor: 'rgba(255, 45, 85, 0.38)',
+    borderColor: 'rgba(245, 197, 24, 0.16)',
+    glowColor: 'rgba(245, 197, 24, 0.38)',
     overlayColor: 'rgba(0, 0, 0, 0.9)',
 
     statusActive: '#3AE374',
-    statusInactive: 'rgba(168, 155, 160, 0.45)',
+    statusInactive: 'rgba(168, 160, 149, 0.45)',
 
-    navBackground: 'rgba(14, 4, 6, 0.94)',
-    navActiveColor: '#FF2D55',
-    navInactiveColor: 'rgba(168, 155, 160, 0.5)',
+    navBackground: 'rgba(14, 12, 4, 0.94)',
+    navActiveColor: '#F5C518',
+    navInactiveColor: 'rgba(168, 160, 149, 0.5)',
+  },
+};
+
+/** Emerald accent — vivid green on void black. */
+export const greenTheme: Theme = {
+  name: 'green',
+  isDark: true,
+  colors: {
+    background: '#000000',
+    backgroundSecondary: '#040C06',
+    cardBackground: 'rgba(34, 197, 94, 0.06)',
+
+    primaryGradient: ['#041408', '#040C06', '#000000'],
+    cardGradient: ['rgba(4, 20, 8, 0.94)', 'rgba(4, 12, 6, 0.88)', 'rgba(0, 0, 0, 0.92)'],
+    glowGradient: ['rgba(34, 197, 94, 0.32)', 'rgba(34, 197, 94, 0.12)', 'transparent'],
+
+    textPrimary: '#F2F4F7',
+    textSecondary: '#95A89E',
+    textMuted: 'rgba(149, 168, 158, 0.72)',
+
+    accent: '#22C55E',
+    onAccent: '#000000',
+    accentSecondary: '#4ADE80',
+    success: '#22C55E',
+    error: '#FF5C7A',
+    warning: '#FBBF24',
+
+    borderColor: 'rgba(34, 197, 94, 0.16)',
+    glowColor: 'rgba(34, 197, 94, 0.38)',
+    overlayColor: 'rgba(0, 0, 0, 0.9)',
+
+    statusActive: '#4ADE80',
+    statusInactive: 'rgba(149, 168, 158, 0.45)',
+
+    navBackground: 'rgba(4, 14, 8, 0.94)',
+    navActiveColor: '#22C55E',
+    navInactiveColor: 'rgba(149, 168, 158, 0.5)',
   },
 };
 
 /** @deprecated use `nextradeTheme` */
 export const auraTheme = nextradeTheme;
 
-export const ALL_THEMES: Theme[] = [nextradeTheme, quietTheme, redTheme];
+export const ALL_THEMES: Theme[] = [nextradeTheme, quietTheme, redTheme, yellowTheme, greenTheme];
 
-export type ThemeName = 'nextrade' | 'quiet' | 'red';
+export type ThemeName = 'nextrade' | 'quiet' | 'red' | 'yellow' | 'green';
 
 const LEGACY_THEME_MAP: Record<string, ThemeName> = {
   aura: 'nextrade',
@@ -173,15 +247,15 @@ const LEGACY_THEME_MAP: Record<string, ThemeName> = {
   purple: 'nextrade',
   red: 'red',
   matrixRed: 'red',
-  matrixYellow: 'nextrade',
+  matrixYellow: 'yellow',
   glass: 'nextrade',
-  matrix: 'nextrade',
-  matrixLogo: 'nextrade',
+  matrix: 'green',
+  matrixLogo: 'green',
   eaBrand: 'nextrade',
-  sunrise: 'nextrade',
+  sunrise: 'yellow',
   ocean: 'nextrade',
-  mint: 'nextrade',
-  lime: 'nextrade',
+  mint: 'green',
+  lime: 'green',
   white: 'quiet',
   pink: 'nextrade',
   black: 'quiet',
