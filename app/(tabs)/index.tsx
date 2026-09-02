@@ -2,7 +2,7 @@ import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, Dimensions, AppState, Modal, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Notifications from 'expo-notifications';
-import { Plus } from 'lucide-react-native';
+import { Plus, ChevronRight } from 'lucide-react-native';
 import { router, useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -10,7 +10,6 @@ import { useApp, type EA } from '@/providers/app-provider';
 import { getScreenBackgroundColor, useTheme } from '@/providers/theme-provider';
 import { FirstTimeWelcome } from '@/components/aura/FirstTimeWelcome';
 import { HomeWorkspaceHero } from '@/components/aura/HomeWorkspaceHero';
-import { PremiumLinkBanner } from '@/components/aura/PremiumCta';
 import { getHeroCardMinHeight } from '@/utils/app-viewport';
 import { BotModuleCard } from '@/components/aura/BotModuleCard';
 import { authColors } from '@/constants/auth-layout';
@@ -346,12 +345,28 @@ export default function HomeScreen() {
             </>
           )}
 
-          <PremiumLinkBanner
-            title="Link automation"
-            subtitle="Add another automation key"
+          <TouchableOpacity
+            style={[
+              styles.addEAButton,
+              {
+                borderColor: theme.colors.accent,
+                backgroundColor: theme.colors.accent,
+              },
+            ]}
             onPress={handleAddNewEA}
-            leadingIcon={<Plus color={theme.colors.onAccent} size={18} strokeWidth={2.2} />}
-          />
+            activeOpacity={0.88}
+          >
+            <View style={[styles.addIconWrap, { backgroundColor: `${theme.colors.onAccent}18` }]}>
+              <Plus color={theme.colors.onAccent} size={18} strokeWidth={2.2} />
+            </View>
+            <View style={styles.addEATextContainer}>
+              <Text style={[styles.addEATitle, { color: theme.colors.onAccent }]}>Link automation</Text>
+              <Text style={[styles.addEASubtitle, { color: `${theme.colors.onAccent}B8` }]}>
+                Add another automation key
+              </Text>
+            </View>
+            <ChevronRight color={`${theme.colors.onAccent}CC`} size={18} strokeWidth={1.8} />
+          </TouchableOpacity>
         </View>
       </ScrollView>
 
@@ -1030,5 +1045,35 @@ const styles = StyleSheet.create({
     numberOfLines: 2,
     textAlign: 'left',
     letterSpacing: 0.3,
+  },
+  addEAButton: {
+    borderRadius: 24,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    marginBottom: 24,
+    marginTop: 16,
+    borderWidth: 1.5,
+    gap: 12,
+  },
+  addIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  addEATextContainer: {
+    flex: 1,
+  },
+  addEATitle: {
+    ...type.title,
+    fontSize: 16,
+    letterSpacing: -0.2,
+  },
+  addEASubtitle: {
+    ...type.caption,
+    marginTop: 3,
   },
 });

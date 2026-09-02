@@ -9,7 +9,6 @@ import {
 } from 'react-native';
 import { Activity, Play, Square, Trash2 } from 'lucide-react-native';
 import { LuxPulse } from '@/components/aura';
-import { PremiumActionButton } from '@/components/aura/PremiumCta';
 import { authColors } from '@/constants/auth-layout';
 import { type } from '@/constants/typography';
 import { useTheme } from '@/providers/theme-provider';
@@ -88,19 +87,33 @@ export function HomeWorkspaceHero({
       </View>
 
       <View style={[styles.mainCard, { borderColor: authColors.cardBorder, backgroundColor: authColors.card }]}>
-        <PremiumActionButton
+        <TouchableOpacity
           testID="action-start"
-          label={isBotActive ? 'Stop automation' : 'Start automation'}
-          active={isBotActive}
+          style={[
+            styles.primaryCta,
+            {
+              backgroundColor: isBotActive ? 'transparent' : accent,
+              borderColor: accent,
+            },
+            isBotActive && styles.primaryCtaActive,
+          ]}
           onPress={onToggleBot}
-          icon={
-            isBotActive ? (
-              <Square color={accent} size={18} strokeWidth={2.2} />
-            ) : (
-              <Play color={theme.colors.onAccent} size={18} strokeWidth={2.2} fill={theme.colors.onAccent} />
-            )
-          }
-        />
+          activeOpacity={0.88}
+        >
+          {isBotActive ? (
+            <Square color={accent} size={18} strokeWidth={2.2} />
+          ) : (
+            <Play color={theme.colors.onAccent} size={18} strokeWidth={2.2} fill={theme.colors.onAccent} />
+          )}
+          <Text
+            style={[
+              styles.primaryCtaText,
+              { color: isBotActive ? accent : theme.colors.onAccent },
+            ]}
+          >
+            {isBotActive ? 'Stop automation' : 'Start automation'}
+          </Text>
+        </TouchableOpacity>
 
         <View style={styles.secondaryRow}>
           <TouchableOpacity
@@ -217,7 +230,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 24,
     padding: 18,
-    gap: 12,
     ...Platform.select({
       ios: {
         shadowColor: '#000',
@@ -228,6 +240,22 @@ const styles = StyleSheet.create({
       android: { elevation: 8 },
       default: {},
     }),
+  },
+  primaryCta: {
+    height: 52,
+    borderRadius: 999,
+    borderWidth: 1.5,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
+  primaryCtaActive: {
+    backgroundColor: 'transparent',
+  },
+  primaryCtaText: {
+    ...type.button,
+    fontSize: 16,
   },
   secondaryRow: {
     flexDirection: 'row',
