@@ -7,7 +7,7 @@ import {
   Platform,
   useWindowDimensions,
 } from 'react-native';
-import { Activity, Play, Square, Trash2, Radio } from 'lucide-react-native';
+import { Activity, Play, Square, Trash2 } from 'lucide-react-native';
 import { LuxPulse } from '@/components/aura';
 import { authColors } from '@/constants/auth-layout';
 import { type } from '@/constants/typography';
@@ -15,19 +15,12 @@ import { useTheme } from '@/providers/theme-provider';
 import { EaHeroLogo } from '@/components/aura/EaHeroLogo';
 import { LicenseBlockedOverlay } from '@/components/license-blocked-overlay';
 
-export type AutomationLogLine = {
-  id: string;
-  message: string;
-  at: Date;
-};
-
 type Props = {
   name: string;
   ownerName?: string | null;
   imageUrl?: string | null;
   isBotActive: boolean;
   licenseExpired: boolean;
-  automationLogs?: AutomationLogLine[];
   onLogoTap: () => void;
   onToggleBot: () => void;
   onQuotes: () => void;
@@ -40,7 +33,6 @@ export function HomeWorkspaceHero({
   imageUrl,
   isBotActive,
   licenseExpired,
-  automationLogs = [],
   onLogoTap,
   onToggleBot,
   onQuotes,
@@ -51,7 +43,6 @@ export function HomeWorkspaceHero({
   const accent = theme.colors.accent;
   const ownerLabel = ((ownerName || '').trim() || 'Mentor').toUpperCase();
   const logoSize = Math.min(248, Math.max(184, Math.round(width * 0.58)));
-  const recentLogs = automationLogs.slice(-4);
 
   return (
     <View style={styles.wrap}>
@@ -69,32 +60,9 @@ export function HomeWorkspaceHero({
         <View style={[styles.statusPill, { borderColor: authColors.cardBorder, backgroundColor: authColors.card }]}>
           <LuxPulse active={isBotActive} tone={isBotActive ? 'success' : 'muted'} />
           <Text style={[styles.statusText, { color: theme.colors.textPrimary }]}>
-            {isBotActive ? 'Watching for signals' : 'Standby'}
+            {isBotActive ? 'Running' : 'Standby'}
           </Text>
         </View>
-
-        {isBotActive && recentLogs.length > 0 && (
-          <View
-            style={[
-              styles.activityLog,
-              { borderColor: `${accent}33`, backgroundColor: `${accent}08` },
-            ]}
-          >
-            <View style={styles.activityLogHeader}>
-              <Radio color={accent} size={12} strokeWidth={2.2} />
-              <Text style={[styles.activityLogTitle, { color: accent }]}>Activity</Text>
-            </View>
-            {recentLogs.map((line) => (
-              <Text
-                key={line.id}
-                style={[styles.activityLogLine, { color: theme.colors.textMuted }]}
-                numberOfLines={2}
-              >
-                {line.message}
-              </Text>
-            ))}
-          </View>
-        )}
 
         <Text testID="ea-title" style={[styles.botName, { color: theme.colors.textPrimary }]} numberOfLines={2}>
           {name}
@@ -233,31 +201,6 @@ const styles = StyleSheet.create({
   statusText: {
     ...type.caption,
     fontFamily: type.bodyMedium.fontFamily,
-  },
-  activityLog: {
-    width: '100%',
-    marginBottom: 14,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: 14,
-    borderWidth: 1,
-    gap: 4,
-  },
-  activityLogHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 2,
-  },
-  activityLogTitle: {
-    ...type.label,
-    fontSize: 10,
-    letterSpacing: 1.2,
-  },
-  activityLogLine: {
-    ...type.caption,
-    fontSize: 12,
-    lineHeight: 16,
   },
   botName: {
     ...type.title,

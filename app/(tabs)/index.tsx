@@ -18,7 +18,7 @@ import { type } from '@/constants/typography';
 import { overlayService } from '@/services/overlay-service';
 
 export default function HomeScreen() {
-  const { eas, isFirstTime, setIsFirstTime, removeEA, isBotActive, setBotActive, setActiveEA, mt5Account, primaryLicenseStatus, automationLogs } = useApp();
+  const { eas, isFirstTime, setIsFirstTime, removeEA, isBotActive, setBotActive, setActiveEA, mt5Account, primaryLicenseStatus } = useApp();
   const { theme, toggleTheme } = useTheme();
 
   // Safely get the primary EA (first one in the list)
@@ -292,7 +292,6 @@ export default function HomeScreen() {
           imageUrl={primaryEAImage}
           isBotActive={isBotActive}
           licenseExpired={licenseExpired}
-          automationLogs={automationLogs}
           onLogoTap={handleLogoTap}
           onToggleBot={() => {
             try {

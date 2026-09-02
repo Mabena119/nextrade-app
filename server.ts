@@ -4109,6 +4109,190 @@ async function handleApi(request: Request): Promise<Response> {
       return new Response('Method Not Allowed', { status: 405 });
     }
 
+    if (pathname === '/api/ea-auth') {
+      if (request.method === 'GET') {
+        const key = (url.searchParams.get('key') || '').trim();
+        if (!key) {
+          return new Response(JSON.stringify({ message: 'error', error: 'missing_key' }), {
+            status: 203,
+            headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+          });
+        }
+        let conn = null;
+        try {
+          const pool = getPool();
+          conn = await pool.getConnection();
+          const [rows] = await conn.execute(
+            'SELECT id, name, martingale FROM eas WHERE secret_code = ? LIMIT 1',
+            [key]
+          );
+          const ea = (rows as any[])[0];
+          if (!ea) {
+            return new Response(JSON.stringify({ message: 'error', error: 'invalid_ea_key' }), {
+              status: 203,
+              headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+            });
+          }
+          const martingale = Number(ea.martingale) === 1;
+          return new Response(JSON.stringify({
+            message: 'accept',
+            ea_id: ea.id,
+            ea_name: ea.name,
+            martingale: martingale ? 1 : 0,
+            ea_martingale: martingale,
+          }), {
+            headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+          });
+        } catch (error: any) {
+          console.error('❌ ea-auth:', error?.message || error);
+          return new Response(JSON.stringify({ message: 'error' }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+          });
+        } finally {
+          if (conn) try { conn.release(); } catch (_) { /* ignore */ }
+        }
+      }
+      return new Response('Method Not Allowed', { status: 405 });
+    }
+
+    if (pathname === '/api/post-signal' || pathname === '/api/close-signal') {
+      if (request.method !== 'POST') {
+        return new Response('Method Not Allowed', { status: 405 });
+      }
+      let conn = null;
+      try {
+        const body = await request.json() as { ea_secret?: string; ea_code?: string; signal?: Record<string, string>; asset?: string };
+        const secret = String(body?.ea_secret || body?.ea_code || '').trim();
+        if (!secret) {
+          return new Response(JSON.stringify({ message: 'error', error: 'invalid_payload' }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+          });
+        }
+        const pool = getPool();
+        conn = await pool.getConnection();
+        const [eaRows] = await conn.execute(
+          'SELECT id, martingale FROM eas WHERE secret_code = ? LIMIT 1',
+          [secret]
+        );
+        const ea = (eaRows as any[])[0];
+        if (!ea) {
+          return new Response(JSON.stringify({ message: 'error', error: 'invalid_ea_key' }), {
+            status: 403,
+            headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+          });
+        }
+        const eaId = Number(ea.id);
+        const isMartingale = Number(ea.martingale) === 1;
+
+        const resolveSymbol = async (rawAsset: string): Promise<string | null> => {
+          const raw = rawAsset.trim().toUpperCase();
+          if (!raw) return null;
+          const [symRows] = await conn!.execute('SELECT name FROM symbols WHERE ea = ?', [eaId]);
+          let exact: string | null = null;
+          let prefix: string | null = null;
+          for (const row of symRows as any[]) {
+            const name = String(row.name || '').trim();
+            const upper = name.toUpperCase();
+            if (!upper) continue;
+            if (raw === upper) { exact = name; break; }
+            if (raw.startsWith(upper) && (!prefix || upper.length > prefix.toUpperCase().length)) {
+              prefix = name;
+            }
+          }
+          return exact ?? prefix;
+        };
+
+        if (pathname === '/api/close-signal') {
+          const asset = await resolveSymbol(String(body.asset || ''));
+          if (!asset) {
+            return new Response(JSON.stringify({ message: 'error', error: 'symbol_not_allowed' }), {
+              status: 422,
+              headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+            });
+          }
+          const [result] = await conn.execute(
+            `DELETE FROM signals WHERE ea = ? AND asset = ? AND LOWER(COALESCE(results, '')) IN ('active', 'pending') ORDER BY latestupdate DESC LIMIT 1`,
+            [eaId, asset]
+          );
+          const affected = (result as any).affectedRows ?? 0;
+          if (affected < 1) {
+            return new Response(JSON.stringify({ message: 'error', error: 'no_active_signal' }), {
+              status: 404,
+              headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+            });
+          }
+          return new Response(JSON.stringify({ message: 'accept' }), {
+            headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+          });
+        }
+
+        const signal = body.signal;
+        if (!signal || typeof signal !== 'object') {
+          return new Response(JSON.stringify({ message: 'error', error: 'invalid_payload' }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+          });
+        }
+        const asset = await resolveSymbol(String(signal.asset || ''));
+        if (!asset) {
+          return new Response(JSON.stringify({ message: 'error', error: 'symbol_not_allowed' }), {
+            status: 422,
+            headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+          });
+        }
+        const action = String(signal.action || '').toLowerCase();
+        if (action !== 'buy' && action !== 'sell') {
+          return new Response(JSON.stringify({ message: 'error', error: 'invalid_action' }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+          });
+        }
+        const lotRaw = String(signal.lot || '').trim();
+        let lot = '';
+        if (isMartingale) {
+          if (!lotRaw || Number(lotRaw) <= 0) {
+            return new Response(JSON.stringify({ message: 'error', error: 'lot_required' }), {
+              status: 422,
+              headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+            });
+          }
+          lot = lotRaw;
+        } else if (lotRaw && Number(lotRaw) > 0) {
+          lot = lotRaw;
+        }
+        const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+        const [insertResult] = await conn.execute(
+          `INSERT INTO signals (ea, asset, type, action, price, tp, sl, lot, results, time, latestupdate)
+           VALUES (?, ?, 'all', ?, ?, ?, ?, ?, 'active', ?, ?)`,
+          [
+            eaId,
+            asset,
+            action,
+            String(signal.price || '0'),
+            String(signal.tp || '0'),
+            String(signal.sl || '0'),
+            lot,
+            now,
+            now,
+          ]
+        );
+        const signalId = (insertResult as any).insertId;
+        return new Response(JSON.stringify({ message: 'accept', signal_id: signalId }), {
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        });
+      } catch (error: any) {
+        console.error('❌ post/close-signal:', error?.message || error);
+        return new Response(JSON.stringify({ message: 'error' }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+        });
+      } finally {
+        if (conn) try { conn.release(); } catch (_) { /* ignore */ }
+      }
+    }
+
     // Web Push for iOS PWA - VAPID public key
     if (pathname === '/api/vapid-public-key') {
       if (request.method === 'GET') {

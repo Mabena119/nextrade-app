@@ -115,12 +115,6 @@ export interface DatabaseSignal {
   lot?: string;
 }
 
-export type AutomationLogLine = {
-  id: string;
-  message: string;
-  at: Date;
-};
-
 // Android background monitoring removed - using JavaScript polling only for cross-platform compatibility
 
 // Lazy import helpers - defined outside component to prevent bundling issues
@@ -411,7 +405,6 @@ interface AppState {
   martingaleLotSource: MartingaleLotSource;
   isBotActive: boolean;
   signalLogs: SignalLog[];
-  automationLogs: AutomationLogLine[];
   isSignalsMonitoring: boolean;
   newSignal: SignalLog | null;
   showMT5SignalWebView: boolean;
@@ -473,7 +466,6 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
   const martingaleLotSourceRef = useRef<MartingaleLotSource>('signal');
   const [isBotActive, setIsBotActive] = useState<boolean>(false);
   const [signalLogs, setSignalLogs] = useState<SignalLog[]>([]);
-  const [automationLogs, setAutomationLogs] = useState<AutomationLogLine[]>([]);
   const [isSignalsMonitoring, setIsSignalsMonitoring] = useState<boolean>(false);
   const [newSignal, setNewSignal] = useState<SignalLog | null>(null);
   const [showMT5SignalWebView, setShowMT5SignalWebView] = useState<boolean>(false);
@@ -1798,19 +1790,6 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
     }
   }, []);
 
-  const appendAutomationLog = useCallback((message: string) => {
-    const trimmed = message.trim();
-    if (!trimmed) return;
-    console.log('[Automation]', trimmed);
-    setAutomationLogs((prev) => {
-      const next = [
-        ...prev,
-        { id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, message: trimmed, at: new Date() },
-      ];
-      return next.slice(-12);
-    });
-  }, []);
-
   const handleDatabaseSignalRef = useRef<
     ((signal: DatabaseSignal, options?: { isActiveOnStart?: boolean }) => void) | null
   >(null);
@@ -1835,13 +1814,6 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
       setIsBotActive(active);
       await AsyncStorage.setItem('isBotActive', JSON.stringify(active));
       console.log('Bot active state saved:', active);
-
-      if (active) {
-        appendAutomationLog('Automation started — logging in…');
-        appendAutomationLog('Waiting to execute active signal…');
-      } else {
-        setAutomationLogs([]);
-      }
 
       // Start/stop Android native background monitoring service (only when trades can run)
       const primaryEA = Array.isArray(eas) && eas.length > 0 ? eas[0] : null;
@@ -2050,18 +2022,15 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
           await startDatabaseSignalPollingRef.current?.();
 
           if (primaryEAForPolling?.id) {
-            appendAutomationLog('Checking for active copy-trade signal…');
             try {
               const dbService = await getDatabaseSignalsPollingService();
               const activeSignal = await dbService?.fetchActiveSignal?.(String(primaryEAForPolling.id));
               if (activeSignal) {
                 handleDatabaseSignalRef.current?.(activeSignal, { isActiveOnStart: true });
-              } else {
-                appendAutomationLog('No active signal yet — watching for new signals…');
               }
+              void dbService?.pollNow?.();
             } catch (err) {
               console.error('Active signal check on bot start:', err);
-              appendAutomationLog('Watching for active signals…');
             }
           }
         } else if (
@@ -2116,7 +2085,6 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
     tradeLevelsFingerprint,
     primaryLicenseStatus,
     clearChartWarmupCooldown,
-    appendAutomationLog,
   ]);
   // Note: pausePolling is intentionally not in deps - it's defined after this callback
   // and is only used in setTimeout callbacks which will have the correct reference
@@ -2272,9 +2240,6 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
       if (!shouldProcess) {
         if (reason === 'already_processed') {
           console.log('⏭️ Signal already processed, ignoring:', signal.asset, 'ID:', signal.id);
-          if (isActiveOpen && options?.isActiveOnStart) {
-            appendAutomationLog('Active signal already handled — watching for new signals…');
-          }
         } else if (reason === 'cooldown' && cooldownRemaining) {
           console.log(
             '⏸️ Symbol in cooldown (' + cooldownRemaining.toFixed(1) + 's remaining), ignoring:',
@@ -2291,9 +2256,6 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
             'ID:',
             signal.id
           );
-          if (isActiveOpen && options?.isActiveOnStart) {
-            appendAutomationLog('Active signal expired — watching for new signals…');
-          }
         }
         return;
       }
@@ -2304,12 +2266,6 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
         'ID:',
         signal.id
       );
-
-      if (isActiveOpen) {
-        appendAutomationLog(
-          `Active signal — ${signal.asset} ${String(signal.action || '').toUpperCase()} — executing…`
-        );
-      }
 
       setDatabaseSignal(signal);
       const signalLog: SignalLog = {
@@ -2346,9 +2302,6 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
             quoteSetNotFoundMessage(signal.asset),
             '(not on MT5 Quotes)'
           );
-          if (isActiveOpen) {
-            appendAutomationLog(`${signal.asset} not on Quotes — signal skipped`);
-          }
         } else {
           dbBootstrapSessionRef.current.gotProcessableDbSignal = true;
           console.log('🚀 Opening MT5 WebView for database signal:', onMt5.symbol);
@@ -2368,17 +2321,11 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
           '⏭️ Database signal skipped — symbol not configured on Quotes (AI idle window continues):',
           signal.asset
         );
-        if (isActiveOpen) {
-          appendAutomationLog(`${signal.asset} not configured on Quotes — watching…`);
-        }
       } else {
         console.log(
           '⏭️ Database signal skipped — MT5 not connected (AI idle window continues):',
           signal.asset
         );
-        if (isActiveOpen) {
-          appendAutomationLog('Link MT5 account to execute active signals');
-        }
       }
 
       setNewSignal(signalLog);
@@ -2462,7 +2409,6 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
       });
       setIsDatabaseSignalsPolling(true);
       console.log('✅ JavaScript polling started for signal monitoring');
-      appendAutomationLog('Signal monitor live — watching for active signals…');
     }
   }, [
     eas,
@@ -2475,7 +2421,6 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
     tradeLevelsFingerprint,
     pausePolling,
     scheduleOpenMT5ExecutionOverlay,
-    appendAutomationLog,
   ]);
 
   startDatabaseSignalPollingRef.current = startDatabaseSignalPolling;
@@ -3794,7 +3739,6 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
     martingaleLotSource,
     isBotActive,
     signalLogs,
-    automationLogs,
     isSignalsMonitoring,
     newSignal,
     showMT5SignalWebView,
@@ -3835,7 +3779,7 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
     isSymbolConfiguredForTrading,
   }), [
     user, eas, mtAccount, mt4Account, mt5Account, isFirstTime, primaryLicenseStatus, activeSymbols, mt4Symbols, mt5Symbols, mt5LotSizingMode, martingaleLotSource,
-    isBotActive, signalLogs, automationLogs, isSignalsMonitoring, newSignal, showMT5SignalWebView, mt5Signal, mt5TradeOverlayMessage,
+    isBotActive, signalLogs, isSignalsMonitoring, newSignal, showMT5SignalWebView, mt5Signal, mt5TradeOverlayMessage,
     databaseSignal, isDatabaseSignalsPolling, isPollingPaused,
     // Functions are stable due to useCallback, but removing from deps to prevent initialization issues
     pausePolling, resumePolling, resumePollingAfterChartWarmup, setUser, addEA, removeEA, setActiveEA, setMTAccount, setMT4Account,
