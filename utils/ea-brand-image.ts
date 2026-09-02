@@ -2,8 +2,8 @@ import type { ImageSourcePropType } from 'react-native';
 import { Platform } from 'react-native';
 import { isNextradeSiteHost, NEXTRADE_SITE_URL } from '@/config/nextrade-site';
 
-/** Default EA app icon shown when no connected bot logo is available or remote load fails. */
-export const EA_BRAND_HERO_LOCAL = require('@/assets/images/icon.png');
+/** Default NexTrade mark when no mentor logo is available or remote load fails. */
+export const EA_BRAND_HERO_LOCAL = require('@/assets/images/nextrade-logo.png');
 
 const PLACEHOLDER_LOGO_BASENAMES = new Set([
   'default.png',

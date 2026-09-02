@@ -28,7 +28,6 @@ export default function HomeScreen() {
 
   console.log('HomeScreen render - EAs count:', eas?.length || 0, 'Primary EA:', primaryEA?.name || 'none');
 
-  const [logoError, setLogoError] = useState<boolean>(false);
   const [hasCheckedAuth, setHasCheckedAuth] = useState<boolean>(false);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
 
@@ -147,10 +146,6 @@ export default function HomeScreen() {
   }, []);
 
   const primaryEAImage = useMemo(() => getEAImageUrl(primaryEA), [getEAImageUrl, primaryEA]);
-
-  useEffect(() => {
-    setLogoError(false);
-  }, [primaryEAImage]);
 
   const handleStartNow = async () => {
     try {
@@ -295,8 +290,6 @@ export default function HomeScreen() {
             null
           }
           imageUrl={primaryEAImage}
-          logoError={logoError}
-          onPhotoError={() => setLogoError(true)}
           isBotActive={isBotActive}
           licenseExpired={licenseExpired}
           onLogoTap={handleLogoTap}

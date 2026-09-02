@@ -12,15 +12,13 @@ import { LuxPulse } from '@/components/aura';
 import { authColors } from '@/constants/auth-layout';
 import { type } from '@/constants/typography';
 import { useTheme } from '@/providers/theme-provider';
-import { EABrandProfileMedia } from '@/components/ea-brand-profile-media';
+import { EaHeroLogo } from '@/components/aura/EaHeroLogo';
 import { LicenseBlockedOverlay } from '@/components/license-blocked-overlay';
 
 type Props = {
   name: string;
   ownerName?: string | null;
   imageUrl?: string | null;
-  logoError: boolean;
-  onPhotoError: () => void;
   isBotActive: boolean;
   licenseExpired: boolean;
   onLogoTap: () => void;
@@ -33,8 +31,6 @@ export function HomeWorkspaceHero({
   name,
   ownerName,
   imageUrl,
-  logoError,
-  onPhotoError,
   isBotActive,
   licenseExpired,
   onLogoTap,
@@ -58,19 +54,7 @@ export function HomeWorkspaceHero({
           accessibilityRole="button"
           accessibilityLabel="Automation logo, triple-tap to change theme"
         >
-          <EABrandProfileMedia
-            fillParent
-            brandImageUrl={imageUrl}
-            photoUnavailable={logoError}
-            preferLoopingVideo={false}
-            contentFit="cover"
-            fallbackContentFit="cover"
-            mediaStyle={styles.logoMedia}
-            onPhotoError={onPhotoError}
-            fallbackSource={require('@/assets/images/icon.png')}
-            testIDPhoto="ea-logo-hero-fade"
-            testIDVideo="ea-logo-hero-video"
-          />
+          <EaHeroLogo imageUrl={imageUrl} size={logoSize} testID="ea-logo-hero" />
         </TouchableOpacity>
 
         <View style={[styles.statusPill, { borderColor: authColors.cardBorder, backgroundColor: authColors.card }]}>
@@ -194,6 +178,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     backgroundColor: '#0A0A0B',
     marginBottom: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
     ...Platform.select({
       ios: {
         shadowColor: '#000',
@@ -204,10 +190,6 @@ const styles = StyleSheet.create({
       android: { elevation: 8 },
       default: {},
     }),
-  },
-  logoMedia: {
-    width: '100%',
-    height: '100%',
   },
   statusPill: {
     flexDirection: 'row',
