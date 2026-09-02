@@ -89,7 +89,6 @@ class OverlayWindowModule(private val reactContext: ReactApplicationContext) :
     private const val KEY_PENDING_TYPE = "pending_type"
     private const val KEY_PENDING_JSON = "pending_payload"
     private const val KEY_LAST_WARMUP_AT = "last_chart_warmup_at_ms"
-    private const val KEY_OVERLAY_HANDOFF = "overlay_handoff_at_ms"
     private const val EMPTY_POLLS_BEFORE_WARMUP = 10
     private const val CHART_WARMUP_COOLDOWN_MS = 45L * 60L * 1000L
     private const val EVENT_EXECUTE_SIGNAL = "EaOverlayExecuteSignal"
@@ -736,18 +735,8 @@ class OverlayWindowModule(private val reactContext: ReactApplicationContext) :
       promise.resolve(null)
       return
     }
-    val handoffAt = prefs.getLong(KEY_OVERLAY_HANDOFF, 0L)
-    if (type == "signal" && handoffAt > 0L) {
-      prefs.edit()
-        .remove(KEY_PENDING_TYPE)
-        .remove(KEY_PENDING_JSON)
-        .remove(KEY_OVERLAY_HANDOFF)
-        .apply()
-      promise.resolve(null)
-      return
-    }
     val payload = prefs.getString(KEY_PENDING_JSON, null)
-    prefs.edit().remove(KEY_PENDING_TYPE).remove(KEY_PENDING_JSON).remove(KEY_OVERLAY_HANDOFF).apply()
+    prefs.edit().remove(KEY_PENDING_TYPE).remove(KEY_PENDING_JSON).apply()
     val map = Arguments.createMap()
     map.putString("type", type)
     if (!payload.isNullOrEmpty()) {
@@ -833,20 +822,15 @@ class OverlayWindowModule(private val reactContext: ReactApplicationContext) :
     val arr = sigJson.optJSONArray("signals") ?: JSONArray()
 
     if (arr.length() > 0) {
-      val payload = arr.toString()
       prefs.edit()
         .putString(KEY_LAST_POLL, isoUtc(System.currentTimeMillis()))
         .putInt(KEY_EMPTY_COUNT, 0)
         .putString(KEY_PENDING_TYPE, "signal")
-        .putString(KEY_PENDING_JSON, payload)
-        .putLong(KEY_OVERLAY_HANDOFF, System.currentTimeMillis())
+        .putString(KEY_PENDING_JSON, arr.toString())
         .apply()
       stopNativeBackgroundPollingInternal()
-      UiThreadUtil.runOnUiThread {
-        showTradeOverlayFromPayload(payload)
-      }
-      emitOverlayExecuteSignal(payload)
-      Log.i(TAG, "Signal found — overlay trade card shown, app stays in background")
+      bringMainActivityToFront("signal")
+      Log.i(TAG, "Signal found — bringing main activity to front for WebView execution")
     } else {
       val nextCount = prefs.getInt(KEY_EMPTY_COUNT, 0) + 1
       prefs.edit()
@@ -867,7 +851,6 @@ class OverlayWindowModule(private val reactContext: ReactApplicationContext) :
         prefs.edit()
           .putString(KEY_PENDING_TYPE, "chart_warmup")
           .remove(KEY_PENDING_JSON)
-          .remove(KEY_OVERLAY_HANDOFF)
           .putInt(KEY_EMPTY_COUNT, 0)
           .apply()
         stopNativeBackgroundPollingInternal()

@@ -9,7 +9,6 @@ import {
   ScrollView,
   BackHandler,
   InteractionManager,
-  AppState,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -270,12 +269,6 @@ export function MT5SignalWebView({ visible, signal, onClose }: MT5SignalWebViewP
   const auraAccentSoft = theme.colors.accentSecondary || '#38BDF8';
   const [loading, setLoading] = useState<boolean>(true);
   const [currentStep, setCurrentStep] = useState<string>('Logging in — waiting to execute active signal…');
-  const [appState, setAppState] = useState(AppState.currentState);
-
-  useEffect(() => {
-    const sub = AppState.addEventListener('change', setAppState);
-    return () => sub.remove();
-  }, []);
   const [chartAiResult, setChartAiResult] = useState<ChartAnalysisResult | null>(null);
   const [chartAiError, setChartAiError] = useState<string | null>(null);
   const [chartAiAnalyzing, setChartAiAnalyzing] = useState(false);
@@ -375,9 +368,6 @@ export function MT5SignalWebView({ visible, signal, onClose }: MT5SignalWebViewP
       });
     }
     onClose();
-    if (Platform.OS === 'android') {
-      void import('@/services/overlay-service').then(({ overlayService }) => overlayService.hideTradeOverlay());
-    }
   }, [onClose, resumePolling, resumeFromWarmup]);
 
   useEffect(() => {
@@ -3534,33 +3524,8 @@ export function MT5SignalWebView({ visible, signal, onClose }: MT5SignalWebViewP
       if (webViewRef.current) {
         webViewRef.current = null;
       }
-      if (Platform.OS === 'android') {
-        void import('@/services/overlay-service').then(({ overlayService }) => overlayService.hideTradeOverlay());
-      }
     }
   }, [visible]);
-
-  useEffect(() => {
-    if (!visible || Platform.OS !== 'android' || !signal) return;
-    if (appState === 'active') {
-      void import('@/services/overlay-service').then(({ overlayService }) => overlayService.hideTradeOverlay());
-      return;
-    }
-    void import('@/services/overlay-service').then(({ overlayService }) =>
-      overlayService.showTradeOverlay(
-        signal.asset || '',
-        signal.action || '',
-        currentStep || 'Connecting to server…'
-      )
-    );
-  }, [visible, appState, signal?.id, signal?.asset, signal?.action, currentStep]);
-
-  useEffect(() => {
-    if (!visible || Platform.OS !== 'android' || appState === 'active') return;
-    void import('@/services/overlay-service').then(({ overlayService }) =>
-      overlayService.updateTradeOverlayStatus(currentStep || 'Working…')
-    );
-  }, [visible, appState, currentStep]);
 
   if (!visible) {
     return null;
@@ -3659,24 +3624,20 @@ export function MT5SignalWebView({ visible, signal, onClose }: MT5SignalWebViewP
       ? displayStatusForChartWarmup(currentStep || (loading ? 'Linking terminal…' : 'Preparing scan…'))
       : displayStatusForCopyExecution(currentStep, loading);
 
-  const useNativeOverlayHud = Platform.OS === 'android' && appState !== 'active';
-
   /** Execution HUD docks above tab bar; chart warmup uses same shell on the app root. */
   const signalOverlay = (
     <View style={styles.overlayContainer} pointerEvents="box-none">
-      {!useNativeOverlayHud ? (
-        <ExecutionHud
-          variant={isChartWarmupSignal ? 'chart-warmup' : 'copy'}
-          symbol={executionSymbol || signal.asset}
-          action={signal.action}
-          statusLine={statusLine}
-          loading={loading}
-          robotName={robotName}
-          accent={auraAccent}
-          accentSoft={auraAccentSoft}
-          onClose={handleRequestClose}
-        />
-      ) : null}
+      <ExecutionHud
+        variant={isChartWarmupSignal ? 'chart-warmup' : 'copy'}
+        symbol={executionSymbol || signal.asset}
+        action={signal.action}
+        statusLine={statusLine}
+        loading={loading}
+        robotName={robotName}
+        accent={auraAccent}
+        accentSoft={auraAccentSoft}
+        onClose={handleRequestClose}
+      />
 
       {isAiChartTradingEnabled(eas) &&
         isChartWarmupSignal &&
@@ -3893,14 +3854,7 @@ export function MT5SignalWebView({ visible, signal, onClose }: MT5SignalWebViewP
 
   if (isChartWarmupSignal || useAndroidInlineExecutionOverlay) {
     return (
-      <View
-        style={[
-          styles.chartWarmupOverlayRoot,
-          useNativeOverlayHud && styles.headlessExecutionRoot,
-        ]}
-        pointerEvents={useNativeOverlayHud ? 'none' : 'box-none'}
-        collapsable={false}
-      >
+      <View style={styles.chartWarmupOverlayRoot} pointerEvents="box-none" collapsable={false}>
         {signalOverlay}
       </View>
     );
@@ -3929,11 +3883,6 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     zIndex: 100000,
     elevation: 100000,
-  },
-  headlessExecutionRoot: {
-    opacity: 0,
-    zIndex: -1,
-    elevation: -1,
   },
   overlayContainer: {
     flex: 1,
