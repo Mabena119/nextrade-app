@@ -248,7 +248,7 @@ function auraai_email_license_key(
         'Your license key',
         $content,
         'Download NexTradeAI',
-        AURAAI_APP_URL
+        NEXTRADE_DOWNLOAD_URL
     );
 }
 

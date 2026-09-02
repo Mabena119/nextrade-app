@@ -11,6 +11,9 @@ if (!defined('NEXTRADE_APP_URL')) {
 if (!defined('NEXTRADE_APK_URL')) {
     define('NEXTRADE_APK_URL', NEXTRADE_SITE_URL . '/admin/downloads/nextradeai.apk');
 }
+if (!defined('NEXTRADE_DOWNLOAD_URL')) {
+    define('NEXTRADE_DOWNLOAD_URL', NEXTRADE_SITE_URL . '/#download');
+}
 if (!defined('NEXTRADE_SHOP_URL')) {
     define('NEXTRADE_SHOP_URL', NEXTRADE_SITE_URL . '/shop/');
 }
