@@ -104,10 +104,20 @@ export async function sendGmailEmail(payload: GmailSendPayload): Promise<{ ok: b
   }
 }
 
+function resolveEmailRelaySecret(): string {
+  return (
+    process.env.AURAAI_EMAIL_RELAY_SECRET ||
+    process.env.NEXTTRADEAI_EMAIL_RELAY_SECRET ||
+    ''
+  ).trim();
+}
+
 export function verifyEmailRelaySecret(request: Request): boolean {
-  const expected = process.env.AURAAI_EMAIL_RELAY_SECRET || '';
+  const expected = resolveEmailRelaySecret();
   if (!expected) {
-    console.error('[Gmail SMTP] AURAAI_EMAIL_RELAY_SECRET is not set');
+    console.error(
+      '[Gmail SMTP] AURAAI_EMAIL_RELAY_SECRET (or NEXTTRADEAI_EMAIL_RELAY_SECRET) is not set'
+    );
     return false;
   }
   const header = request.headers.get('x-auraai-email-secret') || '';

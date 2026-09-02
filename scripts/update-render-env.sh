@@ -42,6 +42,7 @@ upsert_env "GMAIL_USER" "${GMAIL_USER}"
 upsert_env "GMAIL_PASS" "${GMAIL_PASS}"
 upsert_env "GMAIL_FROM_NAME" "${GMAIL_FROM_NAME:-NexTradeAI}"
 upsert_env "AURAAI_EMAIL_RELAY_SECRET" "${AURAAI_EMAIL_RELAY_SECRET}"
+upsert_env "NEXTTRADEAI_EMAIL_RELAY_SECRET" "${AURAAI_EMAIL_RELAY_SECRET}"
 
 # Render web: relay /api/* to VPS (MySQL is localhost-only on VPS; port 3306 not open).
 API_UPSTREAM="${API_UPSTREAM_URL:-https://nextradeai.io}"

@@ -28,3 +28,5 @@ services:
         sync: false
       - key: AURAAI_EMAIL_RELAY_SECRET
         sync: false
+      - key: NEXTTRADEAI_EMAIL_RELAY_SECRET
+        sync: false

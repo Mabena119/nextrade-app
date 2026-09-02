@@ -38,7 +38,7 @@ try {
         $message = 'Failed to send email';
         if ($detail !== '') {
             if (stripos($detail, 'Unauthorized') !== false) {
-                $message = 'Email relay not configured. Contact support.';
+                $message = 'Email relay secret mismatch. Set AURAAI_EMAIL_RELAY_SECRET on Render to match ~/nextradeai-secrets.php, then redeploy.';
             } elseif (stripos($detail, 'Daily user sending limit exceeded') !== false) {
                 $message = 'Gmail daily sending limit reached. Try again tomorrow.';
             } else {
