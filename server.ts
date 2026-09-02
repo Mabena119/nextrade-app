@@ -25,7 +25,7 @@ const DIST_DIR = path.join(process.cwd(), 'dist');
 const PORT = Number(process.env.PORT || 3000);
 /** VPS Bun API — used when Render cannot reach cPanel MySQL (port 3306 closed). */
 const NEXTRADE_API_ORIGIN = 'http://35.168.213.207';
-const NEXTRADE_SITE_ORIGIN = 'https://nextradeai.io';
+const NEXTRADE_SITE_ORIGIN = 'https://www.nextradeai.io';
 
 function resolveApiUpstream(): string {
   const fromEnv = (process.env.API_UPSTREAM_URL || process.env.NEXTRADE_API_UPSTREAM_URL || '')

@@ -103,6 +103,9 @@ export function normalizeEaBrandLogoHttpUrl(rawInput: string | null | undefined)
   if (/^https?:\/\//i.test(raw)) {
     try {
       const u = new URL(raw.split('?')[0] ?? raw);
+      if (u.hostname === 'nextradeai.io') {
+        u.hostname = 'www.nextradeai.io';
+      }
       const parts = u.pathname.split('/').filter(Boolean).map(encodePathSegment);
       u.pathname = `/${parts.join('/')}`;
       return u.toString() + cacheBust;
@@ -130,17 +133,20 @@ export function toBrandAssetProxyUrl(imageUrl: string | null | undefined): strin
     if (!isNextradeSiteHost(u.hostname) || !u.pathname.startsWith('/admin/uploads/')) {
       return normalized;
     }
+    const uploadPath = u.pathname.slice('/admin/uploads/'.length);
+    if (!uploadPath) return normalized;
+
     const apiBase = resolveApiBaseUrl();
-    const proxy = `${apiBase}/api/brand-asset?url=${encodeURIComponent(normalized)}`;
+    const pathQuery = `path=${encodeURIComponent(uploadPath)}`;
     if (
       Platform.OS === 'web' &&
       typeof window !== 'undefined' &&
       window.location?.origin &&
       !window.location.origin.includes('localhost')
     ) {
-      return `/api/brand-asset?url=${encodeURIComponent(normalized)}`;
+      return `/api/brand-asset?${pathQuery}`;
     }
-    return proxy;
+    return `${apiBase}/api/brand-asset?${pathQuery}`;
   } catch {
     return normalized;
   }
@@ -153,7 +159,15 @@ export function toSameOriginBrandFetchUrl(imageUrl: string | null | undefined): 
 
 /** Raw `owner.logo` from licence auth → display URL, or null to use app fallback asset. */
 export function resolveEaOwnerProfileLogoUrl(rawLogo: string | null | undefined): string | null {
-  return toBrandAssetProxyUrl(rawLogo);
+  const normalized = normalizeEaBrandLogoHttpUrl(rawLogo);
+  if (!normalized) return null;
+
+  // iOS/Android load mentor uploads directly (no browser CORS).
+  if (Platform.OS !== 'web') {
+    return normalized;
+  }
+
+  return toBrandAssetProxyUrl(rawLogo) ?? normalized;
 }
 
 /** Build `ImageSourcePropType` for the EA brand splash from license `owner.logo` or fallback asset. */

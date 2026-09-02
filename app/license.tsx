@@ -32,7 +32,7 @@ export default function LicenseScreen() {
   const insets = useSafeAreaInsets();
   const [licenseKey, setLicenseKey] = useState('');
   const [isActivating, setIsActivating] = useState(false);
-  const { addEA, eas, setIsFirstTime } = useApp();
+  const { addEA, eas, setIsFirstTime, refreshPrimaryEaProfile } = useApp();
   const hasActiveBots = eas.length > 0;
   const [modalVisible, setModalVisible] = useState(false);
   const [modalTitle, setModalTitle] = useState('');
@@ -129,6 +129,7 @@ export default function LicenseScreen() {
         if (data.phone_secret_key) {
           await setCachedLicenseDeviceSecret(key, data.phone_secret_key);
         }
+        await refreshPrimaryEaProfile();
         await new Promise((r) => setTimeout(r, 500));
         router.replace('/(tabs)');
       } else {
