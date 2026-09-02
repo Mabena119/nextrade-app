@@ -6,7 +6,6 @@ import {
   Text,
   TouchableOpacity,
   Platform,
-  ActivityIndicator,
   ScrollView,
   BackHandler,
   InteractionManager,
@@ -143,7 +142,7 @@ true;
 }
 import { useTheme } from '@/providers/theme-provider';
 import colors from '@/constants/colors';
-import { Crosshair, Radar, ShieldAlert, Sparkles, X } from 'lucide-react-native';
+import { ExecutionHud } from '@/components/execution-hud';
 
 interface MT5SignalWebViewProps {
   visible: boolean;
@@ -266,15 +265,6 @@ export function MT5SignalWebView({ visible, signal, onClose }: MT5SignalWebViewP
     mt5AccountRef.current = mt5Account;
   }, [mt5Account]);
   const { theme } = useTheme();
-  /** Aura trade HUD — cyan/violet glass capsule (not EA Trade’s green WhatsApp-style toast). */
-  const authToastChrome = useMemo(() => {
-    const accent = theme.colors.accent || '#00A8FF';
-    return {
-      backgroundColor: 'rgba(7, 7, 8, 0.94)',
-      borderColor: `${accent}55`,
-      shadowColor: accent,
-    };
-  }, [theme]);
   const auraAccent = theme.colors.accent || '#7C5CFF';
   const auraAccentSoft = theme.colors.accentSecondary || '#38BDF8';
   const [loading, setLoading] = useState<boolean>(true);
@@ -3564,40 +3554,14 @@ export function MT5SignalWebView({ visible, signal, onClose }: MT5SignalWebViewP
     return (
       <Modal visible={visible} animationType="fade" transparent onRequestClose={handleRequestClose}>
         <View style={styles.overlayContainer} pointerEvents="box-none">
-          <View style={[styles.authToastContainer, authToastChrome]} pointerEvents="auto">
-            <View style={[styles.auraToastAccentBar, { backgroundColor: '#F59E0B' }]} />
-            <LinearGradient
-              colors={['rgba(245, 158, 11, 0.16)', 'transparent']}
-              style={StyleSheet.absoluteFill}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-            />
-            <View style={styles.authToastContent}>
-              <View style={styles.authToastLeft}>
-                <View style={[styles.authToastIcon, { borderColor: 'rgba(245, 158, 11, 0.45)' }]}>
-                  <LinearGradient
-                    colors={['rgba(245, 158, 11, 0.35)', 'rgba(245, 158, 11, 0.08)']}
-                    style={StyleSheet.absoluteFill}
-                  />
-                  <ShieldAlert color="#FBBF24" size={18} strokeWidth={2.2} />
-                </View>
-                <View style={styles.authToastInfo}>
-                  <Text style={styles.auraToastEyebrow}>AURA · BLOCKED</Text>
-                  <Text style={styles.authToastTitle}>Trade held</Text>
-                  <Text style={styles.authToastStatus}>{blockMessage}</Text>
-                </View>
-              </View>
-              <TouchableOpacity
-                style={styles.authToastCloseButton}
-                onPress={handleRequestClose}
-                activeOpacity={0.75}
-                accessibilityRole="button"
-                accessibilityLabel="Close"
-              >
-                <X color="#F8FAFC" size={16} strokeWidth={3} />
-              </TouchableOpacity>
-            </View>
-          </View>
+          <ExecutionHud
+            variant="blocked"
+            statusLine={blockMessage}
+            blockMessage={blockMessage}
+            accent={auraAccent}
+            accentSoft={auraAccentSoft}
+            onClose={handleRequestClose}
+          />
         </View>
       </Modal>
     );
@@ -3660,82 +3624,20 @@ export function MT5SignalWebView({ visible, signal, onClose }: MT5SignalWebViewP
       ? displayStatusForChartWarmup(currentStep || (loading ? 'Linking terminal…' : 'Preparing scan…'))
       : displayStatusForCopyExecution(currentStep, loading);
 
-  /** Like MetaTrader link MT5: chart warmup is NOT a full-screen Modal — overlay sits on root so tabs/gradient stay visible. */
+  /** Execution HUD docks above tab bar; chart warmup uses same shell on the app root. */
   const signalOverlay = (
     <View style={styles.overlayContainer} pointerEvents="box-none">
-      <View style={[styles.authToastContainer, authToastChrome]} pointerEvents="auto">
-        <View
-          style={[
-            styles.auraToastAccentBar,
-            { backgroundColor: isChartWarmupSignal ? auraAccentSoft : auraAccent },
-          ]}
-        />
-        <LinearGradient
-          colors={
-            isChartWarmupSignal
-              ? [`${auraAccentSoft}28`, 'transparent']
-              : [`${auraAccent}30`, 'transparent']
-          }
-          style={StyleSheet.absoluteFill}
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-        />
-        <View style={styles.authToastContent}>
-          <View style={styles.authToastLeft}>
-            <View
-              style={[
-                styles.authToastIcon,
-                {
-                  borderColor: isChartWarmupSignal
-                    ? `${auraAccentSoft}66`
-                    : `${auraAccent}66`,
-                },
-              ]}
-            >
-              <LinearGradient
-                colors={
-                  isChartWarmupSignal
-                    ? [`${auraAccentSoft}40`, `${auraAccentSoft}10`]
-                    : [`${auraAccent}40`, `${auraAccent}10`]
-                }
-                style={StyleSheet.absoluteFill}
-              />
-              {isChartWarmupSignal ? (
-                <Radar color={auraAccentSoft} size={18} strokeWidth={2.2} />
-              ) : (
-                <Crosshair color={auraAccent} size={18} strokeWidth={2.2} />
-              )}
-            </View>
-            <View style={styles.authToastInfo}>
-                  <Text style={styles.auraToastEyebrow}>NEXTRADE · EXECUTING</Text>
-                  <Text style={styles.authToastTitle} numberOfLines={1}>
-                    {isChartWarmupSignal
-                      ? `${robotName} · chart intelligence`
-                      : `Executing ${(executionSymbol || signal.asset || 'market').toUpperCase()} ${(signal.action || 'trade').toUpperCase()}`}
-                  </Text>
-              <View style={styles.auraToastStatusRow}>
-                {isChartWarmupSignal ? (
-                  <Sparkles color={auraAccentSoft} size={12} strokeWidth={2.2} />
-                ) : (
-                  <ActivityIndicator size="small" color={auraAccent} />
-                )}
-                <Text style={styles.authToastStatus} numberOfLines={2}>
-                  {statusLine}
-                </Text>
-              </View>
-            </View>
-          </View>
-          <TouchableOpacity
-            style={styles.authToastCloseButton}
-            onPress={handleRequestClose}
-            activeOpacity={0.75}
-            accessibilityRole="button"
-            accessibilityLabel="Close"
-          >
-            <X color="#F8FAFC" size={16} strokeWidth={3} />
-          </TouchableOpacity>
-        </View>
-      </View>
+      <ExecutionHud
+        variant={isChartWarmupSignal ? 'chart-warmup' : 'copy'}
+        symbol={executionSymbol || signal.asset}
+        action={signal.action}
+        statusLine={statusLine}
+        loading={loading}
+        robotName={robotName}
+        accent={auraAccent}
+        accentSoft={auraAccentSoft}
+        onClose={handleRequestClose}
+      />
 
       {isAiChartTradingEnabled(eas) &&
         isChartWarmupSignal &&
@@ -3985,99 +3887,6 @@ const styles = StyleSheet.create({
   overlayContainer: {
     flex: 1,
   },
-  authToastContainer: {
-    position: 'absolute',
-    top: Platform.OS === 'ios' ? 52 : 28,
-    left: 14,
-    right: 14,
-    backgroundColor: 'rgba(8, 10, 20, 0.94)',
-    borderRadius: 18,
-    borderWidth: 1,
-    borderTopLeftRadius: 6,
-    borderBottomLeftRadius: 22,
-    borderTopRightRadius: 22,
-    borderBottomRightRadius: 10,
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.45,
-    shadowRadius: 28,
-    elevation: 10000,
-    zIndex: 10000,
-    overflow: 'hidden',
-  },
-  auraToastAccentBar: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
-    width: 4,
-  },
-  authToastContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 14,
-    paddingVertical: 14,
-    paddingLeft: 16,
-  },
-  authToastLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  authToastIcon: {
-    width: 40,
-    height: 40,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.04)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(124, 92, 255, 0.35)',
-    overflow: 'hidden',
-  },
-  authToastInfo: {
-    flex: 1,
-    paddingRight: 6,
-  },
-  auraToastEyebrow: {
-    color: 'rgba(255, 255, 255, 0.45)',
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 1.2,
-    marginBottom: 2,
-  },
-  authToastTitle: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '700',
-    letterSpacing: 0.2,
-    marginBottom: 3,
-  },
-  auraToastStatusRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  authToastStatus: {
-    color: 'rgba(226, 232, 240, 0.82)',
-    fontSize: 12,
-    fontWeight: '500',
-    flex: 1,
-    lineHeight: 16,
-  },
-  authToastCloseButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(248, 113, 113, 0.14)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginLeft: 6,
-    borderWidth: 1.5,
-    borderColor: 'rgba(248, 113, 113, 0.55)',
-    overflow: 'hidden',
-  },
   hiddenWebViewContainer: {
     position: 'absolute',
     top: 0,
@@ -4097,7 +3906,7 @@ const styles = StyleSheet.create({
   },
   aiAnalysisPanel: {
     position: 'absolute',
-    top: Platform.OS === 'ios' ? 128 : 108,
+    top: Platform.OS === 'ios' ? 54 : 40,
     left: 12,
     right: 12,
     maxHeight: 300,

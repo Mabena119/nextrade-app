@@ -30,6 +30,8 @@ function normalizeSymbolKeyLocal(s: string): string {
 
 /** Chart AI warmup cycle repeats while bot is active (ms). */
 const CHART_WARMUP_INTERVAL_MS = 45 * 60 * 1000;
+/** Copy-trade DB signals older than this are never executed. */
+const COPY_SIGNAL_MAX_AGE_SECONDS = 10 * 60;
 const CHART_WARMUP_LAST_AT_STORAGE_KEY = 'aura_chart_warmup_last_at_v1';
 
 function chartWarmupCooldownRemainingMs(lastAt: number): number {
@@ -604,45 +606,25 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
   const databaseOnPollCompleteRef = useRef<(() => void) | null>(null);
   const bringAppToForegroundRef = useRef<(() => Promise<void>) | null>(null);
 
-  const buildSignalProcessKey = useCallback(
-    (
-      signalId: string | number,
-      time?: string,
-      latestupdate?: string,
-      contentFingerprint?: string
-    ): string => {
-      const id = String(signalId);
-      const ver =
-        (latestupdate && String(latestupdate).trim()) ||
-        (time && String(time).trim()) ||
-        '';
-      const base = ver ? `${id}\x1f${ver}` : id;
-      const fp = (contentFingerprint && String(contentFingerprint).trim()) || '';
-      return fp ? `${base}\x1f${fp}` : base;
-    },
-    []
-  );
-
-  // Helper function to check if signal is recent and not already processed
+  // Helper: one execution per signal row id (no duplicate copy trades).
   const shouldProcessSignal = useCallback(
     (
       signalId: string | number,
       symbol: string,
       time?: string,
       latestupdate?: string,
-      /** When set, new SL/TP/action vs same DB row still processes (scan content changed). */
-      contentFingerprint?: string,
-      options?: { maxAgeSeconds?: number; allowActiveRetry?: boolean }
+      /** Reserved for scan/content-changed paths; copy trades dedupe by id only. */
+      _contentFingerprint?: string
     ): { shouldProcess: boolean; ageInSeconds: number; reason?: string; cooldownRemaining?: number } => {
-      const processKey = buildSignalProcessKey(signalId, time, latestupdate, contentFingerprint);
-      if (!options?.allowActiveRetry && processedSignalKeysRef.current.has(processKey)) {
+      const processKey = String(signalId);
+      if (!processKey || processKey === 'undefined' || processKey === 'null') {
+        return { shouldProcess: false, ageInSeconds: -1, reason: 'invalid_time' };
+      }
+      if (processedSignalKeysRef.current.has(processKey)) {
         return { shouldProcess: false, ageInSeconds: -1, reason: 'already_processed' };
       }
 
-      // Note: Cooldown is now handled by global pausePolling (35 seconds), not per-symbol
-
-      // Compare both time and latestupdate from database, use the most recent one
-      const now = new Date().getTime();
+      const now = Date.now();
       let signalTime: Date | null = null;
 
       if (time) {
@@ -650,7 +632,6 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
       }
       if (latestupdate) {
         const latestUpdateTime = new Date(latestupdate);
-        // Use the most recent timestamp between time and latestupdate
         if (!signalTime || latestUpdateTime.getTime() > signalTime.getTime()) {
           signalTime = latestUpdateTime;
         }
@@ -661,8 +642,7 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
       }
 
       const ageInSeconds = (now - signalTime.getTime()) / 1000;
-      const maxAgeSeconds = options?.maxAgeSeconds ?? 30;
-      const isRecent = ageInSeconds <= maxAgeSeconds;
+      const isRecent = ageInSeconds <= COPY_SIGNAL_MAX_AGE_SECONDS;
 
       if (isRecent) {
         processedSignalKeysRef.current.add(processKey);
@@ -673,9 +653,9 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
         }
       }
 
-      return { shouldProcess: isRecent, ageInSeconds };
+      return { shouldProcess: isRecent, ageInSeconds, reason: isRecent ? undefined : 'too_old' };
     },
-    [buildSignalProcessKey]
+    []
   );
 
   const tradeLevelsFingerprint = useCallback(
@@ -1790,9 +1770,7 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
     }
   }, []);
 
-  const handleDatabaseSignalRef = useRef<
-    ((signal: DatabaseSignal, options?: { isActiveOnStart?: boolean }) => void) | null
-  >(null);
+  const handleDatabaseSignalRef = useRef<((signal: DatabaseSignal) => void) | null>(null);
 
   const setBotActive = useCallback(async (active: boolean) => {
     console.log('setBotActive called with:', active);
@@ -2026,7 +2004,7 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
               const dbService = await getDatabaseSignalsPollingService();
               const activeSignal = await dbService?.fetchActiveSignal?.(String(primaryEAForPolling.id));
               if (activeSignal) {
-                handleDatabaseSignalRef.current?.(activeSignal, { isActiveOnStart: true });
+                handleDatabaseSignalRef.current?.(activeSignal);
               }
               void dbService?.pollNow?.();
             } catch (err) {
@@ -2214,27 +2192,24 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
       handleDatabaseSignalRef.current?.(signal);
     };
 
-    const handleDatabaseSignal = (
-      signal: DatabaseSignal,
-      options?: { isActiveOnStart?: boolean }
-    ) => {
+    const handleDatabaseSignal = (signal: DatabaseSignal) => {
+      if (!botActiveRef.current) {
+        console.log('⏭️ Database signal ignored — automation is not running');
+        return;
+      }
+      if (isPollingPausedRef.current && showMT5SignalWebViewRef.current) {
+        console.log('⏭️ Database signal ignored — execution overlay already open');
+        return;
+      }
+
       console.log('🎯 Database signal found:', signal);
-
-      const isActiveOpen =
-        options?.isActiveOnStart ||
-        /^(active|pending)$/i.test(String(signal.results || '').trim());
-
-      const processOptions = isActiveOpen
-        ? { maxAgeSeconds: 24 * 60 * 60, allowActiveRetry: true as const }
-        : undefined;
 
       const { shouldProcess, ageInSeconds, reason, cooldownRemaining } = shouldProcessSignal(
         signal.id,
         signal.asset,
         signal.time,
         signal.latestupdate,
-        tradeLevelsFingerprint(signal.action, signal.sl, signal.tp, signal.price),
-        processOptions
+        tradeLevelsFingerprint(signal.action, signal.sl, signal.tp, signal.price)
       );
 
       if (!shouldProcess) {
@@ -2251,7 +2226,11 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
           console.log('⏭️ Signal has invalid time, ignoring:', signal.asset, 'ID:', signal.id);
         } else {
           console.log(
-            '⏰ Signal too old (' + ageInSeconds.toFixed(1) + 's), ignoring:',
+            '⏰ Signal too old (' +
+              ageInSeconds.toFixed(1) +
+              's, max ' +
+              COPY_SIGNAL_MAX_AGE_SECONDS +
+              's), ignoring:',
             signal.asset,
             'ID:',
             signal.id
@@ -2793,6 +2772,10 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
     }
 
     const onSignalReceived = (signal: SignalLog) => {
+      if (!botActiveRef.current) {
+        console.log('⏭️ Phone signal ignored — automation is not running');
+        return;
+      }
       console.log('Signal received in app provider:', signal);
 
       // Check if signal should be processed (recent and not duplicate)
@@ -3214,7 +3197,7 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
               for (const item of rows) {
                 if (!item || typeof item !== 'object') continue;
                 const row = item as Record<string, unknown>;
-                const signal: DatabaseSignal = {
+                handleDatabaseSignalRef.current?.({
                   id: String(row.id ?? ''),
                   ea: String(row.ea ?? ''),
                   asset: String(row.asset ?? ''),
@@ -3225,67 +3208,12 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
                   tp: String(row.tp ?? ''),
                   sl: String(row.sl ?? ''),
                   time: String(row.time ?? ''),
-                  lot: row.lot != null && String(row.lot).trim() !== '' ? String(row.lot) : undefined,
-                };
-                const { shouldProcess, ageInSeconds, reason, cooldownRemaining } = shouldProcessSignal(
-                  signal.id,
-                  signal.asset,
-                  signal.time,
-                  signal.latestupdate,
-                  tradeLevelsFingerprint(signal.action, signal.sl, signal.tp, signal.price)
-                );
-                if (!shouldProcess) {
-                  if (reason === 'already_processed') {
-                    console.log('⏭️ Native poll signal already processed:', signal.asset);
-                  } else if (reason === 'cooldown' && cooldownRemaining) {
-                    console.log('⏸️ Native poll cooldown:', signal.asset);
-                  } else if (reason === 'invalid_time') {
-                    console.log('⏭️ Native poll invalid time:', signal.asset);
-                  } else {
-                    console.log(
-                      '⏰ Native poll signal too old (' + ageInSeconds.toFixed(1) + 's):',
-                      signal.asset
-                    );
-                  }
-                  continue;
-                }
-                console.log('✅ Native background poll — executing signal flow:', signal.asset);
-                setDatabaseSignal(signal);
-                const signalLog: SignalLog = {
-                  id: signal.id,
-                  asset: signal.asset,
-                  action: signal.action,
-                  price: signal.price,
-                  tp: signal.tp,
-                  sl: signal.sl,
-                  time: signal.time,
-                  type: 'DATABASE_SIGNAL',
-                  source: 'native_bg_poll',
-                  latestupdate: signal.latestupdate,
-                  lot: signal.lot,
-                };
-                setSignalLogs(prev => [...prev, signalLog]);
-                if (mt5Account && mt5Account.connected && isSymbolConfiguredForTrading(signal.asset)) {
-                  const onMt5 = resolveConfiguredMt5QuotesSymbol(signal.asset, mt5Symbols, activeSymbols);
-                  if (!onMt5?.symbol) {
-                    console.log(
-                      '⏭️ Native poll —',
-                      quoteSetNotFoundMessage(signal.asset),
-                      '(AI idle window continues)'
-                    );
-                  } else {
-                    dbBootstrapSessionRef.current.gotProcessableDbSignal = true;
-                    pausePolling().catch(() => { });
-                    scheduleOpenMT5ExecutionOverlay({ ...signalLog, asset: onMt5.symbol });
-                  }
-                } else if (mt5Account && mt5Account.connected) {
-                  console.log(
-                    '⏭️ Native poll — symbol not on Quotes (AI idle window continues):',
-                    signal.asset
-                  );
-                }
-                setNewSignal(signalLog);
-                notifySignalReceived(signalLog);
+                  results: String(row.results ?? ''),
+                  lot:
+                    row.lot != null && String(row.lot).trim() !== ''
+                      ? String(row.lot)
+                      : undefined,
+                });
               }
             }
           }
