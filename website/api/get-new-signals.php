@@ -24,7 +24,7 @@ try {
         }
 
         $stmt = $db->prepare(
-            'SELECT id, ea, asset, latestupdate, action, price, tp, sl, time, lot
+            'SELECT id, ea, asset, latestupdate, action, price, tp, sl, time, lot, results
              FROM `signals`
              WHERE ea = ? AND latestupdate > ?
              ORDER BY latestupdate DESC
@@ -33,7 +33,7 @@ try {
         $stmt->bind_param('ss', $eaId, $mysqlSince);
     } else {
         $stmt = $db->prepare(
-            'SELECT id, ea, asset, latestupdate, action, price, tp, sl, time, lot
+            'SELECT id, ea, asset, latestupdate, action, price, tp, sl, time, lot, results
              FROM `signals`
              WHERE ea = ?
              ORDER BY latestupdate DESC

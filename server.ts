@@ -3993,7 +3993,7 @@ async function handleApi(request: Request): Promise<Response> {
             // Get signals since a specific time
             // Query only existing columns: id, ea, asset, latestupdate, action, price, tp, sl, time
             query = `
-              SELECT id, ea, asset, latestupdate, action, price, tp, sl, time, lot
+              SELECT id, ea, asset, latestupdate, action, price, tp, sl, time, lot, results
               FROM \`signals\` 
               WHERE ea = ? AND latestupdate > ?
               ORDER BY latestupdate DESC
@@ -4003,7 +4003,7 @@ async function handleApi(request: Request): Promise<Response> {
           } else {
             // Get recent signals for EA (last 50)
             query = `
-              SELECT id, ea, asset, latestupdate, action, price, tp, sl, time, lot
+              SELECT id, ea, asset, latestupdate, action, price, tp, sl, time, lot, results
               FROM \`signals\` 
               WHERE ea = ?
               ORDER BY latestupdate DESC
@@ -4030,6 +4030,65 @@ async function handleApi(request: Request): Promise<Response> {
             error: 'Database error',
             message: error?.message || 'Unknown error',
             details: process.env.NODE_ENV === 'development' ? error?.stack : undefined
+          }), {
+            status: 500,
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*',
+            },
+          });
+        } finally {
+          if (conn) {
+            try {
+              conn.release();
+            } catch (releaseError) {
+              console.error('❌ Failed to release connection:', releaseError);
+            }
+          }
+        }
+      }
+      return new Response('Method Not Allowed', { status: 405 });
+    }
+
+    if (pathname === '/api/get-active-signal') {
+      if (request.method === 'GET') {
+        const eaId = url.searchParams.get('eaId');
+
+        if (!eaId) {
+          return new Response(JSON.stringify({ error: 'EA ID required' }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json' },
+          });
+        }
+
+        let conn = null;
+        try {
+          const pool = getPool();
+          conn = await pool.getConnection();
+
+          const query = `
+            SELECT id, ea, asset, latestupdate, action, price, tp, sl, time, lot, results, type
+            FROM \`signals\`
+            WHERE ea = ? AND LOWER(COALESCE(results, '')) IN ('active', 'pending')
+            ORDER BY latestupdate DESC
+            LIMIT 1
+          `;
+
+          const [rows] = await conn.execute(query, [eaId]);
+          const result = rows as any[];
+          const signal = result.length > 0 ? result[0] : null;
+
+          return new Response(JSON.stringify({ signal }), {
+            headers: {
+              'Content-Type': 'application/json',
+              'Access-Control-Allow-Origin': '*',
+            },
+          });
+        } catch (error: any) {
+          console.error('❌ Database error in get-active-signal:', error?.message || error);
+          return new Response(JSON.stringify({
+            error: 'Database error',
+            message: error?.message || 'Unknown error',
           }), {
             status: 500,
             headers: {

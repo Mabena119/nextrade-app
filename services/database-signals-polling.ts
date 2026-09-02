@@ -366,7 +366,26 @@ class DatabaseSignalsPollingService {
   }
 
   /**
-   * Trigger an immediate poll for signals (e.g. when app returns to foreground).
+   * Latest open copy-trade signal for an EA (results = active/pending).
+   * Used on bot start so automation can execute a signal that was posted while the bot was off.
+   */
+  async fetchActiveSignal(eaId: string): Promise<DatabaseSignal | null> {
+    try {
+      const url = `${getApiBaseUrl()}/api/get-active-signal?eaId=${encodeURIComponent(eaId)}`;
+      console.log('Fetching active signal, URL:', url);
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`API call failed: ${response.status}`);
+      }
+      const data = await response.json();
+      return data.signal ?? null;
+    } catch (error) {
+      console.error('Error fetching active signal via API:', error);
+      return null;
+    }
+  }
+
+  /**
    * Catches any signals that may have arrived while app was in background.
    */
   async pollNow(): Promise<void> {

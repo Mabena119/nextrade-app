@@ -220,6 +220,31 @@ function displayStatusForChartWarmup(step: string | null | undefined): string {
   return 'Analysing chart';
 }
 
+/** Toast subtitle during copy-trade execution — friendly defaults for login / wait / execute phases. */
+function displayStatusForCopyExecution(step: string | null | undefined, loading: boolean): string {
+  const s = (step || '').trim();
+  if (!s || /^initializing/i.test(s)) {
+    return loading ? 'Logging in — waiting to execute active signal…' : 'Preparing execution…';
+  }
+  if (/^signal received/i.test(s)) {
+    return 'Active signal received — logging into MT5…';
+  }
+  if (
+    /^error\b/i.test(s) ||
+    /^authentication failed/i.test(s) ||
+    /^auto-trade failed/i.test(s) ||
+    /preparing terminal|placing order|order panel|order dialog|order form|filling order|executing trade|configured to execute|strict execution|trade\s+\d|completed:|volume:|stop loss|take profit|confirming trade|buy order|sell order|signing in|waiting for chart/i.test(
+      s
+    )
+  ) {
+    return s;
+  }
+  if (loading) {
+    return 'Logging in — waiting to execute active signal…';
+  }
+  return s;
+}
+
 export function MT5SignalWebView({ visible, signal, onClose }: MT5SignalWebViewProps) {
   const {
     mt5Account,
@@ -253,7 +278,7 @@ export function MT5SignalWebView({ visible, signal, onClose }: MT5SignalWebViewP
   const auraAccent = theme.colors.accent || '#7C5CFF';
   const auraAccentSoft = theme.colors.accentSecondary || '#38BDF8';
   const [loading, setLoading] = useState<boolean>(true);
-  const [currentStep, setCurrentStep] = useState<string>('Initializing...');
+  const [currentStep, setCurrentStep] = useState<string>('Logging in — waiting to execute active signal…');
   const [chartAiResult, setChartAiResult] = useState<ChartAnalysisResult | null>(null);
   const [chartAiError, setChartAiError] = useState<string | null>(null);
   const [chartAiAnalyzing, setChartAiAnalyzing] = useState(false);
@@ -3452,7 +3477,13 @@ export function MT5SignalWebView({ visible, signal, onClose }: MT5SignalWebViewP
   // Update status when WebView opens
   useEffect(() => {
     if (visible && signal && mt5Account) {
-      setCurrentStep('Signal Received: ' + signal.asset + ' - Opening MT5...');
+      if (signal.type === 'CHART_WARMUP') {
+        setCurrentStep('Preparing chart scan…');
+      } else {
+        setCurrentStep(
+          `Active signal — ${(signal.asset || 'market').toUpperCase()} ${(signal.action || '').toUpperCase()} — logging in…`
+        );
+      }
     }
   }, [visible, signal, mt5Account]);
 
@@ -3460,7 +3491,11 @@ export function MT5SignalWebView({ visible, signal, onClose }: MT5SignalWebViewP
   useEffect(() => {
     if (!visible || !signalStableSessionKey) return;
     signalAuthRemountRef.current = 0;
-    setCurrentStep('Initializing...');
+    setCurrentStep(
+      signal?.type === 'CHART_WARMUP'
+        ? 'Preparing chart scan…'
+        : 'Logging in — waiting to execute active signal…'
+    );
     setLoading(true);
     setChartAiResult(null);
     setChartAiError(null);
@@ -3483,7 +3518,11 @@ export function MT5SignalWebView({ visible, signal, onClose }: MT5SignalWebViewP
     if (!visible) {
       clearWebTerminalByScope(WEBVIEW_SCOPE_MT5_TRADING);
       signalAuthRemountRef.current = 0;
-      setCurrentStep('Initializing...');
+      setCurrentStep(
+      signal?.type === 'CHART_WARMUP'
+        ? 'Preparing chart scan…'
+        : 'Logging in — waiting to execute active signal…'
+    );
       setLoading(true);
       setChartAiResult(null);
       setChartAiError(null);
@@ -3619,7 +3658,7 @@ export function MT5SignalWebView({ visible, signal, onClose }: MT5SignalWebViewP
     ? quotesMissingMessage
     : isChartWarmupSignal
       ? displayStatusForChartWarmup(currentStep || (loading ? 'Linking terminal…' : 'Preparing scan…'))
-      : currentStep || (loading ? 'Linking terminal…' : 'Preparing order…');
+      : displayStatusForCopyExecution(currentStep, loading);
 
   /** Like MetaTrader link MT5: chart warmup is NOT a full-screen Modal — overlay sits on root so tabs/gradient stay visible. */
   const signalOverlay = (
@@ -3668,14 +3707,12 @@ export function MT5SignalWebView({ visible, signal, onClose }: MT5SignalWebViewP
               )}
             </View>
             <View style={styles.authToastInfo}>
-              <Text style={styles.auraToastEyebrow}>
-                {isChartWarmupSignal ? 'AURA · LIVE SCAN' : 'AURA · COPY EXEC'}
-              </Text>
-              <Text style={styles.authToastTitle} numberOfLines={1}>
-                {isChartWarmupSignal
-                  ? `${robotName} · chart intelligence`
-                  : `${(executionSymbol || signal.asset || 'Market').toUpperCase()} · ${(signal.action || 'trade').toUpperCase()}`}
-              </Text>
+                  <Text style={styles.auraToastEyebrow}>NEXTRADE · EXECUTING</Text>
+                  <Text style={styles.authToastTitle} numberOfLines={1}>
+                    {isChartWarmupSignal
+                      ? `${robotName} · chart intelligence`
+                      : `Executing ${(executionSymbol || signal.asset || 'market').toUpperCase()} ${(signal.action || 'trade').toUpperCase()}`}
+                  </Text>
               <View style={styles.auraToastStatusRow}>
                 {isChartWarmupSignal ? (
                   <Sparkles color={auraAccentSoft} size={12} strokeWidth={2.2} />

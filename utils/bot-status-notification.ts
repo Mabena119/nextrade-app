@@ -30,7 +30,7 @@ export function buildBotStatusNotification(params: {
     case 'live':
       return {
         title: name,
-        body: 'LIVE · NexTradeAI is watching for signals',
+        body: 'LIVE · Waiting for active signal',
       };
     case 'paused':
       return {
