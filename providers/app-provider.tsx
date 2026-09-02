@@ -15,7 +15,7 @@ import {
   sanitizeManualLotSize,
   sanitizeManualTradesCount,
 } from '@/utils/equity-trade-preset';
-import { resolveEaOwnerLogoUrl, resolveEaOwnerProfileLogoUrl } from '@/utils/ea-brand-image';
+import { resolveEaOwnerProfileLogoUrl } from '@/utils/ea-brand-image';
 import {
   isAiChartTradingEnabled,
   isMartingaleEa,
@@ -387,6 +387,38 @@ function mergeEaWithApiLicensePayload(ea: EA, d: ApiLicensePayload): EA {
   };
 }
 
+function resolvePhoneSecretForEa(ea: EA): string | undefined {
+  const direct = ea.phoneSecretKey?.trim();
+  if (direct) return direct;
+  const ud = ea.userData as LicenseData | undefined;
+  const nested = ud?.phone_secret_key?.trim() || ud?.phone_secret_code?.trim();
+  return nested || undefined;
+}
+
+/** Merge public mentor branding from get-ea-from-license (no phone secret). */
+function mergeEaOwnerBrand(
+  ea: EA,
+  owner?: { name?: string; logo?: string } | null,
+  eaName?: string | null
+): EA {
+  if (!owner?.logo && !owner?.name && !eaName?.trim()) return ea;
+  const prev = ea.userData || ({} as LicenseData);
+  return {
+    ...ea,
+    name: eaName?.trim() || ea.name,
+    description: owner?.name?.trim() || ea.description,
+    userData: {
+      ...prev,
+      ea_name: eaName?.trim() || prev.ea_name,
+      owner: {
+        ...(prev.owner ?? {}),
+        ...(owner?.name ? { name: owner.name } : {}),
+        ...(owner?.logo ? { logo: owner.logo } : {}),
+      },
+    } as LicenseData,
+  };
+}
+
 /** Active robot licence health from `/api/auth-license` (same check as the license screen). */
 export type PrimaryLicenseStatus = 'idle' | 'checking' | 'valid' | 'expired';
 
@@ -697,6 +729,26 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
   }, []);
 
   /** Reconcile primary licence with server; blur/stop bot when expired; remove robot when deleted. */
+  const refreshEaOwnerBrandFromLicense = useCallback(async (list: EA[]): Promise<void> => {
+    const primary = list[0];
+    const key = primary?.licenseKey?.trim();
+    if (!key) return;
+
+    try {
+      const data = await apiService.fetchEaFromLicense(key);
+      if (!data?.owner?.logo && !data?.owner?.name && !data?.ea_name) return;
+
+      const mergedPrimary = mergeEaOwnerBrand(primary, data.owner, data.ea_name);
+      const refreshed = list.map((ea, i) => (i === 0 ? mergedPrimary : ea));
+      if (fingerprintEaProfiles(list) !== fingerprintEaProfiles(refreshed)) {
+        await AsyncStorage.setItem('eas', JSON.stringify(refreshed));
+        setEAs(refreshed);
+      }
+    } catch (e) {
+      console.warn('[App] refreshEaOwnerBrandFromLicense skipped:', e);
+    }
+  }, []);
+
   const refreshEaProfilesFromServer = useCallback(async (list: EA[]): Promise<void> => {
     if (!getExpoApiBaseUrl() || list.length === 0) {
       setPrimaryLicenseStatus('idle');
@@ -722,12 +774,19 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
     try {
       const res = await apiService.authenticateLicense({
         licence: key,
-        phone_secret: primary.phoneSecretKey?.trim(),
+        phone_secret: resolvePhoneSecretForEa(primary),
       });
       const verdict = evaluateLicenseAuthResponse(res);
 
       if (verdict === 'unavailable') {
         console.log('[App] Licence revalidation skipped (network/server unavailable) — keeping local state');
+        setPrimaryLicenseStatus(localStatus);
+        return;
+      }
+
+      if (verdict === 'used') {
+        // Key already bound to this device — keep local robot; mentor logo comes from get-ea-from-license.
+        console.log('[App] Licence already in use on this device — keeping local state');
         setPrimaryLicenseStatus(localStatus);
         return;
       }
@@ -789,8 +848,9 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
   const refreshPrimaryEaProfile = useCallback(async (): Promise<void> => {
     const snap = easRef.current;
     if (snap.length === 0) return;
-    await refreshEaProfilesFromServer(snap);
-  }, [refreshEaProfilesFromServer]);
+    await refreshEaOwnerBrandFromLicense(snap);
+    await refreshEaProfilesFromServer(easRef.current);
+  }, [refreshEaOwnerBrandFromLicense, refreshEaProfilesFromServer]);
 
   useEffect(() => {
     let t: ReturnType<typeof setTimeout> | undefined;
@@ -1069,7 +1129,9 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
       }
 
       if (parsedEas.length > 0) {
-        void refreshEaProfilesFromServer(parsedEas);
+        void refreshEaOwnerBrandFromLicense(parsedEas).then(() => {
+          void refreshEaProfilesFromServer(easRef.current);
+        });
       }
 
       console.log('Persisted data loading completed');

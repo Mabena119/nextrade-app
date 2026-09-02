@@ -632,17 +632,30 @@ async function handleApi(request: Request): Promise<Response> {
           conn = await pool.getConnection();
 
           const [rows] = await conn.execute(
-            'SELECT ea FROM licences WHERE k_ey = ? LIMIT 1',
+            `SELECT l.ea AS ea_id, e.name AS ea_name,
+                    a.displayname AS owner_name, a.image AS owner_logo
+             FROM licences l
+             LEFT JOIN eas e ON e.id = l.ea
+             LEFT JOIN admin a ON a.id = e.owner
+             WHERE UPPER(REPLACE(l.k_ey, '-', '')) = UPPER(REPLACE(?, '-', ''))
+             LIMIT 1`,
             [licenseKey]
           );
 
           const result = rows as any[];
-          const eaId = result.length > 0 ? result[0].ea : null;
+          const row = result.length > 0 ? result[0] : null;
+          const eaId = row?.ea_id ?? null;
 
-          // Return in format expected by client: { id: eaId } or { eaId: eaId } for compatibility
           return new Response(JSON.stringify({
             id: eaId,
-            eaId: eaId  // Also include eaId for backward compatibility
+            eaId,
+            ea_name: row?.ea_name ?? null,
+            owner: row
+              ? {
+                  name: row.owner_name ?? '',
+                  logo: row.owner_logo ?? '',
+                }
+              : null,
           }), {
             headers: { 'Content-Type': 'application/json' },
           });

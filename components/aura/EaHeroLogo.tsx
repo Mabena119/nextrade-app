@@ -49,6 +49,7 @@ export function EaHeroLogo({ ownerLogo, imageUrl, size, testID }: Props) {
       ]}
       contentFit={contentFit}
       transition={180}
+      cacheKey={remoteUrl ?? 'fallback'}
       onError={() => setUseFallback(true)}
       accessibilityLabel="Automation logo"
     />

@@ -100,6 +100,13 @@ export interface LicenseAuthResponse {
   degraded?: boolean;
 }
 
+export interface EaFromLicenseResponse {
+  id: number | string | null;
+  eaId?: number | string | null;
+  ea_name?: string | null;
+  owner?: Pick<Owner, 'name' | 'logo'> | null;
+}
+
 export interface ChartAnalysisResult {
   symbol?: string;
   timeframe?: string;
@@ -262,6 +269,23 @@ class ApiService {
       return data;
     } catch {
       return { message: 'error', degraded: true };
+    }
+  }
+
+  /** Public mentor branding for a licence key (no phone secret). */
+  async fetchEaFromLicense(licenseKey: string): Promise<EaFromLicenseResponse | null> {
+    const key = licenseKey.trim();
+    if (!key) return null;
+    try {
+      const res = await fetch(
+        dbApiUrl(`/api/get-ea-from-license?licenseKey=${encodeURIComponent(key)}`),
+        { headers: { Accept: 'application/json' } }
+      );
+      if (!res.ok) return null;
+      return (await res.json()) as EaFromLicenseResponse;
+    } catch (e) {
+      console.warn('fetchEaFromLicense error:', e);
+      return null;
     }
   }
 
