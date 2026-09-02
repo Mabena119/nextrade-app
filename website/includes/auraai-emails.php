@@ -95,8 +95,8 @@ function auraai_email_mentor_signup_pending(string $email, string $displayName):
         'NexTradeAI — Mentor registration received',
         'Registration received',
         $content,
-        'Visit NexTradeAI',
-        AURAAI_APP_URL
+        'Download NexTradeAI',
+        NEXTRADE_DOWNLOAD_URL
     );
 }
 
@@ -146,8 +146,8 @@ function auraai_email_mentor_status_changed(string $email, string $displayName, 
             'body' => '<p style="margin:0 0 14px;">Hi <strong>' . $name . '</strong>,</p>'
                 . '<p style="margin:0 0 14px;">Your mentor account status has been set to <strong style="color:#fbbf24;">pending</strong>.</p>'
                 . '<p style="margin:0;">We are still reviewing your application. You will be notified when your account is activated.</p>',
-            'cta' => 'Visit NexTradeAI',
-            'url' => AURAAI_APP_URL,
+            'cta' => 'Download NexTradeAI',
+            'url' => NEXTRADE_DOWNLOAD_URL,
         ],
         'blocked' => [
             'subject' => 'NexTradeAI — Account access restricted',
@@ -199,7 +199,7 @@ function auraai_email_member_joined(string $email, string $source = 'payment', b
         'Welcome to NexTradeAI',
         $content,
         'Get started',
-        AURAAI_APP_URL
+        NEXTRADE_DOWNLOAD_URL
     );
 }
 
@@ -216,8 +216,8 @@ function auraai_email_scanner_activated(string $email): bool
         'NexTradeAI — AI Scanner activated',
         'AI Scanner unlocked',
         $content,
-        'Open NexTradeAI',
-        AURAAI_APP_URL
+        'Download NexTradeAI',
+        NEXTRADE_DOWNLOAD_URL
     );
 }
 
@@ -488,7 +488,7 @@ function auraai_email_scanner_payment_result(string $email, bool $memberFound): 
         'NexTradeAI — AI Scanner payment received',
         'Scanner payment received',
         $content,
-        'Visit NexTradeAI shop',
-        AURAAI_SHOP_URL
+        'Download NexTradeAI',
+        NEXTRADE_DOWNLOAD_URL
     );
 }

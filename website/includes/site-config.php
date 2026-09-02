@@ -40,6 +40,9 @@ if (!defined('AURAAI_SHOP_URL')) {
 if (!defined('AURAAI_APP_URL')) {
     define('AURAAI_APP_URL', NEXTRADE_APP_URL);
 }
+if (!defined('AURAAI_DOWNLOAD_URL')) {
+    define('AURAAI_DOWNLOAD_URL', NEXTRADE_DOWNLOAD_URL);
+}
 if (!defined('AURAAI_ADMIN_LOGIN')) {
     define('AURAAI_ADMIN_LOGIN', NEXTRADE_ADMIN_URL);
 }
