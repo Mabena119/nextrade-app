@@ -23,6 +23,7 @@ import {
   type MartingaleLotSource,
 } from '@/utils/trading-features';
 import { symbolsAreSimilar, resolveConfiguredMt5QuotesSymbol, quoteSetNotFoundMessage } from '@/utils/trade-symbol-match';
+import { signalAgeInSeconds } from '@/utils/signal-datetime';
 
 function normalizeSymbolKeyLocal(s: string): string {
   return s.replace(/\s/g, '').toUpperCase();
@@ -636,23 +637,12 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
       }
 
       const now = Date.now();
-      let signalTime: Date | null = null;
+      const { ageInSeconds, signalTime } = signalAgeInSeconds(time, latestupdate, now);
 
-      if (time) {
-        signalTime = new Date(time);
-      }
-      if (latestupdate) {
-        const latestUpdateTime = new Date(latestupdate);
-        if (!signalTime || latestUpdateTime.getTime() > signalTime.getTime()) {
-          signalTime = latestUpdateTime;
-        }
-      }
-
-      if (!signalTime || isNaN(signalTime.getTime())) {
+      if (!signalTime) {
         return { shouldProcess: false, ageInSeconds: -1, reason: 'invalid_time' };
       }
 
-      const ageInSeconds = (now - signalTime.getTime()) / 1000;
       const isRecent = ageInSeconds <= COPY_SIGNAL_MAX_AGE_SECONDS;
 
       return { shouldProcess: isRecent, ageInSeconds, reason: isRecent ? undefined : 'too_old' };

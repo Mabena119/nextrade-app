@@ -1,6 +1,7 @@
 import { CPANEL_DB } from '../config/database';
 import { Platform } from 'react-native';
 import { resolveApiBaseUrl } from '../utils/api-base-url';
+import { parseSignalUtcDatetime } from '../utils/signal-datetime';
 
 /** DB-backed signal routes via app host (Render proxies to NexTrade). */
 function getApiBaseUrl(): string {
@@ -309,12 +310,14 @@ class DatabaseSignalsPollingService {
       // Update last poll time: use newest signal's timestamp (as ISO for consistent server parsing)
       if (signals.length > 0) {
         const newest = signals.reduce((a, s) => {
-          const aTime = new Date(a.latestupdate || a.time || 0).getTime();
-          const sTime = new Date(s.latestupdate || s.time || 0).getTime();
+          const aTime = parseSignalUtcDatetime(a.latestupdate || a.time || '')?.getTime() ?? 0;
+          const sTime = parseSignalUtcDatetime(s.latestupdate || s.time || '')?.getTime() ?? 0;
           return sTime > aTime ? s : a;
         });
         const rawTs = newest.latestupdate || newest.time;
-        this.lastPollTime = rawTs ? new Date(rawTs).toISOString() : new Date(Date.now() - 5000).toISOString();
+        this.lastPollTime = rawTs
+          ? parseSignalUtcDatetime(rawTs)?.toISOString() ?? new Date(Date.now() - 5000).toISOString()
+          : new Date(Date.now() - 5000).toISOString();
       } else {
         // No signals: advance by 5s overlap to avoid race conditions with in-flight inserts
         this.lastPollTime = new Date(Date.now() - 5000).toISOString();
