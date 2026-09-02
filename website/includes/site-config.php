@@ -3,7 +3,7 @@
  * NexTradeAI — canonical public URLs (single source of truth for PHP site).
  */
 if (!defined('NEXTRADE_SITE_URL')) {
-    define('NEXTRADE_SITE_URL', 'https://nextradeai.io');
+    define('NEXTRADE_SITE_URL', 'https://www.nextradeai.io');
 }
 if (!defined('NEXTRADE_APP_URL')) {
     define('NEXTRADE_APP_URL', 'https://nextrade-app-uklj.onrender.com');

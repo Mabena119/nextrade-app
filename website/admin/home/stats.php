@@ -8,7 +8,7 @@ $totalKeys = (int) total_licences($ownerId, 'jj');
 <div class="aura-console-page">
   <header class="aura-console-head">
     <div>
-      <p class="aura-kicker">Insights</p>
+      <p class="aura-kicker">Analytics</p>
       <h1>All access codes</h1>
       <p>Tap a code to open details. Use the copy-friendly actions on each row.</p>
     </div>

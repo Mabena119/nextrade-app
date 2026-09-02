@@ -11,76 +11,84 @@ $dash_slots   = max(0, $dash_cap - $dash_lic_jj);
 $dash_name    = htmlspecialchars(get_admin($_SESSION['username'], "displayname"), ENT_QUOTES, 'UTF-8');
 ?>
 
-<div class="aura-console-page">
-  <header class="aura-console-head">
-    <div>
-      <p class="aura-kicker">Overview</p>
-      <h1>Hi, <?php echo $dash_name; ?></h1>
-      <p>Everything you need to run cloud VPS access — simple, fast, and friendly.</p>
+<div class="aura-console-page dash">
+  <header class="dash-hero">
+    <div class="dash-hero__copy">
+      <p class="aura-kicker">Dashboard</p>
+      <h1>Welcome back, <?php echo $dash_name; ?></h1>
+      <p>Manage access codes, automations, and member activity from one place.</p>
     </div>
-    <span class="aura-chip"><i class="ti ti-circle-filled" style="font-size:0.45rem;"></i> Online</span>
+    <div class="dash-hero__actions">
+      <a href="key.php" class="aura-btn aura-btn-primary"><i class="ti ti-key"></i> New key</a>
+      <a href="stats.php" class="aura-btn aura-btn-ghost"><i class="ti ti-chart-dots"></i> Analytics</a>
+    </div>
   </header>
 
-  <section class="aura-welcome">
-    <div>
-      <h2>Quick start</h2>
-      <p>Mint an access code, check insights, or manage your automations.</p>
-    </div>
-    <div style="display:flex;flex-wrap:wrap;gap:0.55rem;">
-      <a href="key.php" class="aura-btn aura-btn-primary"><i class="ti ti-key"></i> New code</a>
-      <a href="stats.php" class="aura-btn aura-btn-ghost"><i class="ti ti-chart-dots"></i> Insights</a>
-      <a href="/shop/" class="aura-btn aura-btn-ghost" target="_blank" rel="noopener noreferrer"><i class="ti ti-shopping-cart"></i> Shop</a>
-      <a href="<?php echo htmlspecialchars(NEXTRADE_APP_URL, ENT_QUOTES, 'UTF-8'); ?>" class="aura-btn aura-btn-ghost" target="_blank" rel="noopener noreferrer"><i class="ti ti-device-mobile"></i> App</a>
-    </div>
-  </section>
-
-  <div class="aura-stat-grid">
-    <a class="aura-stat" href="stats.php">
-      <small>Codes issued</small>
-      <strong><?php echo (int) $dash_lic_jj; ?></strong>
-      <span>All time</span>
+  <div class="dash-metrics">
+    <a class="dash-card" href="stats.php">
+      <span class="dash-card__icon" aria-hidden="true"><i class="ti ti-key"></i></span>
+      <span class="dash-card__label">Licence keys</span>
+      <strong class="dash-card__value"><?php echo (int) $dash_lic_jj; ?></strong>
+      <span class="dash-card__hint">All time</span>
     </a>
-    <a class="aura-stat" href="stats.php">
-      <small>Live now</small>
-      <strong><?php echo (int) $dash_lic_act; ?></strong>
-      <span>Active members</span>
+    <a class="dash-card" href="stats.php">
+      <span class="dash-card__icon dash-card__icon--live" aria-hidden="true"><i class="ti ti-bolt"></i></span>
+      <span class="dash-card__label">Live now</span>
+      <strong class="dash-card__value"><?php echo (int) $dash_lic_act; ?></strong>
+      <span class="dash-card__hint">Active members</span>
     </a>
-    <a class="aura-stat" href="EA.php">
-      <small>Automations</small>
-      <strong><?php echo (int) $dash_ea; ?></strong>
-      <span>On your account</span>
+    <a class="dash-card" href="EA.php">
+      <span class="dash-card__icon dash-card__icon--ea" aria-hidden="true"><i class="ti ti-cpu"></i></span>
+      <span class="dash-card__label">EAs</span>
+      <strong class="dash-card__value"><?php echo (int) $dash_ea; ?></strong>
+      <span class="dash-card__hint">On your account</span>
     </a>
-    <a class="aura-stat" href="key.php">
-      <small>Capacity</small>
-      <strong><?php echo (int) $dash_cap; ?></strong>
-      <span><?php echo (int) $dash_slots; ?> seats left</span>
+    <a class="dash-card" href="key.php">
+      <span class="dash-card__icon dash-card__icon--cap" aria-hidden="true"><i class="ti ti-stack-2"></i></span>
+      <span class="dash-card__label">Capacity</span>
+      <strong class="dash-card__value"><?php echo (int) $dash_cap; ?></strong>
+      <span class="dash-card__hint"><?php echo (int) $dash_slots; ?> seats left</span>
     </a>
   </div>
 
-  <div class="aura-split">
-    <section class="aura-panel">
-      <p class="aura-kicker" style="margin-bottom:0.5rem;">Shortcuts</p>
-      <h2 style="margin:0 0 1rem;font-family:var(--aura-font-display);font-size:1.15rem;">Jump in</h2>
-      <div class="aura-actions">
-        <a href="key.php"><i class="ti ti-key"></i> Mint code</a>
-        <a href="EA.php"><i class="ti ti-cpu"></i> Automations</a>
-        <a href="stats.php"><i class="ti ti-chart-dots"></i> Insights</a>
-        <a href="copy_trades.php"><i class="ti ti-arrows-shuffle"></i> Signal sync</a>
-        <a href="alicense.php"><i class="ti ti-refresh"></i> Restore access</a>
-        <a href="profile.php"><i class="ti ti-user"></i> Account</a>
+  <div class="dash-grid">
+    <section class="dash-panel">
+      <div class="dash-panel__head">
+        <h2>Quick actions</h2>
+        <p>Jump straight to the tools you use most.</p>
+      </div>
+      <div class="dash-actions">
+        <a href="key.php"><i class="ti ti-key"></i><span>Mint key</span></a>
+        <a href="EA.php"><i class="ti ti-cpu"></i><span>EAs</span></a>
+        <a href="stats.php"><i class="ti ti-chart-dots"></i><span>Analytics</span></a>
+        <a href="copy_trades.php"><i class="ti ti-arrows-shuffle"></i><span>Copy trades</span></a>
+        <a href="alicense.php"><i class="ti ti-refresh"></i><span>Restore licence</span></a>
+        <a href="profile.php"><i class="ti ti-user"></i><span>Account</span></a>
       </div>
     </section>
 
-    <section class="aura-panel">
-      <p class="aura-kicker" style="margin-bottom:0.5rem;">Usage</p>
-      <h2 style="margin:0 0 0.35rem;font-family:var(--aura-font-display);font-size:1.15rem;"><?php echo (int) $dash_usage; ?>% filled</h2>
-      <p style="margin:0 0 0.85rem;color:var(--aura-muted);font-size:0.9rem;"><?php echo (int) $dash_lic_act; ?> live · <?php echo (int) $dash_slots; ?> open seats</p>
-      <div class="aura-progress" aria-hidden="true"><i style="width:<?php echo (int) $dash_usage; ?>%"></i></div>
-      <ul style="list-style:none;margin:0;padding:0;display:grid;gap:0.45rem;color:var(--aura-muted);font-size:0.9rem;">
-        <li>✓ Console ready</li>
-        <li>✓ Code minting enabled</li>
-        <li>✓ <?php echo (int) $dash_ea; ?> automations linked</li>
-      </ul>
+    <section class="dash-panel dash-panel--usage">
+      <div class="dash-panel__head">
+        <h2>Seat usage</h2>
+        <p><?php echo (int) $dash_lic_act; ?> live · <?php echo (int) $dash_slots; ?> open</p>
+      </div>
+      <div class="dash-usage">
+        <div class="dash-usage__ring" style="--dash-pct: <?php echo (int) $dash_usage; ?>">
+          <svg viewBox="0 0 120 120" aria-hidden="true">
+            <circle class="dash-usage__track" cx="60" cy="60" r="52"></circle>
+            <circle class="dash-usage__fill" cx="60" cy="60" r="52"></circle>
+          </svg>
+          <div class="dash-usage__center">
+            <strong><?php echo (int) $dash_usage; ?>%</strong>
+            <span>filled</span>
+          </div>
+        </div>
+        <ul class="dash-status">
+          <li><i class="ti ti-circle-check"></i> Console ready</li>
+          <li><i class="ti ti-circle-check"></i> Code minting enabled</li>
+          <li><i class="ti ti-circle-check"></i> <?php echo (int) $dash_ea; ?> EAs linked</li>
+        </ul>
+      </div>
     </section>
   </div>
 </div>

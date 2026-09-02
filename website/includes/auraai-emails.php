@@ -12,7 +12,7 @@ function auraai_email_escape(string $value): string
 
 function auraai_email_wrap(string $title, string $contentHtml, ?string $ctaLabel = null, ?string $ctaUrl = null): string
 {
-    $logo = auraai_email_escape(LOGO_URL);
+    $logo = auraai_email_escape(defined('EMAIL_LOGO_URL') ? EMAIL_LOGO_URL : LOGO_URL);
     $brand = auraai_email_escape(GMAIL_FROM_NAME);
     $heading = auraai_email_escape($title);
     $year = date('Y');
@@ -41,7 +41,7 @@ function auraai_email_wrap(string $title, string $contentHtml, ?string $ctaLabel
         . '<tr><td align="center">'
         . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#ffffff" style="max-width:560px;background:#ffffff;border:1px solid #d1d5db;border-radius:16px;overflow:hidden;">'
         . '<tr><td bgcolor="#111827" style="padding:28px 28px 16px;text-align:center;background-color:#111827;">'
-        . '<img src="' . $logo . '" alt="' . $brand . '" width="64" height="64" style="display:block;margin:0 auto 16px;border-radius:12px;">'
+        . '<img src="' . $logo . '" alt="' . $brand . '" width="64" height="64" style="display:block;margin:0 auto 16px;border-radius:12px;border:0;outline:none;text-decoration:none;-ms-interpolation-mode:bicubic;">'
         . '<p class="email-heading" style="margin:0;font-size:22px;font-weight:800;letter-spacing:-0.3px;line-height:1.3;color:#ffffff;">'
         . '<span style="color:#ffffff !important;-webkit-text-fill-color:#ffffff !important;">' . $heading . '</span></p>'
         . '</td></tr>'

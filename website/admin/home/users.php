@@ -2,7 +2,7 @@
     require __DIR__ . '/include/require_super.php';
     include("include/header.php");
 
-    $trusted = (get_admin($_SESSION['username'], 'trusted') == true);
+    $canManage = (bool) get_admin($_SESSION['username'], 'super');
 ?>
 
 <style>
@@ -408,7 +408,7 @@
 	<header class="aura-console-head">
 		<div>
 			<p class="aura-kicker">Directory</p>
-			<h1>Members</h1>
+			<h1>Users</h1>
 			<p>Search by name, email, phone, or ID. Open a host to see their automations.</p>
 		</div>
 	</header>
@@ -507,14 +507,14 @@
 						</td>
 						<td>
 							<input class="mu-input-num" type="number" name="users[<?php echo $uid; ?>][total_keys]" form="<?php echo htmlspecialchars($fid, ENT_QUOTES, 'UTF-8'); ?>"
-								value="<?php echo htmlspecialchars($user['total_keys']); ?>" required min="0" <?php echo $trusted ? '' : 'disabled'; ?> />
+								value="<?php echo htmlspecialchars($user['total_keys']); ?>" required min="0" <?php echo $canManage ? '' : 'disabled'; ?> />
 						</td>
 						<td><span class="mu-stat"><?php echo (int) total_licences($user['id'], "jj"); ?></span></td>
 						<td>
 							<a class="mu-stat" href="subscriptions.php?m=<?php echo $uid; ?>"><?php echo (int) total_subscriptions($user['id'], true); ?></a>
 						</td>
 						<td>
-							<select class="mu-select" name="users[<?php echo $uid; ?>][status]" form="<?php echo htmlspecialchars($fid, ENT_QUOTES, 'UTF-8'); ?>" <?php echo $trusted ? '' : 'disabled'; ?>>
+							<select class="mu-select" name="users[<?php echo $uid; ?>][status]" form="<?php echo htmlspecialchars($fid, ENT_QUOTES, 'UTF-8'); ?>" <?php echo $canManage ? '' : 'disabled'; ?>>
 								<option value="pending" <?php if($st == 'pending') echo 'selected'; ?>>Pending</option>
 								<option value="active" <?php if($st == 'active') echo 'selected'; ?>>Active</option>
 								<option value="blocked" <?php if($st == 'blocked') echo 'selected'; ?>>Blocked</option>
@@ -529,7 +529,7 @@
 							<?php endif; ?>
 						</td>
 						<td>
-							<?php if ($trusted) { ?>
+							<?php if ($canManage) { ?>
 								<button type="button" class="mu-btn-save" onclick="saveMentorUser(<?php echo $uid; ?>)">Save</button>
 							<?php } else { ?>
 								<span class="mu-cell-dim">—</span>
@@ -542,7 +542,7 @@
 		</div>
 	</div>
 
-	<?php if ($trusted) {
+	<?php if ($canManage) {
 		$pendingDeleteCount = count(array_filter(get_all_users(), function ($u) {
 			return ($u['status'] ?? '') === 'pending';
 		}));

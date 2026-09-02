@@ -3,7 +3,7 @@
 <div class="aura-console-page" style="max-width:560px;">
   <header class="aura-console-head">
     <div>
-      <p class="aura-kicker">Restore access</p>
+      <p class="aura-kicker">Restore licence</p>
       <h1>Bring a code back online</h1>
       <p>Paste the access code and confirm — that’s it.</p>
     </div>
@@ -23,7 +23,7 @@
           </label>
         </div>
       </div>
-      <button class="aura-btn aura-btn-primary aura-btn-block" type="submit"><i class="ti ti-refresh"></i> Restore access</button>
+      <button class="aura-btn aura-btn-primary aura-btn-block" type="submit"><i class="ti ti-refresh"></i> Restore licence</button>
       <p style="text-align:center;margin:1rem 0 0;"><a href="index.php" style="color:var(--aura-muted);">Cancel</a></p>
     </form>
   </div>

@@ -3,7 +3,7 @@
 <div class="aura-console-page" style="max-width:560px;">
   <header class="aura-console-head">
     <div>
-      <p class="aura-kicker">Access codes</p>
+      <p class="aura-kicker">Licence keys</p>
       <h1>Mint a new code</h1>
       <p>Pick the customer, automation, and plan — we’ll handle the rest.</p>
     </div>

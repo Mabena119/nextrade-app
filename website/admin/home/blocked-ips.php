@@ -17,7 +17,7 @@ include 'include/header.php';
 <div class="aura-console-page">
     <header class="aura-console-head">
         <div>
-            <p class="aura-kicker">Access guard</p>
+            <p class="aura-kicker">Security</p>
             <h1>Blocked IPs</h1>
             <p>Block abusive visitors from the public site. Your console always stays reachable.</p>
         </div>

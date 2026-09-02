@@ -1,20 +1,14 @@
 <?php
-session_start();
-require dirname(__DIR__) . '/php-includes/connect.php';
-require dirname(__DIR__) . '/php-includes/functions.php';
-if (!isset($_SESSION['id']) || !get_admin($_SESSION['username'], 'super')) {
-    header('Location: index.php');
-    exit();
-}
+require __DIR__ . '/include/require_super.php';
 include 'include/header.php';
 ?>
 
 <div class="aura-console-page" style="max-width:560px;">
   <header class="aura-console-head">
     <div>
-      <p class="aura-kicker">Restore inbox</p>
-      <h1>Reactivate member email</h1>
-      <p>Let a member sign into the app again with their email.</p>
+      <p class="aura-kicker">Restore email</p>
+      <h1>Bring an inbox back online</h1>
+      <p>Paste the member email and confirm — that’s it.</p>
     </div>
   </header>
 
@@ -32,7 +26,8 @@ include 'include/header.php';
           </label>
         </div>
       </div>
-      <button class="aura-btn aura-btn-primary aura-btn-block" type="submit"><i class="ti ti-refresh"></i> Restore inbox</button>
+      <button class="aura-btn aura-btn-primary aura-btn-block" type="submit"><i class="ti ti-refresh"></i> Restore email</button>
+      <p style="text-align:center;margin:1rem 0 0;"><a href="index.php" style="color:var(--aura-muted);">Cancel</a></p>
     </form>
   </div>
 </div>

@@ -46,6 +46,9 @@ if (!defined('GMAIL_FROM_NAME')) {
 if (!defined('LOGO_URL')) {
     define('LOGO_URL', NEXTRADE_SITE_URL . '/assets/img/sitelogo.png');
 }
+if (!defined('EMAIL_LOGO_URL')) {
+    define('EMAIL_LOGO_URL', LOGO_URL);
+}
 
 define('MAIL_FROM_EMAIL', GMAIL_USER);
 define('MAIL_REPLY_TO', GMAIL_USER);

@@ -16,10 +16,18 @@ if ((!empty($_GET['success']) && is_string($_GET['success'])) || (!empty($_GET['
     exit;
 }
 
-include('include/header.php');
+require_once __DIR__ . '/../php-includes/functions.php';
+
+$uploadsFs = realpath(__DIR__ . '/../uploads');
+if ($uploadsFs === false) {
+    $uploadsFs = dirname(__DIR__) . '/uploads';
+}
 
 $imgFile = get_admin($_SESSION['username'], 'image');
-$avatarSrc = '../uploads/' . htmlspecialchars($imgFile ?: 'default.png', ENT_QUOTES, 'UTF-8');
+$avatarSrc = nextrade_admin_avatar_src($imgFile, $uploadsFs);
+$GLOBALS['nextrade_admin_avatar_src'] = $avatarSrc;
+
+include('include/header.php');
 
 $flash = null;
 if (!empty($_SESSION['profile_flash']) && is_array($_SESSION['profile_flash'])) {
@@ -28,13 +36,9 @@ if (!empty($_SESSION['profile_flash']) && is_array($_SESSION['profile_flash'])) 
 }
 
 // Same folder as the photo: admin/uploads/{basename}.{ext} → admin/uploads/{basename}.mp4
-$uploadsFs = realpath(__DIR__ . '/../uploads');
-if ($uploadsFs === false) {
-    $uploadsFs = dirname(__DIR__) . '/uploads';
-}
 $videoFile = '';
 $hasProfileVideo = false;
-if (!empty($imgFile)) {
+if (!empty($imgFile) && !nextrade_admin_is_placeholder_image($imgFile)) {
     $videoCandidate = pathinfo($imgFile, PATHINFO_FILENAME) . '.mp4';
     if (is_file($uploadsFs . '/' . $videoCandidate)) {
         $videoFile = $videoCandidate;
@@ -457,7 +461,7 @@ if ($videoFile !== '') {
         </div>
         <div class="profile-fb-bar">
             <div class="profile-fb-avatar-ring">
-                <img class="profile-fb-avatar" src="<?php echo $avatarSrc; ?>" alt="Profile" onerror="this.src='../assets/sitelogo.png'">
+                <img class="profile-fb-avatar" src="<?php echo htmlspecialchars($avatarSrc, ENT_QUOTES, 'UTF-8'); ?>" alt="Profile" onerror="this.onerror=null;this.src='../assets/sitelogo.png'">
             </div>
             <div class="profile-fb-meta">
                 <h1><?php echo htmlspecialchars(get_admin($_SESSION['username'], 'displayname'), ENT_QUOTES, 'UTF-8'); ?></h1>

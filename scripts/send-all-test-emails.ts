@@ -1,18 +1,20 @@
 #!/usr/bin/env bun
 /**
- * Send all NexTradeAI email templates to a test inbox via Render relay.
- * Usage: bun scripts/send-all-test-emails.ts webitsolu@gmail.com
+ * Send all NexTradeAI email templates to a test inbox.
+ * Usage: bun scripts/send-all-test-emails.ts [recipient] [--direct]
+ *
+ * --direct  Send via Gmail SMTP from .env (default when relay returns 401)
  */
-const TO = process.argv[2] || 'webitsolu@gmail.com';
+import { sendGmailEmail } from '../utils/gmail-smtp';
+
+const args = process.argv.slice(2);
+const forceDirect = args.includes('--direct');
+const TO = args.find((a) => !a.startsWith('--')) || 'webitsolu@gmail.com';
 const RELAY = 'https://nextrade-app-uklj.onrender.com/api/send-email';
 const SECRET = process.env.AURAAI_EMAIL_RELAY_SECRET || '';
-if (!SECRET) {
-  console.error('Set AURAAI_EMAIL_RELAY_SECRET');
-  process.exit(1);
-}
 const APP = 'https://nextradeai.io/';
 const ADMIN = 'https://nextradeai.io/admin/';
-const LOGO = 'https://nextradeai.io/assets/img/sitelogo.png';
+const LOGO = 'https://www.nextradeai.io/assets/img/sitelogo.png';
 
 function wrap(title: string, content: string, cta?: { label: string; url: string }) {
   const ctaHtml = cta
@@ -79,7 +81,8 @@ const tests: { name: string; subject: string; html: string }[] = [
   },
 ];
 
-async function send(name: string, subject: string, html: string) {
+async function sendViaRelay(name: string, subject: string, html: string) {
+  if (!SECRET) return { ok: false as const, error: 'AURAAI_EMAIL_RELAY_SECRET not set' };
   const res = await fetch(RELAY, {
     method: 'POST',
     headers: {
@@ -98,7 +101,42 @@ async function send(name: string, subject: string, html: string) {
   });
   const data = await res.json().catch(() => ({}));
   const ok = res.ok && (data as { ok?: boolean }).ok;
-  console.log(`${ok ? '[OK]  ' : '[FAIL]'} ${name}${ok ? '' : ` — ${(data as { error?: string }).error || res.status}`}`);
+  return { ok, error: ok ? undefined : (data as { error?: string }).error || String(res.status) };
+}
+
+async function sendDirect(subject: string, html: string) {
+  return sendGmailEmail({
+    to: TO,
+    subject,
+    html,
+    text: subject,
+    gmailUser: process.env.GMAIL_USER,
+    gmailPass: process.env.GMAIL_PASS,
+    fromName: process.env.GMAIL_FROM_NAME || 'NexTradeAI',
+  });
+}
+
+let useDirect = forceDirect;
+
+async function send(name: string, subject: string, html: string) {
+  if (!useDirect) {
+    const relay = await sendViaRelay(name, subject, html);
+    if (relay.ok) {
+      console.log(`[OK]   ${name} (relay)`);
+      return true;
+    }
+    if (relay.error === 'Unauthorized' || relay.error === '401') {
+      console.log('[info] Relay unauthorized — switching to direct Gmail SMTP for remaining tests');
+      useDirect = true;
+    } else if (!forceDirect) {
+      console.log(`[FAIL] ${name} — relay: ${relay.error}`);
+      return false;
+    }
+  }
+
+  const direct = await sendDirect(subject, html);
+  const ok = !!direct.ok;
+  console.log(`${ok ? '[OK]  ' : '[FAIL]'} ${name}${ok ? ' (direct)' : ` — ${direct.error || 'send failed'}`}`);
   return ok;
 }
 

@@ -255,6 +255,42 @@ body.aura-auth {
 }
 .aura-auth-links a { color: var(--aura-cyan); font-weight: 600; }
 
+.aura-auth-site-links {
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--aura-border);
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: center;
+  gap: 0;
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.aura-auth-site-links a {
+  position: relative;
+  display: block;
+  padding: 0.45rem 0.35rem;
+  text-align: center;
+  color: var(--aura-muted);
+  font-weight: 600;
+  transition: color 0.2s ease;
+}
+.aura-auth-site-links a:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: 0;
+  width: 1px;
+  height: 0.85rem;
+  transform: translateY(-50%);
+  background: var(--aura-border);
+}
+.aura-auth-site-links a:hover {
+  color: var(--aura-cyan);
+  text-decoration: none;
+}
+
 /* ——— Legal / content pages ——— */
 .aura-page {
   position: relative;

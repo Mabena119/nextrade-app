@@ -27,10 +27,10 @@ if (!function_exists('nextrade_admin_auth_logo')) {
 if (!function_exists('nextrade_admin_auth_footer')) {
     function nextrade_admin_auth_footer(): void
     {
-        echo '<div class="aura-auth-site-links">';
+        echo '<nav class="aura-auth-site-links" aria-label="Site links">';
         echo '<a href="/">Home</a>';
         echo '<a href="/privacy-policy.html">Privacy</a>';
         echo '<a href="/terms-of-service.html">Terms</a>';
-        echo '</div>';
+        echo '</nav>';
     }
 }

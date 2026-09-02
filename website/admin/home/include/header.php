@@ -27,7 +27,7 @@
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta name="theme-color" content="#020B18">
   <title>NexTradeAI Console</title>
-  <link rel="icon" href="../assets/sitelogo.png" />
+  <link rel="icon" href="<?php echo htmlspecialchars(NEXTRADE_LOGO_URL, ENT_QUOTES, 'UTF-8'); ?>" />
   <link rel="stylesheet" href="/assets/css/platform.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css" />
   <?php if ( ! ( $GLOBALS['admin_light_assets'] ?? false ) ): ?>
@@ -40,43 +40,27 @@
   <div class="aura-console-app">
     <aside class="aura-console-sidebar" id="auraSidebar" aria-label="Console navigation">
       <div class="aura-console-brand">
-        <img src="../assets/sitelogo.png" alt="NexTradeAI" />
+        <img src="<?php echo htmlspecialchars(NEXTRADE_LOGO_URL, ENT_QUOTES, 'UTF-8'); ?>" alt="NexTradeAI" width="40" height="40" />
         <strong>Nex<span style="color:var(--aura-cyan)">Trade</span>AI</strong>
         <span>Mentor console</span>
       </div>
       <ul class="aura-console-nav">
-        <li><a class="<?php echo admin_nav_active('index.php'); ?>" href="index.php"><i class="ti ti-layout-dashboard"></i> Overview</a></li>
-        <li><a class="<?php echo admin_nav_active('key.php'); ?>" href="key.php"><i class="ti ti-key"></i> Access codes</a></li>
-        <li><a class="<?php echo admin_nav_active('EA.php'); ?>" href="EA.php"><i class="ti ti-cpu"></i> Automations</a></li>
-        <?php if(get_admin($_SESSION['username'],"super") and !get_admin($_SESSION['username'],"powerhost") and !get_admin($_SESSION['username'],"eamigrate") and !get_admin($_SESSION['username'],"eavault") ){?>
-        <li><a class="<?php echo admin_nav_active('users.php'); ?>" href="users.php"><i class="ti ti-users"></i> Members</a></li>
-        <li><a class="<?php echo admin_nav_active('blocked-ips.php'); ?>" href="blocked-ips.php"><i class="ti ti-shield-lock"></i> Access guard</a></li>
+        <li><a class="<?php echo admin_nav_active('index.php'); ?>" href="index.php"><i class="ti ti-layout-dashboard"></i> Dashboard</a></li>
+        <li><a class="<?php echo admin_nav_active('key.php'); ?>" href="key.php"><i class="ti ti-key"></i> Licence keys</a></li>
+        <li><a class="<?php echo admin_nav_active('EA.php'); ?>" href="EA.php"><i class="ti ti-cpu"></i> EAs</a></li>
+        <?php if(get_admin($_SESSION['username'],"super")){?>
+        <li><a class="<?php echo admin_nav_active(array('users.php', 'usersb.php', 'usersc.php', 'usersd.php')); ?>" href="users.php"><i class="ti ti-users"></i> Users</a></li>
+        <?php if(!get_admin($_SESSION['username'],"powerhost") && !get_admin($_SESSION['username'],"eamigrate") && !get_admin($_SESSION['username'],"eavault")){?>
+        <li><a class="<?php echo admin_nav_active('blocked-ips.php'); ?>" href="blocked-ips.php"><i class="ti ti-shield-lock"></i> Security</a></li>
         <?php }?>
-        <?php if(get_admin($_SESSION['username'],"super") and get_admin($_SESSION['username'],"powerhost")){?>
-        <li><a class="<?php echo admin_nav_active('usersb.php'); ?>" href="usersb.php"><i class="ti ti-users"></i> Members</a></li>
         <?php }?>
-        <?php if(get_admin($_SESSION['username'],"super") and get_admin($_SESSION['username'],"eamigrate")){?>
-        <li><a class="<?php echo admin_nav_active('usersc.php'); ?>" href="usersc.php"><i class="ti ti-users"></i> Members</a></li>
+        <li><a class="<?php echo admin_nav_active('alicense.php'); ?>" href="alicense.php"><i class="ti ti-refresh"></i> Restore licence</a></li>
+        <?php if(get_admin($_SESSION['username'],"super")){?>
+        <li><a class="<?php echo admin_nav_active(array('aemail.php', 'aemailb.php', 'aemailc.php', 'aemaild.php')); ?>" href="aemail.php"><i class="ti ti-mail"></i> Restore email</a></li>
         <?php }?>
-        <?php if(get_admin($_SESSION['username'],"super") and get_admin($_SESSION['username'],"eavault")){?>
-        <li><a class="<?php echo admin_nav_active('usersd.php'); ?>" href="usersd.php"><i class="ti ti-users"></i> Members</a></li>
-        <?php }?>
-        <li><a class="<?php echo admin_nav_active('alicense.php'); ?>" href="alicense.php"><i class="ti ti-refresh"></i> Restore access</a></li>
-        <?php if(get_admin($_SESSION['username'],"super") && !get_admin($_SESSION['username'],"powerhost") && !get_admin($_SESSION['username'],"eamigrate") && !get_admin($_SESSION['username'],"eavault") ){?>
-        <li><a class="<?php echo admin_nav_active('aemail.php'); ?>" href="aemail.php"><i class="ti ti-mail"></i> Restore inbox</a></li>
-        <?php }?>
-        <?php if(get_admin($_SESSION['username'],"super")&& get_admin($_SESSION['username'],"powerhost")){?>
-        <li><a class="<?php echo admin_nav_active('aemailb.php'); ?>" href="aemailb.php"><i class="ti ti-mail"></i> Restore inbox</a></li>
-        <?php }?>
-        <?php if(get_admin($_SESSION['username'],"super")&& get_admin($_SESSION['username'],"eamigrate")){?>
-        <li><a class="<?php echo admin_nav_active('aemailc.php'); ?>" href="aemailc.php"><i class="ti ti-mail"></i> Restore inbox</a></li>
-        <?php }?>
-        <?php if(get_admin($_SESSION['username'],"super")&& get_admin($_SESSION['username'],"eavault")){?>
-        <li><a class="<?php echo admin_nav_active('aemaild.php'); ?>" href="aemaild.php"><i class="ti ti-mail"></i> Restore inbox</a></li>
-        <?php }?>
-        <li><a class="<?php echo admin_nav_active('copy_trades.php'); ?>" href="copy_trades.php"><i class="ti ti-arrows-shuffle"></i> Signal sync</a></li>
-        <li><a class="<?php echo admin_nav_active('stats.php'); ?>" href="stats.php"><i class="ti ti-chart-dots"></i> Insights</a></li>
-        <?php nextrade_admin_external_nav(); ?>
+        <li><a class="<?php echo admin_nav_active('copy_trades.php'); ?>" href="copy_trades.php"><i class="ti ti-arrows-shuffle"></i> Copy trades</a></li>
+        <li><a class="<?php echo admin_nav_active('stats.php'); ?>" href="stats.php"><i class="ti ti-chart-dots"></i> Analytics</a></li>
+        <li class="aura-console-nav-spacer" aria-hidden="true"></li>
         <li><a href="../php-includes/logout.php"><i class="ti ti-logout"></i> Sign out</a></li>
       </ul>
     </aside>
@@ -86,16 +70,23 @@
     <div class="aura-console-body">
       <header class="aura-console-topbar">
         <button type="button" class="aura-console-menu-btn" id="auraMenuBtn" aria-label="Open menu"><i class="ti ti-menu-2"></i></button>
-        <div class="aura-console-topbar-title">Your workspace</div>
+        <div class="aura-console-topbar-title">Mentor console</div>
         <div class="aura-console-profile">
           <button type="button" class="aura-console-profile-btn" id="auraProfileBtn" aria-haspopup="true">
-            <img src="<?php echo '../uploads/'.htmlspecialchars(get_admin($_SESSION['username'],'image'), ENT_QUOTES, 'UTF-8'); ?>" alt="Profile" />
+            <?php
+            $__uploadsFs = realpath(__DIR__ . '/../uploads');
+            if ($__uploadsFs === false) {
+                $__uploadsFs = dirname(__DIR__) . '/uploads';
+            }
+            $__avatarSrc = $GLOBALS['nextrade_admin_avatar_src'] ?? nextrade_admin_avatar_src(
+                get_admin($_SESSION['username'], 'image'),
+                $__uploadsFs
+            );
+            ?>
+            <img src="<?php echo htmlspecialchars($__avatarSrc, ENT_QUOTES, 'UTF-8'); ?>" alt="Profile" onerror="this.onerror=null;this.src='../assets/sitelogo.png'" />
             <i class="ti ti-chevron-down" style="font-size:0.85rem;color:var(--aura-muted);"></i>
           </button>
           <div class="aura-console-profile-menu" id="auraProfileMenu">
-            <a href="/"><i class="ti ti-home"></i> Marketing site</a>
-            <a href="/shop/"><i class="ti ti-shopping-cart"></i> Shop</a>
-            <a href="<?php echo htmlspecialchars(NEXTRADE_APP_URL, ENT_QUOTES, 'UTF-8'); ?>" target="_blank" rel="noopener noreferrer"><i class="ti ti-device-mobile"></i> Open app</a>
             <a href="profile.php"><i class="ti ti-user"></i> Account</a>
             <a href="../php-includes/logout.php"><i class="ti ti-logout"></i> Sign out</a>
           </div>
