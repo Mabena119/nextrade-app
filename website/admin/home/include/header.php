@@ -83,7 +83,7 @@
                 $__uploadsFs
             );
             ?>
-            <img src="<?php echo htmlspecialchars($__avatarSrc, ENT_QUOTES, 'UTF-8'); ?>" alt="Profile" onerror="this.onerror=null;this.src='../assets/sitelogo.png'" />
+            <img src="<?php echo htmlspecialchars($__avatarSrc, ENT_QUOTES, 'UTF-8'); ?>" alt="Profile" onerror="this.onerror=null;this.src='<?php echo htmlspecialchars(NEXTRADE_LOGO_URL, ENT_QUOTES, 'UTF-8'); ?>'" />
             <i class="ti ti-chevron-down" style="font-size:0.85rem;color:var(--aura-muted);"></i>
           </button>
           <div class="aura-console-profile-menu" id="auraProfileMenu">

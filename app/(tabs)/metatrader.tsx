@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Platform, FlatList, Alert, ActivityIndicator, Image, Keyboard } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Platform, FlatList, Alert, ActivityIndicator, Image, Keyboard, Modal, Pressable } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -3162,7 +3162,7 @@ export default function MetaTraderScreen() {
                 </View>
 
                 <Text style={[styles.fieldLabel, { color: theme.colors.textMuted }]}>Broker server</Text>
-                <View style={[styles.serverContainer, { zIndex: showBrokerList ? 20 : 1 }]}>
+                <View style={styles.serverContainer}>
                   <View
                     style={[
                       styles.serverInputContainer,
@@ -3211,123 +3211,6 @@ export default function MetaTraderScreen() {
                       )}
                     </TouchableOpacity>
                   </View>
-
-                  {showBrokerList ? (
-                    <View
-                      style={[
-                        styles.brokerPanel,
-                        { borderColor: authColors.cardBorder, backgroundColor: authColors.card },
-                      ]}
-                    >
-                      <View style={[styles.brokerPanelHead, { borderBottomColor: authColors.cardBorder }]}>
-                        <Text style={[styles.brokerPanelTitle, { color: theme.colors.textPrimary }]}>
-                          HF Markets servers
-                        </Text>
-                        <View style={styles.brokerPanelActions}>
-                          {activeTab === 'MT4' ? (
-                            <TouchableOpacity
-                              onPress={() => void fetchMT4Brokers()}
-                              style={styles.brokerPanelIconBtn}
-                              disabled={isLoadingBrokers}
-                            >
-                              <RefreshCw
-                                color={theme.colors.textMuted}
-                                size={15}
-                                style={isLoadingBrokers ? styles.refreshIconSpinning : undefined}
-                              />
-                            </TouchableOpacity>
-                          ) : null}
-                          <TouchableOpacity
-                            onPress={() => setShowBrokerList(false)}
-                            style={styles.brokerPanelIconBtn}
-                          >
-                            <X color={theme.colors.textMuted} size={16} strokeWidth={2} />
-                          </TouchableOpacity>
-                        </View>
-                      </View>
-
-                      {brokerFetchError ? (
-                        <Text style={[styles.brokerPanelHint, { color: theme.colors.error }]}>
-                          {brokerFetchError}
-                        </Text>
-                      ) : null}
-
-                      {isLoadingBrokers ? (
-                        <View style={styles.brokerPanelLoading}>
-                          <ActivityIndicator color={theme.colors.accent} size="small" />
-                          <Text style={[styles.brokerPanelHint, { color: theme.colors.textMuted }]}>
-                            Loading brokers…
-                          </Text>
-                        </View>
-                      ) : null}
-
-                      <ScrollView
-                        style={styles.brokerPanelList}
-                        nestedScrollEnabled
-                        keyboardShouldPersistTaps="handled"
-                      >
-                        {filteredBrokers.map((item, index) => {
-                          const selected =
-                            activeTab === 'MT5'
-                              ? normalizeMt5ServerKey(server) === normalizeMt5ServerKey(item)
-                              : server === item;
-                          const isDemo = item.toLowerCase().includes('demo');
-                          return (
-                            <TouchableOpacity
-                              key={`${item}-${index}`}
-                              style={[
-                                styles.brokerRow,
-                                {
-                                  borderColor: selected ? `${theme.colors.accent}55` : authColors.cardBorder,
-                                  backgroundColor: selected ? `${theme.colors.accent}10` : authColors.inputBg,
-                                },
-                              ]}
-                              onPress={() => {
-                                setServer(activeTab === 'MT5' ? normalizeMt5ServerKey(item) : item);
-                                setShowBrokerList(false);
-                              }}
-                              activeOpacity={0.85}
-                            >
-                              <View
-                                style={[
-                                  styles.brokerRowDot,
-                                  { backgroundColor: isDemo ? theme.colors.textMuted : theme.colors.success },
-                                ]}
-                              />
-                              <Text
-                                style={[styles.brokerRowName, { color: theme.colors.textPrimary }]}
-                                numberOfLines={1}
-                              >
-                                {activeTab === 'MT5' ? getServerDisplayName(item) : item}
-                              </Text>
-                              <Text
-                                style={[
-                                  styles.brokerRowTag,
-                                  {
-                                    color: isDemo ? theme.colors.textMuted : theme.colors.success,
-                                    borderColor: isDemo ? authColors.cardBorder : `${theme.colors.success}44`,
-                                  },
-                                ]}
-                              >
-                                {isDemo ? 'DEMO' : 'LIVE'}
-                              </Text>
-                            </TouchableOpacity>
-                          );
-                        })}
-                        {filteredBrokers.length === 0 ? (
-                          <View style={styles.noBrokersContainer}>
-                            <Search color={theme.colors.textMuted} size={20} />
-                            <Text style={[styles.noBrokersText, { color: theme.colors.textPrimary }]}>
-                              No servers match
-                            </Text>
-                            <Text style={[styles.noBrokersSubtext, { color: theme.colors.textMuted }]}>
-                              Try clearing the search field
-                            </Text>
-                          </View>
-                        ) : null}
-                      </ScrollView>
-                    </View>
-                  ) : null}
                 </View>
 
                 <TouchableOpacity
@@ -3531,6 +3414,142 @@ export default function MetaTraderScreen() {
             />
           </View>
         )}
+
+      <Modal
+        visible={showBrokerList}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setShowBrokerList(false)}
+        statusBarTranslucent
+      >
+        <View style={styles.brokerModalRoot}>
+          <Pressable
+            style={styles.brokerModalBackdrop}
+            onPress={() => setShowBrokerList(false)}
+            accessibilityRole="button"
+            accessibilityLabel="Close server list"
+          />
+          <View
+            style={[
+              styles.brokerModalSheet,
+              {
+                borderColor: authColors.cardBorder,
+                backgroundColor: authColors.card,
+                paddingBottom: Math.max(insets.bottom, 12) + 8,
+              },
+            ]}
+          >
+            <View style={[styles.brokerPanelHead, { borderBottomColor: authColors.cardBorder }]}>
+              <Text style={[styles.brokerPanelTitle, { color: theme.colors.textPrimary }]}>
+                HF Markets servers
+              </Text>
+              <View style={styles.brokerPanelActions}>
+                {activeTab === 'MT4' ? (
+                  <TouchableOpacity
+                    onPress={() => void fetchMT4Brokers()}
+                    style={styles.brokerPanelIconBtn}
+                    disabled={isLoadingBrokers}
+                  >
+                    <RefreshCw
+                      color={theme.colors.textMuted}
+                      size={15}
+                      style={isLoadingBrokers ? styles.refreshIconSpinning : undefined}
+                    />
+                  </TouchableOpacity>
+                ) : null}
+                <TouchableOpacity
+                  onPress={() => setShowBrokerList(false)}
+                  style={styles.brokerPanelIconBtn}
+                >
+                  <X color={theme.colors.textMuted} size={16} strokeWidth={2} />
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {brokerFetchError ? (
+              <Text style={[styles.brokerPanelHint, { color: theme.colors.error }]}>
+                {brokerFetchError}
+              </Text>
+            ) : null}
+
+            {isLoadingBrokers ? (
+              <View style={styles.brokerPanelLoading}>
+                <ActivityIndicator color={theme.colors.accent} size="small" />
+                <Text style={[styles.brokerPanelHint, { color: theme.colors.textMuted }]}>
+                  Loading brokers…
+                </Text>
+              </View>
+            ) : (
+              <FlatList
+                data={filteredBrokers}
+                keyExtractor={(item, index) => `${item}-${index}`}
+                style={styles.brokerModalList}
+                contentContainerStyle={styles.brokerModalListContent}
+                keyboardShouldPersistTaps="handled"
+                showsVerticalScrollIndicator
+                renderItem={({ item }) => {
+                  const selected =
+                    activeTab === 'MT5'
+                      ? normalizeMt5ServerKey(server) === normalizeMt5ServerKey(item)
+                      : server === item;
+                  const isDemo = item.toLowerCase().includes('demo');
+                  return (
+                    <TouchableOpacity
+                      style={[
+                        styles.brokerRow,
+                        {
+                          borderColor: selected ? `${theme.colors.accent}55` : authColors.cardBorder,
+                          backgroundColor: selected ? `${theme.colors.accent}10` : authColors.inputBg,
+                        },
+                      ]}
+                      onPress={() => {
+                        setServer(activeTab === 'MT5' ? normalizeMt5ServerKey(item) : item);
+                        setShowBrokerList(false);
+                      }}
+                      activeOpacity={0.85}
+                    >
+                      <View
+                        style={[
+                          styles.brokerRowDot,
+                          { backgroundColor: isDemo ? theme.colors.textMuted : theme.colors.success },
+                        ]}
+                      />
+                      <Text
+                        style={[styles.brokerRowName, { color: theme.colors.textPrimary }]}
+                        numberOfLines={1}
+                      >
+                        {activeTab === 'MT5' ? getServerDisplayName(item) : item}
+                      </Text>
+                      <Text
+                        style={[
+                          styles.brokerRowTag,
+                          {
+                            color: isDemo ? theme.colors.textMuted : theme.colors.success,
+                            borderColor: isDemo ? authColors.cardBorder : `${theme.colors.success}44`,
+                          },
+                        ]}
+                      >
+                        {isDemo ? 'DEMO' : 'LIVE'}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                }}
+                ListEmptyComponent={
+                  <View style={styles.noBrokersContainer}>
+                    <Search color={theme.colors.textMuted} size={20} />
+                    <Text style={[styles.noBrokersText, { color: theme.colors.textPrimary }]}>
+                      No servers match
+                    </Text>
+                    <Text style={[styles.noBrokersSubtext, { color: theme.colors.textMuted }]}>
+                      Try clearing the search field
+                    </Text>
+                  </View>
+                }
+              />
+            )}
+          </View>
+        </View>
+      </Modal>
 
       <Toast
         visible={showToast}
@@ -3909,6 +3928,29 @@ const styles = StyleSheet.create({
     maxHeight: 220,
     paddingHorizontal: 10,
     paddingVertical: 8,
+  },
+  brokerModalRoot: {
+    flex: 1,
+    justifyContent: 'flex-end',
+  },
+  brokerModalBackdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+  },
+  brokerModalSheet: {
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    borderWidth: 1,
+    maxHeight: '72%',
+    overflow: 'hidden',
+  },
+  brokerModalList: {
+    flexGrow: 0,
+  },
+  brokerModalListContent: {
+    paddingHorizontal: 10,
+    paddingTop: 8,
+    paddingBottom: 12,
   },
   brokerRow: {
     flexDirection: 'row',

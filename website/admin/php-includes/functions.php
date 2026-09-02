@@ -115,24 +115,41 @@ function clear_admin_row_cache(?string $user = null): void
 	unset($cache[(string) $user]);
 }
 
+function nextrade_admin_avatar_fallback(): string
+{
+	if (!defined('NEXTRADE_LOGO_URL')) {
+		require_once dirname(__DIR__, 2) . '/includes/site-config.php';
+	}
+	return NEXTRADE_LOGO_URL;
+}
+
 function nextrade_admin_is_placeholder_image(?string $imageBasename): bool
 {
 	$base = strtolower(trim(basename((string) $imageBasename)));
 	if ($base === '' || $base === 'default.png' || $base === 'default.jpg' || $base === 'placeholder.png') {
 		return true;
 	}
-	return false;
+	// Legacy Aura branding files — treat as unset so mentors get the NexTrade logo.
+	$legacy = array(
+		'sitelogo.png',
+		'logo.png',
+		'adminlogo.png',
+		'auraaivps-logo.png',
+		'aura-logo.png',
+		'auraai.png',
+	);
+	return in_array($base, $legacy, true);
 }
 
 /**
- * Public URL for mentor profile photo with cache-bust, or sitelogo fallback when unset/missing.
+ * Public URL for mentor profile photo with cache-bust, or NexTrade logo fallback when unset/missing.
  */
 function nextrade_admin_avatar_src(
 	?string $imageBasename,
 	string $uploadsFs,
 	string $relativeUploadsPrefix = '../uploads/'
 ): string {
-	$fallback = '../assets/sitelogo.png';
+	$fallback = nextrade_admin_avatar_fallback();
 	if (nextrade_admin_is_placeholder_image($imageBasename)) {
 		return $fallback;
 	}

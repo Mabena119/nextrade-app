@@ -1,8 +1,8 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, Dimensions, AppState, Modal, ActivityIndicator } from 'react-native';
+import { Plus, ChevronRight } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Notifications from 'expo-notifications';
-import { Plus, ChevronRight } from 'lucide-react-native';
 import { router, useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -19,6 +19,7 @@ import { overlayService } from '@/services/overlay-service';
 export default function HomeScreen() {
   const { eas, isFirstTime, setIsFirstTime, removeEA, isBotActive, setBotActive, setActiveEA, mt5Account, primaryLicenseStatus, refreshPrimaryEaProfile } = useApp();
   const { theme, toggleTheme } = useTheme();
+  const scrollRef = useRef<ScrollView>(null);
 
   // Safely get the primary EA (first one in the list)
   const primaryEA = Array.isArray(eas) && eas.length > 0 ? eas[0] : null;
@@ -142,6 +143,9 @@ export default function HomeScreen() {
   useFocusEffect(
     useCallback(() => {
       void refreshPrimaryEaProfile();
+      requestAnimationFrame(() => {
+        scrollRef.current?.scrollTo({ y: 0, animated: false });
+      });
     }, [refreshPrimaryEaProfile])
   );
 
@@ -277,9 +281,10 @@ export default function HomeScreen() {
   return (
     <SafeAreaView
       style={[styles.container, { backgroundColor: safeScreenBg }]}
-      edges={['top', 'right', 'bottom', 'left']}
+      edges={Platform.OS === 'android' ? ['top', 'right', 'left'] : ['top', 'right', 'bottom', 'left']}
     >
       <ScrollView
+        ref={scrollRef}
         style={styles.scroll}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
@@ -344,31 +349,34 @@ export default function HomeScreen() {
               ))}
             </>
           )}
-
-          <TouchableOpacity
-            style={[
-              styles.addEAButton,
-              {
-                borderColor: theme.colors.accent,
-                backgroundColor: theme.colors.accent,
-              },
-            ]}
-            onPress={handleAddNewEA}
-            activeOpacity={0.88}
-          >
-            <View style={[styles.addIconWrap, { backgroundColor: `${theme.colors.onAccent}18` }]}>
-              <Plus color={theme.colors.onAccent} size={18} strokeWidth={2.2} />
-            </View>
-            <View style={styles.addEATextContainer}>
-              <Text style={[styles.addEATitle, { color: theme.colors.onAccent }]}>Link automation</Text>
-              <Text style={[styles.addEASubtitle, { color: `${theme.colors.onAccent}B8` }]}>
-                Add another automation key
-              </Text>
-            </View>
-            <ChevronRight color={`${theme.colors.onAccent}CC`} size={18} strokeWidth={1.8} />
-          </TouchableOpacity>
         </View>
       </ScrollView>
+
+      <View style={styles.homeFooter}>
+        <TouchableOpacity
+          testID="action-link-automation"
+          style={[
+            styles.addEAButton,
+            {
+              borderColor: theme.colors.accent,
+              backgroundColor: theme.colors.accent,
+            },
+          ]}
+          onPress={handleAddNewEA}
+          activeOpacity={0.88}
+        >
+          <View style={[styles.addIconWrap, { backgroundColor: `${theme.colors.onAccent}18` }]}>
+            <Plus color={theme.colors.onAccent} size={18} strokeWidth={2.2} />
+          </View>
+          <View style={styles.addEATextContainer}>
+            <Text style={[styles.addEATitle, { color: theme.colors.onAccent }]}>Link automation</Text>
+            <Text style={[styles.addEASubtitle, { color: `${theme.colors.onAccent}B8` }]}>
+              Add another automation key
+            </Text>
+          </View>
+          <ChevronRight color={`${theme.colors.onAccent}CC`} size={18} strokeWidth={1.8} />
+        </TouchableOpacity>
+      </View>
 
       <Modal
         visible={removeConfirmVisible}
@@ -519,9 +527,16 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    flexGrow: 1,
-    paddingTop: 12,
-    paddingBottom: 110,
+    paddingTop: Platform.OS === 'android' ? 8 : 12,
+    paddingBottom: 16,
+    maxWidth: 440,
+    width: '100%',
+    alignSelf: 'center',
+  },
+  homeFooter: {
+    paddingHorizontal: 24,
+    paddingTop: 8,
+    paddingBottom: Platform.OS === 'android' ? 6 : 10,
     maxWidth: 440,
     width: '100%',
     alignSelf: 'center',
@@ -1050,10 +1065,8 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 16,
+    paddingVertical: 14,
     paddingHorizontal: 16,
-    marginBottom: 24,
-    marginTop: 16,
     borderWidth: 1.5,
     gap: 12,
   },

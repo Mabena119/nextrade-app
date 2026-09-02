@@ -3,8 +3,11 @@ import { Home, Wallet, Scan } from "lucide-react-native";
 import React from "react";
 import { useApp } from "@/providers/app-provider";
 import { getScreenBackgroundColor, useTheme } from "@/providers/theme-provider";
-import { View, StyleSheet, useWindowDimensions } from "react-native";
+import { Platform, View, StyleSheet, useWindowDimensions } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { isDesktopWebLayout } from "@/utils/app-viewport";
+
+const NATIVE_TAB_BAR_HEIGHT = 56;
 
 export default function TabLayout() {
   const { isFirstTime } = useApp();
@@ -12,9 +15,12 @@ export default function TabLayout() {
   const accent = theme.colors.accent;
   const muted = theme.colors.navInactiveColor;
   const sceneBg = getScreenBackgroundColor(theme);
+  const insets = useSafeAreaInsets();
 
   const { width } = useWindowDimensions();
   const desktop = isDesktopWebLayout(width);
+  const nativeTabBarBg =
+    sceneBg === "transparent" || !sceneBg ? "#000000" : sceneBg;
 
   return (
     <View style={[tabScreenStyles.layoutRoot, { backgroundColor: sceneBg }]}>
@@ -44,19 +50,30 @@ export default function TabLayout() {
                     paddingBottom: 8,
                     paddingTop: 8,
                   }
-                : {
-                    position: "absolute",
-                    bottom: 10,
-                    left: 0,
-                    right: 0,
-                    height: 56,
-                    backgroundColor: "transparent",
-                    borderTopWidth: 0,
-                    elevation: 0,
-                    shadowOpacity: 0,
-                    paddingBottom: 8,
-                    paddingTop: 8,
-                  },
+                : Platform.OS === "web"
+                  ? {
+                      position: "absolute",
+                      bottom: 10,
+                      left: 0,
+                      right: 0,
+                      height: 56,
+                      backgroundColor: "transparent",
+                      borderTopWidth: 0,
+                      elevation: 0,
+                      shadowOpacity: 0,
+                      paddingBottom: 8,
+                      paddingTop: 8,
+                    }
+                  : {
+                      height: NATIVE_TAB_BAR_HEIGHT + insets.bottom,
+                      paddingBottom: Math.max(insets.bottom, 8),
+                      paddingTop: 8,
+                      backgroundColor: nativeTabBarBg,
+                      borderTopWidth: 1,
+                      borderTopColor: "rgba(255, 255, 255, 0.08)",
+                      elevation: 0,
+                      shadowOpacity: 0,
+                    },
             tabBarBackground: () => null,
             tabBarActiveTintColor: accent,
             tabBarInactiveTintColor: muted,

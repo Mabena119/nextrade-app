@@ -4,19 +4,25 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Color
 import android.graphics.Outline
 import android.graphics.PixelFormat
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import android.util.Log
+import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewOutlineProvider
-import android.util.Log
 import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.ImageView
+import android.widget.LinearLayout
+import android.widget.TextView
 import app.auraai.app.MainActivity
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.Promise
@@ -24,6 +30,7 @@ import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.bridge.UiThreadUtil
+import com.facebook.react.modules.core.DeviceEventManagerModule
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
@@ -41,24 +48,33 @@ import kotlin.math.max
 import kotlin.math.roundToInt
 
 /**
- * SYSTEM_ALERT_WINDOW overlay: circular EA logo (from [botImageURL] or app icon), draggable.
+ * SYSTEM_ALERT_WINDOW overlay: circular EA logo + optional trade card below it.
+ * Copy trades while backgrounded execute on the overlay without bringing MainActivity forward.
  */
 class OverlayWindowModule(private val reactContext: ReactApplicationContext) :
   ReactContextBaseJavaModule(reactContext) {
 
   private var windowManager: WindowManager? = null
   private var overlayRoot: FrameLayout? = null
+  private var overlayColumn: LinearLayout? = null
   private var layoutParams: WindowManager.LayoutParams? = null
   private var logoView: ImageView? = null
+  private var tradePanel: LinearLayout? = null
+  private var tradeSymbolView: TextView? = null
+  private var tradeActionView: TextView? = null
+  private var tradeStatusView: TextView? = null
+  private var tradePhaseViews: List<TextView> = emptyList()
 
-  private var lastBotName: String = "Aura AI"
+  private var lastLogoDiameterPx: Int = 350
+  private var tradePanelVisible: Boolean = false
+
+  private var lastBotName: String = "NexTradeAI"
   private var lastPaused: Boolean = false
   private var lastBotImageUrl: String? = null
 
   private val imageLoadExecutor = Executors.newSingleThreadExecutor()
   private val logoLoadGeneration = AtomicInteger(0)
 
-  /** While the main RN activity is backgrounded, JS timers may pause; poll from native on this scheduler. */
   private var bgPollScheduler: java.util.concurrent.ScheduledExecutorService? = null
   private var bgPollFuture: ScheduledFuture<*>? = null
   private var bgPollLicenseKey: String? = null
@@ -73,11 +89,19 @@ class OverlayWindowModule(private val reactContext: ReactApplicationContext) :
     private const val KEY_PENDING_TYPE = "pending_type"
     private const val KEY_PENDING_JSON = "pending_payload"
     private const val KEY_LAST_WARMUP_AT = "last_chart_warmup_at_ms"
+    private const val KEY_OVERLAY_HANDOFF = "overlay_handoff_at_ms"
     private const val EMPTY_POLLS_BEFORE_WARMUP = 10
     private const val CHART_WARMUP_COOLDOWN_MS = 45L * 60L * 1000L
+    private const val EVENT_EXECUTE_SIGNAL = "EaOverlayExecuteSignal"
+    private const val TRADE_CARD_WIDTH_DP = 340
+    private const val TRADE_PANEL_GAP_DP = 10
+    private const val TRADE_PANEL_HEIGHT_DP = 168
   }
 
   override fun getName(): String = "OverlayWindowModule"
+
+  private fun dp(v: Int): Int =
+    (v * reactApplicationContext.resources.displayMetrics.density).roundToInt()
 
   private fun canDrawOverlays(): Boolean =
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -150,6 +174,241 @@ class OverlayWindowModule(private val reactContext: ReactApplicationContext) :
     logoView?.alpha = if (lastPaused) 0.55f else 1f
   }
 
+  private fun overlayWindowType(): Int =
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+      WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+    } else {
+      @Suppress("DEPRECATION")
+      WindowManager.LayoutParams.TYPE_PHONE
+    }
+
+  private fun applyOverlayWindowFlags(tradeVisible: Boolean) {
+    val lp = layoutParams ?: return
+    lp.flags =
+      if (tradeVisible) {
+        WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+      } else {
+        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+          WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+      }
+  }
+
+  private fun refreshOverlayWindowSize() {
+    val lp = layoutParams ?: return
+    val wm = windowManager ?: return
+    val root = overlayRoot ?: return
+    val cardWidth = dp(TRADE_CARD_WIDTH_DP)
+    val width = max(lastLogoDiameterPx, cardWidth)
+    val height =
+      if (tradePanelVisible) {
+        lastLogoDiameterPx + dp(TRADE_PANEL_GAP_DP) + dp(TRADE_PANEL_HEIGHT_DP)
+      } else {
+        lastLogoDiameterPx
+      }
+    lp.width = width
+    lp.height = height
+    try {
+      wm.updateViewLayout(root, lp)
+    } catch (_: Exception) {
+    }
+  }
+
+  private fun buildTradePanel(ctx: Context): LinearLayout {
+    val cardWidth = dp(TRADE_CARD_WIDTH_DP)
+    val pad = dp(14)
+    val card = LinearLayout(ctx).apply {
+      orientation = LinearLayout.VERTICAL
+      val bg = GradientDrawable().apply {
+        setColor(Color.parseColor("#0C0E16"))
+        cornerRadius = dp(18).toFloat()
+        setStroke(dp(1), Color.parseColor("#33FFFFFF"))
+      }
+      background = bg
+      setPadding(pad, pad, pad, pad)
+      layoutParams = LinearLayout.LayoutParams(cardWidth, LinearLayout.LayoutParams.WRAP_CONTENT)
+    }
+
+    val header = LinearLayout(ctx).apply {
+      orientation = LinearLayout.HORIZONTAL
+      gravity = Gravity.CENTER_VERTICAL
+    }
+    val action = TextView(ctx).apply {
+      setTextColor(Color.WHITE)
+      setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
+      typeface = Typeface.DEFAULT_BOLD
+      setPadding(dp(8), dp(4), dp(8), dp(4))
+      background = GradientDrawable().apply {
+        cornerRadius = dp(8).toFloat()
+        setColor(Color.parseColor("#33FFFFFF"))
+      }
+    }
+    tradeActionView = action
+    header.addView(action)
+
+    val symbol = TextView(ctx).apply {
+      setTextColor(Color.WHITE)
+      setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
+      typeface = Typeface.DEFAULT_BOLD
+      setPadding(dp(10), 0, 0, 0)
+      layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+    }
+    tradeSymbolView = symbol
+    header.addView(symbol)
+    card.addView(header)
+
+    val status = TextView(ctx).apply {
+      setTextColor(Color.parseColor("#9AA7B5"))
+      setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+      setPadding(0, dp(10), 0, dp(10))
+    }
+    tradeStatusView = status
+    card.addView(status)
+
+    val phases = LinearLayout(ctx).apply {
+      orientation = LinearLayout.HORIZONTAL
+      gravity = Gravity.CENTER_VERTICAL
+    }
+    val labels = listOf("Connect", "Terminal", "Execute")
+    val phaseViews = mutableListOf<TextView>()
+    labels.forEachIndexed { index, label ->
+      val tv = TextView(ctx).apply {
+        text = label
+        setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
+        setTextColor(Color.parseColor("#667085"))
+        layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        gravity = Gravity.CENTER
+      }
+      phaseViews.add(tv)
+      phases.addView(tv)
+      if (index < labels.lastIndex) {
+        val line = View(ctx).apply {
+          setBackgroundColor(Color.parseColor("#334155"))
+          layoutParams = LinearLayout.LayoutParams(dp(12), dp(2))
+        }
+        phases.addView(line)
+      }
+    }
+    tradePhaseViews = phaseViews
+    card.addView(phases)
+
+    return card
+  }
+
+  private fun inferTradePhase(status: String): Int {
+    val s = status.lowercase(Locale.US)
+    return when {
+      Regex("order|placing|executing|confirm|trade|volume|completed|buy order|sell order").containsMatchIn(s) -> 2
+      Regex("chart|terminal|login|signing|waiting|removing|linking|snapshot|analys|connect").containsMatchIn(s) -> 1
+      else -> 0
+    }
+  }
+
+  private fun applyTradePhase(phase: Int) {
+    tradePhaseViews.forEachIndexed { index, tv ->
+      val active = index <= phase
+      tv.setTextColor(if (active) Color.parseColor("#38BDF8") else Color.parseColor("#667085"))
+      tv.typeface = if (active) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
+    }
+  }
+
+  private fun applyTradeCardUi(symbol: String, action: String, status: String) {
+    val sym = symbol.trim().ifEmpty { "MARKET" }.uppercase(Locale.US)
+    val act = action.trim().uppercase(Locale.US)
+    tradeSymbolView?.text = sym
+    tradeActionView?.text = if (act == "SELL") "SELL ↓" else if (act == "BUY") "BUY ↑" else "READY"
+    val actionColor =
+      when (act) {
+        "SELL" -> Color.parseColor("#FB7185")
+        "BUY" -> Color.parseColor("#34D399")
+        else -> Color.parseColor("#38BDF8")
+      }
+    tradeActionView?.setTextColor(Color.WHITE)
+    (tradeActionView?.background as? GradientDrawable)?.setColor(actionColor)
+    tradeStatusView?.text = status.ifBlank { "Connecting to server…" }
+    applyTradePhase(inferTradePhase(status))
+  }
+
+  private fun showTradePanelInternal(symbol: String, action: String, status: String) {
+    val panel = tradePanel ?: return
+    applyTradeCardUi(symbol, action, status)
+    panel.visibility = View.VISIBLE
+    tradePanelVisible = true
+    applyOverlayWindowFlags(true)
+    refreshOverlayWindowSize()
+  }
+
+  @ReactMethod
+  fun showTradeOverlay(symbol: String, action: String, status: String, promise: Promise) {
+    UiThreadUtil.runOnUiThread {
+      try {
+        showTradePanelInternal(symbol, action, status)
+        promise.resolve(true)
+      } catch (e: Exception) {
+        promise.reject("E_TRADE_OVERLAY", e.message, e)
+      }
+    }
+  }
+
+  @ReactMethod
+  fun updateTradeOverlayStatus(status: String, promise: Promise) {
+    UiThreadUtil.runOnUiThread {
+      try {
+        if (tradePanelVisible) {
+          tradeStatusView?.text = status.ifBlank { "Working…" }
+          applyTradePhase(inferTradePhase(status))
+        }
+        promise.resolve(true)
+      } catch (e: Exception) {
+        promise.reject("E_TRADE_STATUS", e.message, e)
+      }
+    }
+  }
+
+  @ReactMethod
+  fun hideTradeOverlay(promise: Promise) {
+    UiThreadUtil.runOnUiThread {
+      try {
+        tradePanel?.visibility = View.GONE
+        tradePanelVisible = false
+        applyOverlayWindowFlags(false)
+        refreshOverlayWindowSize()
+        promise.resolve(true)
+      } catch (e: Exception) {
+        promise.reject("E_TRADE_HIDE", e.message, e)
+      }
+    }
+  }
+
+  private fun emitOverlayExecuteSignal(payload: String) {
+    try {
+      if (!reactContext.hasActiveReactInstance()) {
+        Log.w(TAG, "No active React instance for overlay execute emit")
+        return
+      }
+      val params = Arguments.createMap()
+      params.putString("payload", payload)
+      reactContext
+        .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+        .emit(EVENT_EXECUTE_SIGNAL, params)
+      Log.i(TAG, "Emitted $EVENT_EXECUTE_SIGNAL to JS")
+    } catch (e: Exception) {
+      Log.e(TAG, "emitOverlayExecuteSignal", e)
+    }
+  }
+
+  private fun showTradeOverlayFromPayload(payload: String) {
+    try {
+      val arr = JSONArray(payload)
+      if (arr.length() == 0) return
+      val row = arr.getJSONObject(0)
+      val symbol = row.optString("asset", "")
+      val action = row.optString("action", "")
+      showTradePanelInternal(symbol, action, "Connecting to server…")
+    } catch (e: Exception) {
+      Log.e(TAG, "showTradeOverlayFromPayload", e)
+    }
+  }
+
   private fun loadLogoIntoView() {
     val iv = logoView ?: return
     val generation = logoLoadGeneration.incrementAndGet()
@@ -197,7 +456,7 @@ class OverlayWindowModule(private val reactContext: ReactApplicationContext) :
     }
   }
 
-  private fun attachDrag(root: FrameLayout, wm: WindowManager, params: WindowManager.LayoutParams) {
+  private fun attachDrag(root: View, wm: WindowManager, params: WindowManager.LayoutParams) {
     root.setOnTouchListener(object : View.OnTouchListener {
       private var initX = 0
       private var initY = 0
@@ -248,32 +507,53 @@ class OverlayWindowModule(private val reactContext: ReactApplicationContext) :
         }
         overlayRoot = null
         logoView = null
+        overlayColumn = null
+        tradePanel = null
+        tradePanelVisible = false
         layoutParams = null
 
         val diameter = max(max(width.roundToInt(), height.roundToInt()), 96)
+        lastLogoDiameterPx = diameter
 
         val root = FrameLayout(ctx).apply {
-          setBackgroundColor(android.graphics.Color.TRANSPARENT)
+          setBackgroundColor(Color.TRANSPARENT)
+        }
+
+        val column = LinearLayout(ctx).apply {
+          orientation = LinearLayout.VERTICAL
+          gravity = Gravity.CENTER_HORIZONTAL
         }
 
         val iv = ImageView(ctx)
-        val lpIv = FrameLayout.LayoutParams(diameter, diameter)
-        iv.layoutParams = lpIv
+        iv.layoutParams = LinearLayout.LayoutParams(diameter, diameter)
         applyCircleClip(iv, diameter)
         logoView = iv
-        root.addView(iv)
+        column.addView(iv)
 
-        val type =
-          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-          } else {
-            @Suppress("DEPRECATION")
-            WindowManager.LayoutParams.TYPE_PHONE
-          }
+        val trade = buildTradePanel(ctx)
+        trade.visibility = View.GONE
+        val tradeLp = LinearLayout.LayoutParams(
+          LinearLayout.LayoutParams.WRAP_CONTENT,
+          LinearLayout.LayoutParams.WRAP_CONTENT
+        )
+        tradeLp.topMargin = dp(TRADE_PANEL_GAP_DP)
+        trade.layoutParams = tradeLp
+        tradePanel = trade
+        column.addView(trade)
+
+        val columnLp = FrameLayout.LayoutParams(
+          FrameLayout.LayoutParams.WRAP_CONTENT,
+          FrameLayout.LayoutParams.WRAP_CONTENT
+        )
+        root.addView(column, columnLp)
+        overlayColumn = column
+
+        val cardWidth = dp(TRADE_CARD_WIDTH_DP)
+        val windowWidth = max(diameter, cardWidth)
         val params = WindowManager.LayoutParams(
+          windowWidth,
           diameter,
-          diameter,
-          type,
+          overlayWindowType(),
           WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
             WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
           PixelFormat.TRANSLUCENT
@@ -332,10 +612,10 @@ class OverlayWindowModule(private val reactContext: ReactApplicationContext) :
         return@runOnUiThread
       }
       val diameter = max(max(width.roundToInt(), height.roundToInt()), 96)
-      lp.width = diameter
-      lp.height = diameter
-      iv.layoutParams = FrameLayout.LayoutParams(diameter, diameter)
+      lastLogoDiameterPx = diameter
+      iv.layoutParams = LinearLayout.LayoutParams(diameter, diameter)
       applyCircleClip(iv, diameter)
+      refreshOverlayWindowSize()
       try {
         wm.updateViewLayout(v, lp)
         promise.resolve(true)
@@ -350,6 +630,8 @@ class OverlayWindowModule(private val reactContext: ReactApplicationContext) :
     logoLoadGeneration.incrementAndGet()
     UiThreadUtil.runOnUiThread {
       try {
+        tradePanel?.visibility = View.GONE
+        tradePanelVisible = false
         overlayRoot?.let { v ->
           windowManager?.removeView(v)
         }
@@ -357,6 +639,8 @@ class OverlayWindowModule(private val reactContext: ReactApplicationContext) :
       }
       overlayRoot = null
       logoView = null
+      overlayColumn = null
+      tradePanel = null
       layoutParams = null
       promise.resolve(true)
     }
@@ -375,7 +659,7 @@ class OverlayWindowModule(private val reactContext: ReactApplicationContext) :
     botImageURL: String?,
     promise: Promise
   ) {
-    lastBotName = botName.ifBlank { "Aura AI" }
+    lastBotName = botName.ifBlank { "NexTradeAI" }
     lastPaused = isPaused
     val nextUrl = botImageURL?.trim()?.takeIf { it.isNotEmpty() }
     lastBotImageUrl = nextUrl
@@ -403,11 +687,6 @@ class OverlayWindowModule(private val reactContext: ReactApplicationContext) :
     bgPollScheduler = null
   }
 
-  /**
-   * Polls [api/get-new-signals] every 5s while the RN JS runtime may be suspended.
-   * On signal: stores pending payload + brings [MainActivity] to front.
-   * After [EMPTY_POLLS_BEFORE_WARMUP] empty polls: pending chart_warmup + brings activity to front.
-   */
   @ReactMethod
   fun startNativeBackgroundPolling(
     licenseKey: String,
@@ -449,7 +728,6 @@ class OverlayWindowModule(private val reactContext: ReactApplicationContext) :
     promise.resolve(true)
   }
 
-  /** JS should call on resume to handle pending signal / chart warmup after native brought the task forward. */
   @ReactMethod
   fun consumePendingForegroundAction(promise: Promise) {
     val prefs = reactContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -458,8 +736,18 @@ class OverlayWindowModule(private val reactContext: ReactApplicationContext) :
       promise.resolve(null)
       return
     }
+    val handoffAt = prefs.getLong(KEY_OVERLAY_HANDOFF, 0L)
+    if (type == "signal" && handoffAt > 0L) {
+      prefs.edit()
+        .remove(KEY_PENDING_TYPE)
+        .remove(KEY_PENDING_JSON)
+        .remove(KEY_OVERLAY_HANDOFF)
+        .apply()
+      promise.resolve(null)
+      return
+    }
     val payload = prefs.getString(KEY_PENDING_JSON, null)
-    prefs.edit().remove(KEY_PENDING_TYPE).remove(KEY_PENDING_JSON).apply()
+    prefs.edit().remove(KEY_PENDING_TYPE).remove(KEY_PENDING_JSON).remove(KEY_OVERLAY_HANDOFF).apply()
     val map = Arguments.createMap()
     map.putString("type", type)
     if (!payload.isNullOrEmpty()) {
@@ -468,7 +756,16 @@ class OverlayWindowModule(private val reactContext: ReactApplicationContext) :
     promise.resolve(map)
   }
 
-  /** Keep native 45-minute chart-AI cooldown in sync with JS (open / cycle complete). */
+  @ReactMethod
+  fun addListener(eventName: String) {
+    // Required for NativeEventEmitter
+  }
+
+  @ReactMethod
+  fun removeListeners(count: Int) {
+    // Required for NativeEventEmitter
+  }
+
   @ReactMethod
   fun setLastChartWarmupAt(ms: Double, promise: Promise) {
     val prefs = reactContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -536,14 +833,20 @@ class OverlayWindowModule(private val reactContext: ReactApplicationContext) :
     val arr = sigJson.optJSONArray("signals") ?: JSONArray()
 
     if (arr.length() > 0) {
+      val payload = arr.toString()
       prefs.edit()
         .putString(KEY_LAST_POLL, isoUtc(System.currentTimeMillis()))
         .putInt(KEY_EMPTY_COUNT, 0)
         .putString(KEY_PENDING_TYPE, "signal")
-        .putString(KEY_PENDING_JSON, arr.toString())
+        .putString(KEY_PENDING_JSON, payload)
+        .putLong(KEY_OVERLAY_HANDOFF, System.currentTimeMillis())
         .apply()
       stopNativeBackgroundPollingInternal()
-      bringMainActivityToFront("signal")
+      UiThreadUtil.runOnUiThread {
+        showTradeOverlayFromPayload(payload)
+      }
+      emitOverlayExecuteSignal(payload)
+      Log.i(TAG, "Signal found — overlay trade card shown, app stays in background")
     } else {
       val nextCount = prefs.getInt(KEY_EMPTY_COUNT, 0) + 1
       prefs.edit()
@@ -554,7 +857,6 @@ class OverlayWindowModule(private val reactContext: ReactApplicationContext) :
         val lastWarmup = prefs.getLong(KEY_LAST_WARMUP_AT, 0L)
         val elapsed = System.currentTimeMillis() - lastWarmup
         if (lastWarmup > 0L && elapsed < CHART_WARMUP_COOLDOWN_MS) {
-          // Hold at threshold until the 45 min gate opens — do not thrash the activity.
           prefs.edit().putInt(KEY_EMPTY_COUNT, EMPTY_POLLS_BEFORE_WARMUP).apply()
           Log.i(
             TAG,
@@ -565,8 +867,8 @@ class OverlayWindowModule(private val reactContext: ReactApplicationContext) :
         prefs.edit()
           .putString(KEY_PENDING_TYPE, "chart_warmup")
           .remove(KEY_PENDING_JSON)
+          .remove(KEY_OVERLAY_HANDOFF)
           .putInt(KEY_EMPTY_COUNT, 0)
-          // Do not stamp 45 min here — JS stamps only after the warmup cycle finishes.
           .apply()
         stopNativeBackgroundPollingInternal()
         bringMainActivityToFront("chart_warmup")

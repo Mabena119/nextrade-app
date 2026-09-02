@@ -464,7 +464,7 @@ if ($videoFile !== '') {
         </div>
         <div class="profile-fb-bar">
             <div class="profile-fb-avatar-ring">
-                <img class="profile-fb-avatar" src="<?php echo htmlspecialchars($avatarSrc, ENT_QUOTES, 'UTF-8'); ?>" alt="Profile" onerror="this.onerror=null;this.src='../assets/sitelogo.png'">
+                <img class="profile-fb-avatar" src="<?php echo htmlspecialchars($avatarSrc, ENT_QUOTES, 'UTF-8'); ?>" alt="Profile" onerror="this.onerror=null;this.src='<?php echo htmlspecialchars(NEXTRADE_LOGO_URL, ENT_QUOTES, 'UTF-8'); ?>'">
             </div>
             <div class="profile-fb-meta">
                 <h1><?php echo htmlspecialchars(get_admin($_SESSION['username'], 'displayname'), ENT_QUOTES, 'UTF-8'); ?></h1>

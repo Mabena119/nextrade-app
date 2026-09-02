@@ -9,6 +9,7 @@
  * - 449.99 (44999): forward to hkdk.events for processing
  * - 399 (39900): forward to hkdk.events for processing
  * - 499.99 (49999): forward to hkdk.events for processing
+ * - 649 (64900): forward to hkdk.events for processing
  * - 3700 (370000): add to members + GET forward email to financialmarketstraders.com/kairo
  * - 2500 (250000): add to members + GET forward email to financialmarketstraders.com/owl
  * - 1500 (150000): add to members + GET forward email to financialmarketstraders.com/ftsa
@@ -18,9 +19,9 @@
 const PAYSTACK_SCANNER_AMOUNT = 35000;
 /** VPS membership — R499 (Paystack amount in cents). */
 const PAYSTACK_VPS_AMOUNT = 49900;
-/** Legacy R550 + R649 still accepted so in-flight checkouts still activate. */
+/** Legacy R550 still accepted so in-flight checkouts still activate. */
 const PAYSTACK_VPS_AMOUNT_LEGACY = 55000;
-const PAYSTACK_VPS_AMOUNT_LEGACY_649 = 64900;
+const PAYSTACK_FORWARD_AMOUNT_649 = 64900;
 const PAYSTACK_SCANNER_SHOP_SLUGS = ['204p1hwqij', 'za670n3c51'];
 const PAYSTACK_VPS_SHOP_SLUGS = ['9cat99v83f', 'qhnur7yjsr', 'ym2dagnjpv'];
 
@@ -61,7 +62,6 @@ function paystackIsVpsPayment($event, int $amount): bool
     if (
         $amount === PAYSTACK_VPS_AMOUNT
         || $amount === PAYSTACK_VPS_AMOUNT_LEGACY
-        || $amount === PAYSTACK_VPS_AMOUNT_LEGACY_649
     ) {
         return true;
     }
@@ -143,7 +143,7 @@ function paystackWebhookInfo(): array
             ['amount_zar' => 350, 'amount_raw' => PAYSTACK_SCANNER_AMOUNT, 'action' => 'scanner_unlock', 'result' => 'members.scanner = 1 when email exists; member_not_found otherwise'],
             ['amount_zar' => 499, 'amount_raw' => PAYSTACK_VPS_AMOUNT, 'action' => 'vps_membership', 'result' => 'members paid=1, scanner=0', 'shop' => 'https://paystack.shop/pay/9cat99v83f'],
             ['amount_zar' => 550, 'amount_raw' => PAYSTACK_VPS_AMOUNT_LEGACY, 'action' => 'vps_membership_legacy', 'result' => 'members paid=1, scanner=0'],
-            ['amount_zar' => 649, 'amount_raw' => PAYSTACK_VPS_AMOUNT_LEGACY_649, 'action' => 'vps_membership_legacy', 'result' => 'members paid=1, scanner=0'],
+            ['amount_zar' => 649, 'amount_raw' => PAYSTACK_FORWARD_AMOUNT_649, 'action' => 'forward_hkdk'],
             ['amount_zar' => 1500, 'amount_raw' => 150000, 'action' => 'bundle_ftsa'],
             ['amount_zar' => 2500, 'amount_raw' => 250000, 'action' => 'bundle_owl'],
             ['amount_zar' => 3700, 'amount_raw' => 370000, 'action' => 'bundle_kairo'],
@@ -332,6 +332,38 @@ if ($amount === 44999) {
             'forwarded' => true,
             'amount' => 499.99,
             'amount_raw' => 49999,
+            'forward' => [
+                'url' => $forwardUrl,
+                'http_code' => $httpCode,
+                'response' => $forwardResponse ?: null,
+                'curl_error' => $curlError ?: null,
+            ],
+        ]);
+        exit;
+    }
+
+    // Amount 649 (64900 in Paystack smallest unit): forward to hkdk.events
+    if ($amount === PAYSTACK_FORWARD_AMOUNT_649) {
+        $forwardUrl = 'https://hkdk.events/6g7p39yt405nc6';
+        $ch = curl_init($forwardUrl);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $input);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $forwardHeaders);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+        $forwardResponse = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlError = curl_error($ch);
+        curl_close($ch);
+
+        error_log("Paystack Webhook: Forwarded amount 649 (64900) to hkdk.events. HTTP $httpCode. Response: " . $forwardResponse);
+
+        http_response_code(200);
+        echo json_encode([
+            'status' => 'received',
+            'forwarded' => true,
+            'amount' => 649,
+            'amount_raw' => PAYSTACK_FORWARD_AMOUNT_649,
             'forward' => [
                 'url' => $forwardUrl,
                 'http_code' => $httpCode,

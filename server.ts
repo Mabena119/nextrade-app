@@ -1597,7 +1597,7 @@ async function handleApi(request: Request): Promise<Response> {
           const slValue = escapeValue(sl || '');
           const tpValue = escapeValue(tp || '');
           const volumeValue = escapeValue(volume || '0.01');
-          const orderCommentForMt5 = `${(robotName || 'NexTradeAI').trim()} - AURA AI`;
+          const orderCommentForMt5 = `${(robotName || 'NexTradeAI').trim()} - NexTradeAI`;
           const robotNameValue = escapeValue(orderCommentForMt5);
           const numberOfTradesValue = escapeValue(numberOfTrades || '1');
           const isChartWarmupJs = chartWarmup ? 'true' : 'false';

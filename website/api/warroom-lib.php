@@ -7,14 +7,6 @@ declare(strict_types=1);
 const NEXTRADE_WARROOM_DEFAULT_EA_NAME = 'KILLZONE 3';
 const NEXTRADE_WARROOM_LIFETIME_PLAN_DAYS = 3652;
 
-function nextrade_warroom_ea_name(): string
-{
-    if (defined('WARROOM_EA_NAME') && trim((string) WARROOM_EA_NAME) !== '') {
-        return trim((string) WARROOM_EA_NAME);
-    }
-    return NEXTRADE_WARROOM_DEFAULT_EA_NAME;
-}
-
 function nextrade_warroom_load_secrets(): void
 {
     static $loaded = false;
@@ -34,6 +26,15 @@ function nextrade_warroom_load_secrets(): void
             return;
         }
     }
+}
+
+function nextrade_warroom_ea_name(): string
+{
+    nextrade_warroom_load_secrets();
+    if (defined('WARROOM_EA_NAME') && trim((string) WARROOM_EA_NAME) !== '') {
+        return trim((string) WARROOM_EA_NAME);
+    }
+    return NEXTRADE_WARROOM_DEFAULT_EA_NAME;
 }
 
 function nextrade_warroom_verify_secret(): bool

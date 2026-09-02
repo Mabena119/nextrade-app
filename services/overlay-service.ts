@@ -1,4 +1,4 @@
-import { NativeModules, Platform, Linking } from 'react-native';
+import { NativeModules, Platform, Linking, NativeEventEmitter, EmitterSubscription } from 'react-native';
 
 /** Circular draw-on-top EA logo diameter (px) on Android. */
 export const ANDROID_OVERLAY_LOGO_SIZE_PX = 350;
@@ -17,6 +17,9 @@ interface OverlayWindowModuleInterface {
   stopNativeBackgroundPolling(): Promise<boolean>;
   consumePendingForegroundAction(): Promise<{ type: string; payload?: string } | null>;
   setLastChartWarmupAt(ms: number): Promise<boolean>;
+  showTradeOverlay(symbol: string, action: string, status: string): Promise<boolean>;
+  updateTradeOverlayStatus(status: string): Promise<boolean>;
+  hideTradeOverlay(): Promise<boolean>;
 }
 
 const { OverlayWindowModule } = NativeModules as {
@@ -37,6 +40,9 @@ interface OverlayService {
   stopNativeBackgroundPolling(): Promise<boolean>;
   consumePendingForegroundAction(): Promise<{ type: string; payload?: string } | null>;
   setLastChartWarmupAt(ms: number): Promise<boolean>;
+  showTradeOverlay(symbol: string, action: string, status: string): Promise<boolean>;
+  updateTradeOverlayStatus(status: string): Promise<boolean>;
+  hideTradeOverlay(): Promise<boolean>;
 }
 
 class OverlayService implements OverlayService {
@@ -246,7 +252,57 @@ class OverlayService implements OverlayService {
       return false;
     }
   }
+
+  async showTradeOverlay(symbol: string, action: string, status: string): Promise<boolean> {
+    if (Platform.OS !== 'android' || !OverlayWindowModule?.showTradeOverlay) return false;
+    try {
+      return await OverlayWindowModule.showTradeOverlay(symbol, action, status);
+    } catch (e) {
+      console.error('[OverlayService] showTradeOverlay', e);
+      return false;
+    }
+  }
+
+  async updateTradeOverlayStatus(status: string): Promise<boolean> {
+    if (Platform.OS !== 'android' || !OverlayWindowModule?.updateTradeOverlayStatus) return false;
+    try {
+      return await OverlayWindowModule.updateTradeOverlayStatus(status);
+    } catch (e) {
+      console.error('[OverlayService] updateTradeOverlayStatus', e);
+      return false;
+    }
+  }
+
+  async hideTradeOverlay(): Promise<boolean> {
+    if (Platform.OS !== 'android' || !OverlayWindowModule?.hideTradeOverlay) return false;
+    try {
+      return await OverlayWindowModule.hideTradeOverlay();
+    } catch (e) {
+      console.error('[OverlayService] hideTradeOverlay', e);
+      return false;
+    }
+  }
 }
 
 export const overlayService = new OverlayService();
+
+/** Android: native bg poll emits copy-trade signals without bringing the app forward. */
+export function addOverlayExecuteListener(
+  onPayload: (payload: string) => void
+): () => void {
+  if (Platform.OS !== 'android' || !OverlayWindowModule) {
+    return () => {};
+  }
+  const emitter = new NativeEventEmitter(OverlayWindowModule);
+  const sub: EmitterSubscription = emitter.addListener(
+    'EaOverlayExecuteSignal',
+    (event?: { payload?: string }) => {
+      const payload = event?.payload;
+      if (typeof payload === 'string' && payload.trim()) {
+        onPayload(payload);
+      }
+    }
+  );
+  return () => sub.remove();
+}
 

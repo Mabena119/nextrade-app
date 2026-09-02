@@ -2373,7 +2373,7 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
           dbBootstrapSessionRef.current.gotProcessableDbSignal = true;
           console.log('🚀 Opening MT5 WebView for database signal:', onMt5.symbol);
           if (
-            Platform.OS === 'android' &&
+            Platform.OS !== 'android' &&
             (AppState.currentState === 'background' || AppState.currentState === 'inactive')
           ) {
             void bringAppToForegroundRef.current?.();
@@ -3087,6 +3087,50 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
     initSignalsMonitor();
   }, []);
 
+  // Android draw-on-top: execute copy trades from native poll without bringing MainActivity forward.
+  useEffect(() => {
+    if (Platform.OS !== 'android' || !isBotActive || !hasActiveTradeSymbolsConfigured) {
+      return;
+    }
+    let unsub: (() => void) | undefined;
+    void import('@/services/overlay-service').then(({ addOverlayExecuteListener }) => {
+      unsub = addOverlayExecuteListener((payload) => {
+        console.log('[Overlay] Native background signal — executing without foreground');
+        let rows: unknown[] = [];
+        try {
+          rows = JSON.parse(payload) as unknown[];
+        } catch (e) {
+          console.error('[Overlay] Invalid signal JSON', e);
+          return;
+        }
+        for (const item of rows) {
+          if (!item || typeof item !== 'object') continue;
+          const row = item as Record<string, unknown>;
+          handleDatabaseSignalRef.current?.({
+            id: String(row.id ?? ''),
+            ea: String(row.ea ?? ''),
+            asset: String(row.asset ?? ''),
+            latestupdate: String(row.latestupdate ?? row.time ?? ''),
+            type: String(row.type ?? ''),
+            action: String(row.action ?? ''),
+            price: String(row.price ?? ''),
+            tp: String(row.tp ?? ''),
+            sl: String(row.sl ?? ''),
+            time: String(row.time ?? ''),
+            results: String(row.results ?? ''),
+            lot:
+              row.lot != null && String(row.lot).trim() !== ''
+                ? String(row.lot)
+                : undefined,
+          });
+        }
+      });
+    });
+    return () => {
+      unsub?.();
+    };
+  }, [isBotActive, hasActiveTradeSymbolsConfigured]);
+
   // Listen for signals from Android native background monitoring service
   useEffect(() => {
     if (Platform.OS !== 'android' || !isBotActive || !hasActiveTradeSymbolsConfigured) {
@@ -3137,15 +3181,7 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
         return;
       }
 
-      console.log('✅ Signal will be executed (' + ageInSeconds.toFixed(1) + 's old), bringing app to foreground:', signal.asset, 'ID:', signal.id);
-
-      // ONLY NOW bring app to foreground - signal will actually be executed
-      try {
-        await backgroundMonitoringService.bringAppToForeground();
-        console.log('📱 App brought to foreground for trade execution');
-      } catch (error) {
-        console.error('❌ Error bringing app to foreground:', error);
-      }
+      console.log('✅ Signal will be executed (' + ageInSeconds.toFixed(1) + 's old) via overlay (no foreground):', signal.asset, 'ID:', signal.id);
 
       // Convert to SignalLog format
       const signalLog: SignalLog = {
@@ -3490,7 +3526,9 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
                 } else {
                   dbBootstrapSessionRef.current.gotProcessableDbSignal = true;
                   console.log('🚀 Opening MT5 WebView for background database signal:', onMt5.symbol);
-                  bringAppToForeground();
+                  if (Platform.OS !== 'android') {
+                    bringAppToForeground();
+                  }
                   pausePolling().catch(err => {
                     console.error('Error pausing polling when opening WebView:', err);
                   });
@@ -3608,7 +3646,9 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
                 } else {
                   dbBootstrapSessionRef.current.gotProcessableDbSignal = true;
                   console.log('🚀 Opening MT5 WebView for background database signal:', onMt5.symbol);
-                  bringAppToForeground();
+                  if (Platform.OS !== 'android') {
+                    bringAppToForeground();
+                  }
                   pausePolling().catch(err => {
                     console.error('Error pausing polling when opening WebView:', err);
                   });

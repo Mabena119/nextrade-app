@@ -46,7 +46,10 @@ export function HomeWorkspaceHero({
   const { width } = useWindowDimensions();
   const accent = theme.colors.accent;
   const ownerLabel = ((ownerName || '').trim() || 'Mentor').toUpperCase();
-  const logoSize = Math.min(288, Math.max(212, Math.round(width * 0.68)));
+  const logoSize =
+    Platform.OS === 'android'
+      ? Math.min(220, Math.max(168, Math.round(width * 0.52)))
+      : Math.min(288, Math.max(212, Math.round(width * 0.68)));
 
   return (
     <View style={styles.wrap}>
@@ -163,7 +166,7 @@ export function HomeWorkspaceHero({
 const styles = StyleSheet.create({
   wrap: {
     paddingHorizontal: 24,
-    paddingTop: 40,
+    paddingTop: Platform.OS === 'android' ? 12 : 40,
     maxWidth: 440,
     width: '100%',
     alignSelf: 'center',
