@@ -14,6 +14,10 @@
     </div>
   </header>
 
+  <?php if (!empty($_GET['unbound'])) { ?>
+  <div class="aura-alert aura-alert-ok" style="margin-bottom:1rem;">Device unbound — the customer can activate this key on a new phone.</div>
+  <?php } ?>
+
   <div class="aura-split" style="grid-template-columns:1.2fr 0.8fr;">
     <section class="aura-panel">
       <div class="aura-copy" style="margin-bottom:1.25rem;">
@@ -27,11 +31,11 @@
         <?php } else if(licence_details_key($key,'status')=="Expired"){ ?>
           <span class="aura-badge aura-badge-bad">Expired</span>
         <?php } ?>
-        <?php if(licence_details_key($key,'phone_secret_code')=="None"){ ?>
-          <span class="aura-badge aura-badge-muted">Not used yet</span>
-        <?php } else { ?>
-          <span class="aura-badge aura-badge-ok">In use</span>
-        <?php } ?>
+      <?php if(licence_details_key($key,'phone_secret_code')!="None"){ ?>
+        <span class="aura-badge aura-badge-ok">In use</span>
+      <?php } else { ?>
+        <span class="aura-badge aura-badge-muted">Not used yet</span>
+      <?php } ?>
       </div>
 
       <div class="aura-field">
@@ -72,6 +76,12 @@
         <form action="deactivate.php" method="get" style="margin-top:0.75rem;">
           <input type="hidden" name="key" value="<?php echo htmlspecialchars($_GET['key'], ENT_QUOTES, 'UTF-8'); ?>"/>
           <button type="submit" class="aura-btn aura-btn-ghost aura-btn-block"><i class="ti ti-player-pause"></i> Pause access</button>
+        </form>
+      <?php } ?>
+      <?php if(licence_details_key($key,'phone_secret_code')!="None"){ ?>
+        <form action="unbind_device.php" method="get" style="margin-top:0.75rem;" onsubmit="return confirm('Unbind this key from the current device? The customer can activate it again on a new phone.');">
+          <input type="hidden" name="key" value="<?php echo htmlspecialchars($_GET['key'], ENT_QUOTES, 'UTF-8'); ?>"/>
+          <button type="submit" class="aura-btn aura-btn-ghost aura-btn-block"><i class="ti ti-unlink"></i> Unbind device</button>
         </form>
       <?php } ?>
     </section>

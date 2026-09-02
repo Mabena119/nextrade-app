@@ -24,6 +24,10 @@ import {
 } from '@/utils/trading-features';
 import { symbolsAreSimilar, resolveConfiguredMt5QuotesSymbol, quoteSetNotFoundMessage } from '@/utils/trade-symbol-match';
 import { signalAgeInSeconds } from '@/utils/signal-datetime';
+import {
+  setCachedLicenseDeviceSecret,
+  syncLicenseDeviceSecretsFromEas,
+} from '@/utils/license-device-secrets';
 
 function normalizeSymbolKeyLocal(s: string): string {
   return s.replace(/\s/g, '').toUpperCase();
@@ -924,6 +928,7 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
           if (Array.isArray(parsed)) {
             parsedEas = parsed;
             setEAs(parsed);
+            void syncLicenseDeviceSecretsFromEas(parsed);
             console.log('EAs data loaded successfully:', parsed.length);
           } else {
             setEAs([]);
@@ -1249,6 +1254,13 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
 
       // Update state after successful storage save
       setEAs(updatedEAs);
+      const secret =
+        ea.phoneSecretKey?.trim() ||
+        ea.userData?.phone_secret_key?.trim() ||
+        '';
+      if (secret) {
+        await setCachedLicenseDeviceSecret(ea.licenseKey, secret);
+      }
       const ud = ea.userData;
       if (ud && isLicenseExpired(ud.status, ud.expires)) {
         setPrimaryLicenseStatus('expired');

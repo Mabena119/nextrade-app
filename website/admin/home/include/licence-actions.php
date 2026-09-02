@@ -117,6 +117,38 @@ function nextrade_deactivate_licence(mysqli $con, string $key, int $adminId, boo
     return ['ok' => true, 'key' => $key];
 }
 
+/** Clear device binding so the customer can activate the key on a new phone. */
+function nextrade_unbind_licence_device(mysqli $con, string $key, int $adminId, bool $isSuper): array
+{
+    $key = trim($key);
+    if ($key === '') {
+        return ['ok' => false, 'error' => 'missing_key'];
+    }
+
+    $row = nextrade_fetch_licence_by_key($con, $key);
+    if (!$row) {
+        return ['ok' => false, 'error' => 'not_found', 'key' => $key];
+    }
+
+    if (!nextrade_can_manage_licence_row($row, $adminId, $isSuper)) {
+        return ['ok' => false, 'error' => 'forbidden', 'key' => $key];
+    }
+
+    $stmt = $con->prepare("UPDATE licences SET phone_secret_code = 'None' WHERE k_ey = ?");
+    if (!$stmt) {
+        return ['ok' => false, 'error' => 'db_error', 'key' => $key];
+    }
+    $stmt->bind_param('s', $key);
+    $ok = $stmt->execute();
+    $stmt->close();
+
+    if (!$ok) {
+        return ['ok' => false, 'error' => 'db_error', 'key' => $key];
+    }
+
+    return ['ok' => true, 'key' => $key];
+}
+
 function nextrade_reactivate_member_email(mysqli $con, string $email): array
 {
     $email = trim($email);

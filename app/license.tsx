@@ -22,6 +22,10 @@ import { AccessDialog } from '@/components/auth/access-dialog';
 import { AuthHero } from '@/components/auth/auth-hero';
 import { type } from '@/constants/typography';
 import { isLicenseExpired } from '@/utils/license-status';
+import {
+  getCachedLicenseDeviceSecret,
+  setCachedLicenseDeviceSecret,
+} from '@/utils/license-device-secrets';
 
 export default function LicenseScreen() {
   const { theme } = useTheme();
@@ -81,13 +85,22 @@ export default function LicenseScreen() {
 
     setIsActivating(true);
     try {
-      const authResponse = await apiService.authenticateLicense({ licence: key });
+      const cachedSecret = await getCachedLicenseDeviceSecret(key);
+      const authResponse = await apiService.authenticateLicense({
+        licence: key,
+        ...(cachedSecret ? { phone_secret: cachedSecret } : {}),
+      });
       if (authResponse.degraded) {
         showDialog('Connection issue', 'Could not reach the server. Try again.');
         return;
       }
       if (authResponse.message === 'used') {
-        showDialog('Key in use', 'This key is bound to another device. Contact support if needed.');
+        showDialog(
+          'Key in use',
+          cachedSecret
+            ? 'This key is registered to another device. Ask your mentor to unbind it from the admin console, then try again.'
+            : 'This key is already active on another device. Ask your mentor to tap “Unbind device” on the code details page, or use Restore access to reset it.'
+        );
         return;
       }
       if (authResponse.message !== 'accept' || !authResponse.data) {
@@ -113,6 +126,9 @@ export default function LicenseScreen() {
       });
 
       if (success) {
+        if (data.phone_secret_key) {
+          await setCachedLicenseDeviceSecret(key, data.phone_secret_key);
+        }
         await new Promise((r) => setTimeout(r, 500));
         router.replace('/(tabs)');
       } else {
