@@ -338,20 +338,26 @@ export default function HomeScreen() {
           )}
 
           <TouchableOpacity
-            style={[styles.addEAButton, { borderColor: authColors.cardBorder, backgroundColor: authColors.card }]}
+            style={[
+              styles.addEAButton,
+              {
+                borderColor: theme.colors.accent,
+                backgroundColor: theme.colors.accent,
+              },
+            ]}
             onPress={handleAddNewEA}
-            activeOpacity={0.75}
+            activeOpacity={0.88}
           >
-            <View style={[styles.addIconWrap, { backgroundColor: `${theme.colors.accent}18` }]}>
-              <Plus color={theme.colors.accent} size={18} strokeWidth={2.2} />
+            <View style={[styles.addIconWrap, { backgroundColor: `${theme.colors.onAccent}18` }]}>
+              <Plus color={theme.colors.onAccent} size={18} strokeWidth={2.2} />
             </View>
             <View style={styles.addEATextContainer}>
-              <Text style={[styles.addEATitle, { color: theme.colors.textPrimary }]}>Link automation</Text>
-              <Text style={[styles.addEASubtitle, { color: theme.colors.textMuted }]}>
+              <Text style={[styles.addEATitle, { color: theme.colors.onAccent }]}>Link automation</Text>
+              <Text style={[styles.addEASubtitle, { color: `${theme.colors.onAccent}B8` }]}>
                 Add another automation key
               </Text>
             </View>
-            <ChevronRight color={theme.colors.textMuted} size={18} strokeWidth={1.8} />
+            <ChevronRight color={`${theme.colors.onAccent}CC`} size={18} strokeWidth={1.8} />
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -505,6 +511,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
+    flexGrow: 1,
+    paddingTop: 12,
     paddingBottom: 110,
     maxWidth: 440,
     width: '100%',
@@ -1031,14 +1039,14 @@ const styles = StyleSheet.create({
     letterSpacing: 0.3,
   },
   addEAButton: {
-    borderRadius: 18,
+    borderRadius: 24,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 14,
-    paddingHorizontal: 14,
+    paddingVertical: 16,
+    paddingHorizontal: 16,
     marginBottom: 24,
     marginTop: 16,
-    borderWidth: 1,
+    borderWidth: 1.5,
     gap: 12,
   },
   addIconWrap: {

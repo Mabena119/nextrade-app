@@ -42,7 +42,7 @@ export function HomeWorkspaceHero({
   const { width } = useWindowDimensions();
   const accent = theme.colors.accent;
   const ownerLabel = ((ownerName || '').trim() || 'Mentor').toUpperCase();
-  const logoSize = Math.min(176, Math.max(132, Math.round(width * 0.38)));
+  const logoSize = Math.min(208, Math.max(156, Math.round(width * 0.48)));
 
   return (
     <View style={styles.wrap}>
@@ -80,9 +80,6 @@ export function HomeWorkspaceHero({
             {ownerLabel}
           </Text>
         </View>
-        <Text style={[styles.subtitle, { color: theme.colors.textMuted }]}>
-          Autonomous execution
-        </Text>
       </View>
 
       <View style={[styles.mainCard, { borderColor: authColors.cardBorder, backgroundColor: authColors.card }]}>
@@ -162,7 +159,7 @@ export function HomeWorkspaceHero({
 const styles = StyleSheet.create({
   wrap: {
     paddingHorizontal: 24,
-    paddingTop: 4,
+    paddingTop: 40,
     maxWidth: 440,
     width: '100%',
     alignSelf: 'center',
@@ -224,12 +221,6 @@ const styles = StyleSheet.create({
     ...type.label,
     fontSize: 10,
     letterSpacing: 1.4,
-  },
-  subtitle: {
-    ...type.caption,
-    marginTop: 8,
-    lineHeight: 18,
-    textAlign: 'center',
   },
   mainCard: {
     borderWidth: 1,

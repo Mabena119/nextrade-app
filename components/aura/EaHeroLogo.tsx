@@ -23,12 +23,20 @@ export function EaHeroLogo({ imageUrl, size, testID }: Props) {
 
   const source = !useFallback && remoteUrl ? { uri: remoteUrl } : EA_BRAND_HERO_LOCAL;
   const contentFit = !useFallback && remoteUrl ? 'cover' : 'contain';
+  const displayScale = contentFit === 'contain' ? 1.2 : 1.06;
 
   return (
     <Image
       testID={testID}
       source={source}
-      style={[styles.image, { width: size, height: size }]}
+      style={[
+        styles.image,
+        {
+          width: size,
+          height: size,
+          transform: [{ scale: displayScale }],
+        },
+      ]}
       contentFit={contentFit}
       transition={180}
       onError={() => setUseFallback(true)}
