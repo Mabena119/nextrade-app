@@ -71,10 +71,8 @@ $stmt->close();
 
 if ($query_reg) {
     try {
-        require_once dirname(__DIR__) . '/includes/bootstrap.php';
-        auraai_email_bootstrap();
-        auraai_email_mentor_signup_pending($email, $displayname);
-        auraai_email_mentor_signup_admin($email, $displayname, $whatsapp);
+        require_once dirname(__DIR__) . '/includes/email-hooks.php';
+        nextrade_email_mentor_signup($email, $displayname, $whatsapp);
     } catch (Throwable $e) {
         error_log('[NexTradeAI Email] mentor signup: ' . $e->getMessage());
     }

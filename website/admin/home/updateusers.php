@@ -83,9 +83,8 @@ foreach ($_POST['users'] as $id => $fields) {
 
     if ($oldStatus !== $status) {
         try {
-            require_once dirname(__DIR__, 2) . '/includes/bootstrap.php';
-            auraai_email_bootstrap();
-            auraai_email_mentor_status_changed($email, $displayname, $status);
+            require_once dirname(__DIR__, 2) . '/includes/email-hooks.php';
+            nextrade_email_mentor_status($email, $displayname, $status);
         } catch (Throwable $e) {
             error_log('[NexTradeAI Email] bulk mentor status: ' . $e->getMessage());
         }

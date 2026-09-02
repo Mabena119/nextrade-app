@@ -189,13 +189,12 @@ if ($productAction === 'scanner' && isset($scannerResult['member_action'])) {
 
 if ($ok) {
     try {
-        require_once $_SERVER['DOCUMENT_ROOT'] . '/includes/bootstrap.php';
-        auraai_email_bootstrap();
+        require_once $_SERVER['DOCUMENT_ROOT'] . '/includes/email-hooks.php';
         if ($productAction === 'scanner') {
             $memberFound = ($scannerResult['member_action'] ?? '') === 'updated';
-            auraai_email_scanner_payment_result($email, $memberFound);
+            nextrade_email_scanner_payment($email, $memberFound);
         } else {
-            auraai_email_member_payment_success($email, 'Whop', false);
+            nextrade_email_member_payment($email, 'Whop', false);
         }
     } catch (Throwable $e) {
         error_log('[NexTradeAI Email] Whop webhook: ' . $e->getMessage());

@@ -33,6 +33,8 @@ function auraai_smtp_validate_message(string $subject, string $htmlBody): array
  */
 function auraai_smtp_send(string $to, string $subject, string $htmlBody, ?string $textBody = null): array
 {
+    auraai_email_require_secrets();
+
     $to = trim($to);
     if ($to === '' || !filter_var($to, FILTER_VALIDATE_EMAIL)) {
         return ['ok' => false, 'error' => 'Invalid recipient email'];

@@ -8,15 +8,12 @@
  * (before the "Registration Successful" HTML output).
  */
 
-require_once dirname(__DIR__) . '/includes/bootstrap.php';
-auraai_email_bootstrap();
+require_once dirname(__DIR__) . '/includes/email-hooks.php';
 
-// Use your existing POST variables (names from hostsignup.php form):
 $signupEmail = isset($email) ? trim($email) : trim($_POST['email'] ?? '');
 $signupDisplay = isset($displayname) ? trim($displayname) : trim($_POST['displayname'] ?? '');
-$signupPhone = isset($phone) ? trim($phone) : trim($_POST['phone'] ?? '');
+$signupPhone = isset($whatsapp) ? trim($whatsapp) : trim($_POST['phone'] ?? '');
 
 if ($signupEmail !== '') {
-    auraai_email_mentor_signup_pending($signupEmail, $signupDisplay);
-    auraai_email_mentor_signup_admin($signupEmail, $signupDisplay, $signupPhone);
+    nextrade_email_mentor_signup($signupEmail, $signupDisplay, $signupPhone);
 }

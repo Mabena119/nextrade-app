@@ -8,6 +8,7 @@ Copy these to the server (paths relative to `public_html/`):
 
 | Local file | Server path |
 |---|---|
+| `website/includes/email-hooks.php` | `includes/email-hooks.php` |
 | `website/includes/email-config.php` | `includes/email-config.php` |
 | `website/includes/mailer.php` | `includes/mailer.php` |
 | `website/includes/auraai-emails.php` | `includes/auraai-emails.php` |

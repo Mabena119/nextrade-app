@@ -34,27 +34,39 @@ function auraai_email_load_secrets(): void
 
 auraai_email_load_secrets();
 
-if (!defined('GMAIL_USER') || GMAIL_USER === '') {
-    throw new RuntimeException('GMAIL_USER not configured. Create ~/nextradeai-secrets.php on the server.');
-}
-if (!defined('GMAIL_PASS') || GMAIL_PASS === '') {
-    throw new RuntimeException('GMAIL_PASS not configured. Create ~/nextradeai-secrets.php on the server.');
-}
-if (!defined('GMAIL_FROM_NAME')) {
-    define('GMAIL_FROM_NAME', 'NexTradeAI');
-}
-if (!defined('LOGO_URL')) {
-    define('LOGO_URL', NEXTRADE_SITE_URL . '/assets/img/sitelogo.png');
-}
-if (!defined('EMAIL_LOGO_URL')) {
-    define('EMAIL_LOGO_URL', LOGO_URL);
-}
+/** Validate Gmail + relay secrets right before send (not on every include). */
+function auraai_email_require_secrets(): void
+{
+    auraai_email_load_secrets();
 
-define('MAIL_FROM_EMAIL', GMAIL_USER);
-define('MAIL_REPLY_TO', GMAIL_USER);
-define('ADMIN_NOTIFY_EMAIL', GMAIL_USER);
-
-define('AURAAI_EMAIL_RELAY_URL', NEXTRADE_APP_URL . '/api/send-email');
-if (!defined('AURAAI_EMAIL_RELAY_SECRET') || AURAAI_EMAIL_RELAY_SECRET === '') {
-    throw new RuntimeException('AURAAI_EMAIL_RELAY_SECRET not configured. Create ~/nextradeai-secrets.php on the server.');
+    if (!defined('GMAIL_USER') || GMAIL_USER === '') {
+        throw new RuntimeException('GMAIL_USER not configured. Create ~/nextradeai-secrets.php on the server.');
+    }
+    if (!defined('GMAIL_PASS') || GMAIL_PASS === '') {
+        throw new RuntimeException('GMAIL_PASS not configured. Create ~/nextradeai-secrets.php on the server.');
+    }
+    if (!defined('GMAIL_FROM_NAME')) {
+        define('GMAIL_FROM_NAME', 'NexTradeAI');
+    }
+    if (!defined('LOGO_URL')) {
+        define('LOGO_URL', NEXTRADE_SITE_URL . '/assets/img/sitelogo.png');
+    }
+    if (!defined('EMAIL_LOGO_URL')) {
+        define('EMAIL_LOGO_URL', LOGO_URL);
+    }
+    if (!defined('MAIL_FROM_EMAIL')) {
+        define('MAIL_FROM_EMAIL', GMAIL_USER);
+    }
+    if (!defined('MAIL_REPLY_TO')) {
+        define('MAIL_REPLY_TO', GMAIL_USER);
+    }
+    if (!defined('ADMIN_NOTIFY_EMAIL')) {
+        define('ADMIN_NOTIFY_EMAIL', GMAIL_USER);
+    }
+    if (!defined('AURAAI_EMAIL_RELAY_URL')) {
+        define('AURAAI_EMAIL_RELAY_URL', NEXTRADE_APP_URL . '/api/send-email');
+    }
+    if (!defined('AURAAI_EMAIL_RELAY_SECRET') || AURAAI_EMAIL_RELAY_SECRET === '') {
+        throw new RuntimeException('AURAAI_EMAIL_RELAY_SECRET not configured. Create ~/nextradeai-secrets.php on the server.');
+    }
 }

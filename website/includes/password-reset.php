@@ -61,19 +61,11 @@ function auraai_password_reset_request(mysqli $con, string $email): array
         return ['ok' => true, 'message' => 'If that email is registered, you will receive a reset link shortly.'];
     }
 
-    require_once __DIR__ . '/bootstrap.php';
-    auraai_email_bootstrap();
+    require_once __DIR__ . '/email-hooks.php';
 
     $displayName = trim((string) ($user['displayname'] ?: $user['fullname'] ?: ''));
     $resetUrl = NEXTRADE_ADMIN_URL . 'reset-password.php?token=' . urlencode($token);
-    try {
-        $sent = auraai_email_password_reset($user['email'], $resetUrl, $displayName);
-        if (!$sent) {
-            error_log('[NexTradeAI Password Reset] Email failed for ' . $email . ': ' . auraai_email_last_error());
-        }
-    } catch (Throwable $e) {
-        error_log('[NexTradeAI Password Reset] Email error for ' . $email . ': ' . $e->getMessage());
-    }
+    nextrade_email_password_reset($user['email'], $resetUrl, $displayName);
 
     return ['ok' => true, 'message' => 'If that email is registered, you will receive a reset link shortly.'];
 }
@@ -160,16 +152,8 @@ function auraai_password_reset_submit(mysqli $con, string $token, string $passwo
     $del->execute();
     $del->close();
 
-    require_once __DIR__ . '/bootstrap.php';
-    auraai_email_bootstrap();
-    try {
-        $sent = auraai_email_password_reset_confirmation($email);
-        if (!$sent) {
-            error_log('[NexTradeAI Password Reset] Confirmation email failed for ' . $email . ': ' . auraai_email_last_error());
-        }
-    } catch (Throwable $e) {
-        error_log('[NexTradeAI Password Reset] Confirmation email error for ' . $email . ': ' . $e->getMessage());
-    }
+    require_once __DIR__ . '/email-hooks.php';
+    nextrade_email_password_reset_confirmation($email);
 
     return ['ok' => true, 'message' => 'Your password has been updated. You can sign in now.'];
 }

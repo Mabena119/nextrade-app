@@ -28,11 +28,10 @@ if ($licenseKey === null || $recipient === null) {
 }
 
 try {
-    require_once dirname(__DIR__, 2) . '/includes/bootstrap.php';
-    auraai_email_bootstrap();
+    require_once dirname(__DIR__, 2) . '/includes/email-hooks.php';
 
     $mentorName = auraai_sec_string($_SESSION['displayname'] ?? $_SESSION['name'] ?? '', 120) ?? '';
-    $sent = auraai_email_license_key($recipient, $licenseKey, $eaName, $mentorName);
+    $sent = nextrade_email_license_key($recipient, $licenseKey, $eaName, $mentorName);
 
     if (!$sent) {
         $detail = auraai_email_last_error();

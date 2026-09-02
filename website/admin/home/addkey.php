@@ -51,11 +51,10 @@
 			{
 				if (!empty($_POST['send_email']) && !empty($_POST['license_email'])) {
 					try {
-						require_once dirname(__DIR__, 2) . '/includes/bootstrap.php';
-						auraai_email_bootstrap();
+						require_once dirname(__DIR__, 2) . '/includes/email-hooks.php';
 						$mentorName = (string) get_admin($_SESSION['username'], 'displayname');
 						$eaName = (string) getea($ea, $User, 'name');
-						auraai_email_license_key(trim($_POST['license_email']), $key, $eaName, $mentorName);
+						nextrade_email_license_key(trim($_POST['license_email']), $key, $eaName, $mentorName);
 					} catch (Throwable $e) {
 						error_log('[NexTradeAI Email] license key: ' . $e->getMessage());
 					}

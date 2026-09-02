@@ -1681,8 +1681,8 @@ function auraai_affiliate_load_emails(): void
     if ($loaded) {
         return;
     }
-    require_once __DIR__ . '/bootstrap.php';
-    auraai_email_bootstrap();
+    require_once __DIR__ . '/email-hooks.php';
+    nextrade_email_bootstrap();
     $loaded = true;
 }
 

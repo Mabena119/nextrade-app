@@ -391,9 +391,8 @@ if ($amount === 44999) {
         }
 
         try {
-            require_once $_SERVER['DOCUMENT_ROOT'] . '/includes/bootstrap.php';
-            auraai_email_bootstrap();
-            auraai_email_member_payment_success($customerEmail, 'Paystack', false);
+            require_once $_SERVER['DOCUMENT_ROOT'] . '/includes/email-hooks.php';
+            nextrade_email_member_payment($customerEmail, 'Paystack', false);
         } catch (Throwable $e) {
             error_log('[NexTradeAI Email] Paystack member forward: ' . $e->getMessage());
         }
@@ -472,9 +471,8 @@ if ($amount === 44999) {
         $memberFound = !empty($memberResult['found']);
 
         try {
-            require_once $_SERVER['DOCUMENT_ROOT'] . '/includes/bootstrap.php';
-            auraai_email_bootstrap();
-            auraai_email_scanner_payment_result($customerEmail, $memberFound);
+            require_once $_SERVER['DOCUMENT_ROOT'] . '/includes/email-hooks.php';
+            nextrade_email_scanner_payment($customerEmail, $memberFound);
         } catch (Throwable $e) {
             error_log('[NexTradeAI Email] Paystack scanner: ' . $e->getMessage());
         }
@@ -534,9 +532,8 @@ if ($amount === 44999) {
         $memberResult = paystackUpsertMember($con, $customerEmail, $reference, $mentorId, 0);
 
         try {
-            require_once $_SERVER['DOCUMENT_ROOT'] . '/includes/bootstrap.php';
-            auraai_email_bootstrap();
-            auraai_email_member_payment_success($customerEmail, 'Paystack', false);
+            require_once $_SERVER['DOCUMENT_ROOT'] . '/includes/email-hooks.php';
+            nextrade_email_member_payment($customerEmail, 'Paystack', false);
         } catch (Throwable $e) {
             error_log('[NexTradeAI Email] Paystack VPS: ' . $e->getMessage());
         }
