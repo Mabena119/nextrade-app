@@ -52,9 +52,8 @@ if (isset($_POST['save_photo'])) {
         profile_redirect('error', 'Upload could not be saved.');
     }
 
-    $finfo = new finfo(FILEINFO_MIME_TYPE);
-    $mime = $finfo->file($uploadsDir . '/' . $basename) ?: '';
-    if (!in_array($mime, ['image/jpeg', 'image/png', 'image/jpg'], true)) {
+    $mime = auraai_sec_detect_mime($uploadsDir . '/' . $basename);
+    if (!in_array($mime, ['image/jpeg', 'image/jpg', 'image/pjpeg', 'image/png', 'image/x-png'], true)) {
         @unlink($uploadsDir . '/' . $basename);
         profile_redirect('error', 'Please upload a JPG or PNG image.');
     }

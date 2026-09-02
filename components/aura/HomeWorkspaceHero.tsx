@@ -42,7 +42,7 @@ export function HomeWorkspaceHero({
   const { width } = useWindowDimensions();
   const accent = theme.colors.accent;
   const ownerLabel = ((ownerName || '').trim() || 'Mentor').toUpperCase();
-  const logoSize = Math.min(248, Math.max(184, Math.round(width * 0.58)));
+  const logoSize = Math.min(288, Math.max(212, Math.round(width * 0.68)));
 
   return (
     <View style={styles.wrap}>

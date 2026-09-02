@@ -58,24 +58,62 @@ function encodePathSegment(seg: string): string {
 /**
  * Full HTTPS URL for a logo still under auraai uploads; encodes path segments so hex/dot names load reliably.
  */
+/** Strip mentor DB paths (`../uploads/foo.png`, `admin/uploads/foo.png`) down to the filename. */
+function mentorLogoUploadBasename(rawInput: string): string {
+  const withoutQuery = rawInput.split('?')[0]?.split('#')[0]?.trim() ?? '';
+  if (!withoutQuery) return '';
+
+  if (/^https?:\/\//i.test(withoutQuery)) {
+    try {
+      const u = new URL(withoutQuery);
+      const lowerPath = u.pathname.toLowerCase();
+      const uploadsIdx = lowerPath.lastIndexOf('/uploads/');
+      if (uploadsIdx >= 0) {
+        return u.pathname.slice(uploadsIdx + '/uploads/'.length).split('/').filter(Boolean).pop() ?? '';
+      }
+      return u.pathname.split('/').filter(Boolean).pop() ?? '';
+    } catch {
+      return withoutQuery.split('/').filter(Boolean).pop() ?? withoutQuery;
+    }
+  }
+
+  let rel = withoutQuery.replace(/^\/+/, '');
+  const lower = rel.toLowerCase();
+  const uploadsIdx = lower.lastIndexOf('uploads/');
+  if (uploadsIdx >= 0) {
+    rel = rel.slice(uploadsIdx + 'uploads/'.length);
+  } else if (rel.includes('/')) {
+    rel = rel.split('/').filter(Boolean).pop() ?? rel;
+  }
+  return rel.trim();
+}
+
 export function normalizeEaBrandLogoHttpUrl(rawInput: string | null | undefined): string | null {
   if (!rawInput || typeof rawInput !== 'string') return null;
   const raw = rawInput.trim();
-  if (!raw) return null;
+  if (!raw || isPlaceholderEaOwnerLogo(raw)) return null;
+
+  const cacheBust = (() => {
+    const q = raw.indexOf('?');
+    return q >= 0 ? raw.slice(q) : '';
+  })();
+
   if (/^https?:\/\//i.test(raw)) {
     try {
-      const u = new URL(raw);
+      const u = new URL(raw.split('?')[0] ?? raw);
       const parts = u.pathname.split('/').filter(Boolean).map(encodePathSegment);
       u.pathname = `/${parts.join('/')}`;
-      return u.toString();
+      return u.toString() + cacheBust;
     } catch {
       return raw;
     }
   }
-  const rel = raw.replace(/^\/+/, '');
-  const parts = rel.split('/').filter(Boolean).map(encodePathSegment);
+
+  const basename = mentorLogoUploadBasename(raw);
+  if (!basename || isPlaceholderEaOwnerLogo(basename)) return null;
+  const parts = basename.split('/').filter(Boolean).map(encodePathSegment);
   if (parts.length === 0) return null;
-  return `${NEXTRADE_SITE_URL}/admin/uploads/${parts.join('/')}`;
+  return `${NEXTRADE_SITE_URL}/admin/uploads/${parts.join('/')}${cacheBust}`;
 }
 
 /**

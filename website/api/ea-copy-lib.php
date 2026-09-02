@@ -26,6 +26,15 @@ function nextrade_ea_by_secret(mysqli $db, string $secret): ?array
     return $row ?: null;
 }
 
+function nextrade_normalize_optional_level($value): string
+{
+    $v = trim((string) ($value ?? ''));
+    if ($v === '' || !is_numeric($v) || (float) $v === 0.0) {
+        return '0';
+    }
+    return $v;
+}
+
 function nextrade_normalize_trade_action(?string $action): ?string
 {
     $a = strtolower(trim((string) $action));
@@ -89,8 +98,8 @@ function nextrade_insert_copy_signal(mysqli $db, int $eaId, bool $isMartingale, 
     }
 
     $price = trim((string) ($signal['price'] ?? '0'));
-    $tp = trim((string) ($signal['tp'] ?? '0'));
-    $sl = trim((string) ($signal['sl'] ?? '0'));
+    $tp = nextrade_normalize_optional_level($signal['tp'] ?? null);
+    $sl = nextrade_normalize_optional_level($signal['sl'] ?? null);
     $lotRaw = trim((string) ($signal['lot'] ?? ''));
 
     $lot = '';

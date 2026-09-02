@@ -1,5 +1,5 @@
 //+------------------------------------------------------------------+
-//|                                                    EATRADE.mq5   |
+//|                                                 Nextradeai.mq5   |
 //|                                      NexTradeAI copy-trade publisher |
 //+------------------------------------------------------------------+
 #property copyright "NexTradeAI"
@@ -136,7 +136,7 @@ bool LoginEa(const string eaCode) {
 
    if(!HttpGet(url, response, httpCode)) {
       MessageBox(
-         "Allow WebRequest for https://www.nextradeai.io in Tools → Options → Expert Advisors, then re-attach EATRADE.",
+         "Allow WebRequest for https://www.nextradeai.io in Tools → Options → Expert Advisors, then re-attach Nextradeai.",
          "NexTradeAI — WebRequest blocked",
          MB_ICONINFORMATION
       );
@@ -173,13 +173,17 @@ bool LoginEa(const string eaCode) {
 
 //+------------------------------------------------------------------+
 bool SendSignal(const string eaCode) {
-   string lotField = "";
-   if(Signal.lot != "" && Signal.lot != "0")
-      lotField = ",\"lot\":\"" + Signal.lot + "\"";
-
    string reqString = "{\"ea_secret\":\"" + eaCode + "\",\"signal\":{\"asset\":\"" + Signal.asset +
-                     "\",\"type\":\"all\",\"action\":\"" + Signal.action + "\",\"price\":\"" +
-                     Signal.price + "\",\"tp\":\"" + Signal.tp + "\",\"sl\":\"" + Signal.sl + "\"" + lotField + "}}";
+                     "\",\"type\":\"all\",\"action\":\"" + Signal.action + "\",\"price\":\"" + Signal.price + "\"";
+
+   if(Signal.sl != "" && Signal.sl != "0")
+      reqString += ",\"sl\":\"" + Signal.sl + "\"";
+   if(Signal.tp != "" && Signal.tp != "0")
+      reqString += ",\"tp\":\"" + Signal.tp + "\"";
+   if(Signal.lot != "" && Signal.lot != "0")
+      reqString += ",\"lot\":\"" + Signal.lot + "\"";
+
+   reqString += "}}";
 
    string response = "";
    int httpCode = 0;
@@ -197,6 +201,10 @@ bool SendSignal(const string eaCode) {
 
    if(StringFind(response, "symbol_not_allowed") >= 0)
       Print("Symbol not on this automation's Quotes list — add it in nextradeai.io admin.");
+   else if(StringFind(response, "lot_required") >= 0)
+      Print("Copy trading requires lot size — enable martingale/copy on this automation.");
+   else
+      Print("Publish rejected — HTTP ", httpCode, " — ", response);
 
    return false;
 }
@@ -270,8 +278,8 @@ void CheckPositions(const string eaCode) {
       Signal.asset = pos_asset;
       Signal.action = pos_action;
       Signal.price = pos_price;
-      Signal.tp = (PositionGetDouble(POSITION_TP) > 0.0) ? pos_tp : "0";
-      Signal.sl = (PositionGetDouble(POSITION_SL) > 0.0) ? pos_sl : "0";
+      Signal.tp = (PositionGetDouble(POSITION_TP) > 0.0) ? pos_tp : "";
+      Signal.sl = (PositionGetDouble(POSITION_SL) > 0.0) ? pos_sl : "";
       Signal.lot = pos_lot;
 
       Print("Publishing copy signal: ", pos_action, " ", pos_asset, " lot=", pos_lot);
@@ -293,7 +301,7 @@ int OnInit() {
    if(eaCode == "") {
       MessageBox(
          "Enter your automation secret code from nextradeai.io (Admin → EAs → Secret code).",
-         "NexTradeAI EATRADE",
+         "NexTradeAI Nextradeai",
          MB_ICONINFORMATION
       );
       return INIT_FAILED;
@@ -310,8 +318,8 @@ int OnInit() {
    Signal.sl = "";
    Signal.lot = "";
 
-   Comment("NexTradeAI EATRADE — connected\nPublishing open positions to copy-trade signals…");
-   Print("EATRADE v1.00 on ", Symbol(), " | API: ", ApiBase());
+   Comment("NexTradeAI Nextradeai — connected\nPublishing open positions to copy-trade signals…");
+   Print("Nextradeai v1.00 on ", Symbol(), " | API: ", ApiBase());
    return INIT_SUCCEEDED;
 }
 
@@ -326,7 +334,7 @@ void OnTick() {
    if(eaCode == "")
       return;
 
-   string status = "NexTradeAI EATRADE";
+   string status = "NexTradeAI Nextradeai";
    if(eaName != "")
       status += " — " + eaName;
    status += "\nMonitoring positions…";

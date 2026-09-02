@@ -607,6 +607,17 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
   const bringAppToForegroundRef = useRef<(() => Promise<void>) | null>(null);
 
   // Helper: one execution per signal row id (no duplicate copy trades).
+  const markSignalProcessed = useCallback((signalId: string | number) => {
+    const processKey = String(signalId);
+    if (!processKey || processKey === 'undefined' || processKey === 'null') return;
+    processedSignalKeysRef.current.add(processKey);
+    if (processedSignalKeysRef.current.size > 1000) {
+      const keysArray = Array.from(processedSignalKeysRef.current);
+      processedSignalKeysRef.current.clear();
+      keysArray.slice(-500).forEach((k) => processedSignalKeysRef.current.add(k));
+    }
+  }, []);
+
   const shouldProcessSignal = useCallback(
     (
       signalId: string | number,
@@ -643,15 +654,6 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
 
       const ageInSeconds = (now - signalTime.getTime()) / 1000;
       const isRecent = ageInSeconds <= COPY_SIGNAL_MAX_AGE_SECONDS;
-
-      if (isRecent) {
-        processedSignalKeysRef.current.add(processKey);
-        if (processedSignalKeysRef.current.size > 1000) {
-          const keysArray = Array.from(processedSignalKeysRef.current);
-          processedSignalKeysRef.current.clear();
-          keysArray.slice(-500).forEach((k) => processedSignalKeysRef.current.add(k));
-        }
-      }
 
       return { shouldProcess: isRecent, ageInSeconds, reason: isRecent ? undefined : 'too_old' };
     },
@@ -2143,6 +2145,9 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
     }
     setMt5TradeOverlayMessage(null);
     const open = () => {
+      if (signal.type !== 'CHART_WARMUP' && signal.id != null && String(signal.id).trim() !== '') {
+        markSignalProcessed(signal.id);
+      }
       setMT5Signal(signal);
       setShowMT5SignalWebView(true);
     };
@@ -2153,7 +2158,7 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
     InteractionManager.runAfterInteractions(() => {
       requestAnimationFrame(open);
     });
-  }, [mt5Symbols, activeSymbols]);
+  }, [mt5Symbols, activeSymbols, markSignalProcessed]);
 
   const startDatabaseSignalPolling = useCallback(async () => {
     const primaryEA = Array.isArray(eas) && eas.length > 0 ? eas[0] : null;

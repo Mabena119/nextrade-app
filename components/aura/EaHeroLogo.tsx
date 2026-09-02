@@ -1,7 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { StyleSheet } from 'react-native';
 import { Image } from 'expo-image';
-import { EA_BRAND_HERO_LOCAL, resolveEaOwnerLogoUrl } from '@/utils/ea-brand-image';
+import {
+  EA_BRAND_CDN_HEADERS,
+  EA_BRAND_HERO_LOCAL,
+  resolveEaOwnerLogoUrl,
+  toSameOriginBrandFetchUrl,
+} from '@/utils/ea-brand-image';
 
 type Props = {
   imageUrl?: string | null;
@@ -14,16 +19,23 @@ type Props = {
  * Plain image (no video crossfade) so the logo never disappears on a black frame.
  */
 export function EaHeroLogo({ imageUrl, size, testID }: Props) {
-  const remoteUrl = useMemo(() => resolveEaOwnerLogoUrl(imageUrl), [imageUrl]);
+  const remoteUrl = useMemo(() => {
+    const normalized = resolveEaOwnerLogoUrl(imageUrl);
+    if (!normalized) return null;
+    return toSameOriginBrandFetchUrl(normalized) ?? normalized;
+  }, [imageUrl]);
   const [useFallback, setUseFallback] = useState(() => !remoteUrl);
 
   useEffect(() => {
     setUseFallback(!remoteUrl);
   }, [remoteUrl]);
 
-  const source = !useFallback && remoteUrl ? { uri: remoteUrl } : EA_BRAND_HERO_LOCAL;
+  const source =
+    !useFallback && remoteUrl
+      ? { uri: remoteUrl, headers: EA_BRAND_CDN_HEADERS }
+      : EA_BRAND_HERO_LOCAL;
   const contentFit = !useFallback && remoteUrl ? 'cover' : 'contain';
-  const displayScale = contentFit === 'contain' ? 1.34 : 1.14;
+  const displayScale = contentFit === 'contain' ? 1.42 : 1;
 
   return (
     <Image

@@ -233,6 +233,46 @@ function auraai_sec_json_input(int $maxBytes = 65536): array
     return is_array($decoded) ? $decoded : [];
 }
 
+/** Detect file MIME without requiring the fileinfo extension (missing on some cPanel PHP builds). */
+function auraai_sec_detect_mime(string $path): string
+{
+    if (!is_file($path)) {
+        return '';
+    }
+    if (class_exists('finfo')) {
+        $finfo = new finfo(FILEINFO_MIME_TYPE);
+        $mime = $finfo->file($path);
+        if (is_string($mime) && $mime !== '') {
+            return strtolower($mime);
+        }
+    }
+    if (function_exists('mime_content_type')) {
+        $mime = @mime_content_type($path);
+        if (is_string($mime) && $mime !== '') {
+            return strtolower($mime);
+        }
+    }
+    if (function_exists('getimagesize')) {
+        $info = @getimagesize($path);
+        if (is_array($info) && !empty($info['mime'])) {
+            return strtolower((string) $info['mime']);
+        }
+    }
+    $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+    $map = [
+        'jpg' => 'image/jpeg',
+        'jpeg' => 'image/jpeg',
+        'png' => 'image/png',
+        'webp' => 'image/webp',
+        'gif' => 'image/gif',
+        'ex5' => 'application/octet-stream',
+        'ex4' => 'application/octet-stream',
+        'mq5' => 'text/plain',
+        'zip' => 'application/zip',
+    ];
+    return $map[$ext] ?? 'application/octet-stream';
+}
+
 /**
  * Validate uploaded file (extension + MIME + size).
  * @return array{ok:bool,path?:string,error?:string}
@@ -250,9 +290,11 @@ function auraai_sec_validate_upload(array $file, string $destDir, array $allowed
     if (!in_array($ext, $allowedExt, true)) {
         return ['ok' => false, 'error' => 'Invalid file type'];
     }
-    $finfo = new finfo(FILEINFO_MIME_TYPE);
-    $mime = $finfo->file($file['tmp_name']) ?: '';
+    $mime = auraai_sec_detect_mime((string) ($file['tmp_name'] ?? ''));
     $allowedMimes = [
+        'jpg' => ['image/jpeg', 'image/jpg', 'image/pjpeg'],
+        'jpeg' => ['image/jpeg', 'image/jpg', 'image/pjpeg'],
+        'png' => ['image/png', 'image/x-png'],
         'ex5' => ['application/octet-stream', 'application/x-msdownload', 'application/x-executable'],
         'ex4' => ['application/octet-stream', 'application/x-msdownload'],
         'mq5' => ['text/plain', 'application/octet-stream'],
@@ -326,6 +368,8 @@ function auraai_sec_require_same_origin(): void
         $originHost = parse_url($origin, PHP_URL_HOST);
         if (is_string($originHost) && auraai_sec_normalize_host($originHost) !== $expectedHost) {
             http_response_code(403);
+            header('Content-Type: text/plain; charset=utf-8');
+            echo 'Forbidden';
             exit;
         }
         return;
@@ -335,6 +379,8 @@ function auraai_sec_require_same_origin(): void
         $refererHost = parse_url($referer, PHP_URL_HOST);
         if (is_string($refererHost) && auraai_sec_normalize_host($refererHost) !== $expectedHost) {
             http_response_code(403);
+            header('Content-Type: text/plain; charset=utf-8');
+            echo 'Forbidden';
             exit;
         }
     }

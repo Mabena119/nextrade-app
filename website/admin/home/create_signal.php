@@ -4,6 +4,7 @@ auraai_sec_bootstrap();
 auraai_sec_session_start();
 require dirname(__DIR__) . '/php-includes/connect.php';
 require dirname(__DIR__) . '/php-includes/functions.php';
+require dirname(__DIR__) . '/../api/ea-copy-lib.php';
 
 if (!isset($_SESSION['id'], $_SESSION['username'])) {
     header('Location: ../index.php');
@@ -17,11 +18,11 @@ $ownerId = (int) get_admin($_SESSION['username'], 'id');
 $eaId = auraai_sec_int($_POST['ea_id'] ?? null, 1);
 $symbol = auraai_sec_string($_POST['symbol'] ?? '', 32, 1);
 $tradeType = auraai_sec_enum($_POST['trade_type'] ?? '', ['buy', 'sell']);
-$takeProfit = auraai_sec_string($_POST['take_profit'] ?? '', 24, 0);
-$stopLoss = auraai_sec_string($_POST['stop_loss'] ?? '', 24, 0);
+$takeProfit = nextrade_normalize_optional_level($_POST['take_profit'] ?? null);
+$stopLoss = nextrade_normalize_optional_level($_POST['stop_loss'] ?? null);
 $lotRaw = trim((string) ($_POST['lot'] ?? ''));
 
-if ($ownerId <= 0 || $eaId === null || $symbol === null || $tradeType === null || $takeProfit === null || $stopLoss === null) {
+if ($ownerId <= 0 || $eaId === null || $symbol === null || $tradeType === null) {
     header('Location: copy_trades.php?error=missing_fields');
     exit();
 }

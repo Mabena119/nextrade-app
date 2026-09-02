@@ -113,15 +113,18 @@ class NexTradeCopyBridge:
         digits = info.digits if info else 5
         action = "buy" if position.type == mt5.POSITION_TYPE_BUY else "sell"
         lot = f"{position.volume:.{self._volume_digits(symbol)}f}"
-        return {
+        payload = {
             "asset": symbol,
             "type": "all",
             "action": action,
             "price": f"{position.price_open:.{digits}f}",
-            "tp": f"{position.tp:.{digits}f}" if position.tp else "0",
-            "sl": f"{position.sl:.{digits}f}" if position.sl else "0",
             "lot": lot,
         }
+        if position.tp and float(position.tp) > 0:
+            payload["tp"] = f"{position.tp:.{digits}f}"
+        if position.sl and float(position.sl) > 0:
+            payload["sl"] = f"{position.sl:.{digits}f}"
+        return payload
 
     def scan_positions(self) -> None:
         positions = mt5.positions_get()

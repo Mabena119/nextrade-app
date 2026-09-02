@@ -1,5 +1,8 @@
 <?php
-session_start();
+require dirname(__DIR__) . '/php-includes/security-bridge.php';
+auraai_sec_bootstrap();
+auraai_sec_session_start();
+
 if (!isset($_SESSION['id'])) {
     header('Location: ../index.php');
     exit;

@@ -42,7 +42,7 @@ if ($email !== '') {
 }
 
 $shopPriceDisplay = (string) NEXTRADE_SHOP_PRICE_ZAR;
-$paystackCheckoutBase = 'https://paystack.shop/pay/qhnur7yjsr';
+$paystackCheckoutBase = 'https://paystack.shop/pay/9cat99v83f';
 $paystackCheckoutUrl = $paystackCheckoutBase;
 if ($email !== '') {
     $paystackCheckoutUrl .= '?email=' . rawurlencode($email);

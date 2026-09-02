@@ -2,7 +2,8 @@
 /**
  * Paystack Webhook - processes charge.success
  * - R499 (49900): add to members (NexTradeAI)
- *   Paystack shop: https://paystack.shop/pay/qhnur7yjsr
+ *   Paystack shop: https://paystack.shop/pay/9cat99v83f (Restoration / Archive)
+ *   Legacy shop: https://paystack.shop/pay/qhnur7yjsr
  * - R350 (35000): unlock AI Scanner (members.scanner = 1)
  *   Paystack shop: https://paystack.shop/pay/204p1hwqij (Basic Lite)
  * - 449.99 (44999): forward to hkdk.events for processing
@@ -21,7 +22,7 @@ const PAYSTACK_VPS_AMOUNT = 49900;
 const PAYSTACK_VPS_AMOUNT_LEGACY = 55000;
 const PAYSTACK_VPS_AMOUNT_LEGACY_649 = 64900;
 const PAYSTACK_SCANNER_SHOP_SLUGS = ['204p1hwqij', 'za670n3c51'];
-const PAYSTACK_VPS_SHOP_SLUGS = ['qhnur7yjsr', 'ym2dagnjpv'];
+const PAYSTACK_VPS_SHOP_SLUGS = ['9cat99v83f', 'qhnur7yjsr', 'ym2dagnjpv'];
 
 function paystackExtractEmail($event): string
 {
@@ -140,7 +141,7 @@ function paystackWebhookInfo(): array
         'event' => 'charge.success',
         'handlers' => [
             ['amount_zar' => 350, 'amount_raw' => PAYSTACK_SCANNER_AMOUNT, 'action' => 'scanner_unlock', 'result' => 'members.scanner = 1 when email exists; member_not_found otherwise'],
-            ['amount_zar' => 499, 'amount_raw' => PAYSTACK_VPS_AMOUNT, 'action' => 'vps_membership', 'result' => 'members paid=1, scanner=0', 'shop' => 'https://paystack.shop/pay/qhnur7yjsr'],
+            ['amount_zar' => 499, 'amount_raw' => PAYSTACK_VPS_AMOUNT, 'action' => 'vps_membership', 'result' => 'members paid=1, scanner=0', 'shop' => 'https://paystack.shop/pay/9cat99v83f'],
             ['amount_zar' => 550, 'amount_raw' => PAYSTACK_VPS_AMOUNT_LEGACY, 'action' => 'vps_membership_legacy', 'result' => 'members paid=1, scanner=0'],
             ['amount_zar' => 649, 'amount_raw' => PAYSTACK_VPS_AMOUNT_LEGACY_649, 'action' => 'vps_membership_legacy', 'result' => 'members paid=1, scanner=0'],
             ['amount_zar' => 1500, 'amount_raw' => 150000, 'action' => 'bundle_ftsa'],
@@ -517,7 +518,7 @@ if ($amount === 44999) {
         ]);
     }
 
-    // VPS membership — R499 (shop qhnur7yjsr); also R550 legacy + slug match
+    // VPS membership — R499 (shop 9cat99v83f / legacy qhnur7yjsr); also R550 legacy + slug match
     if (paystackIsVpsPayment($event, $amount)) {
         $customerEmail = paystackExtractEmail($event);
         if ($customerEmail === '') {

@@ -4263,6 +4263,11 @@ async function handleApi(request: Request): Promise<Response> {
           lot = lotRaw;
         }
         const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+        const normalizeLevel = (v: unknown) => {
+          const s = String(v ?? '').trim();
+          if (!s || Number(s) === 0) return '0';
+          return s;
+        };
         const [insertResult] = await conn.execute(
           `INSERT INTO signals (ea, asset, type, action, price, tp, sl, lot, results, time, latestupdate)
            VALUES (?, ?, 'all', ?, ?, ?, ?, ?, 'active', ?, ?)`,
@@ -4271,8 +4276,8 @@ async function handleApi(request: Request): Promise<Response> {
             asset,
             action,
             String(signal.price || '0'),
-            String(signal.tp || '0'),
-            String(signal.sl || '0'),
+            normalizeLevel(signal.tp),
+            normalizeLevel(signal.sl),
             lot,
             now,
             now,

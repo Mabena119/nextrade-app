@@ -8,7 +8,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { useApp, type EA } from '@/providers/app-provider';
 import { getScreenBackgroundColor, useTheme } from '@/providers/theme-provider';
-import { resolveEaOwnerLogoUrl } from '@/utils/ea-brand-image';
 import { FirstTimeWelcome } from '@/components/aura/FirstTimeWelcome';
 import { HomeWorkspaceHero } from '@/components/aura/HomeWorkspaceHero';
 import { getHeroCardMinHeight } from '@/utils/app-viewport';
@@ -142,7 +141,7 @@ export default function HomeScreen() {
 
   const getEAImageUrl = useCallback((ea: EA | null): string | null => {
     if (!ea?.userData?.owner) return null;
-    return resolveEaOwnerLogoUrl(ea.userData.owner.logo);
+    return (ea.userData.owner.logo ?? '').trim() || null;
   }, []);
 
   const primaryEAImage = useMemo(() => getEAImageUrl(primaryEA), [getEAImageUrl, primaryEA]);

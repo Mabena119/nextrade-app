@@ -129,7 +129,7 @@ export async function captureAffiliateRefFromUrl(url: string | null | undefined)
   return ref;
 }
 
-const PAYSTACK_VPS_CHECKOUT_BASE = 'https://paystack.shop/pay/qhnur7yjsr';
+const PAYSTACK_VPS_CHECKOUT_BASE = 'https://paystack.shop/pay/9cat99v83f';
 
 export function buildPaystackCheckoutUrl(email: string, ref?: string | null): string {
   const params = new URLSearchParams();

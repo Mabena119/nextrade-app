@@ -149,7 +149,7 @@ function nextrade_admin_avatar_src(
 /**
  * Re-encode uploaded mentor photo so iOS/browser always get a valid raster (fixes blank/white renders).
  */
-function nextrade_normalize_profile_upload(string $path, string $mime): bool
+function nextrade_normalize_profile_upload(string $path, string $mime = ''): bool
 {
 	if (!is_file($path) || (int) @filesize($path) < 1) {
 		return false;
@@ -159,41 +159,43 @@ function nextrade_normalize_profile_upload(string $path, string $mime): bool
 		return true;
 	}
 
-	$mime = strtolower($mime);
-	if ($mime === 'image/jpeg' || $mime === 'image/jpg') {
-		$img = @imagecreatefromjpeg($path);
-		if ($img === false) {
-			return false;
-		}
-		if (function_exists('exif_read_data')) {
-			$exif = @exif_read_data($path);
-			$orientation = (int) ($exif['Orientation'] ?? 1);
-			$img = nextrade_orient_jpeg_image($img, $orientation);
-		}
-		$ok = imagejpeg($img, $path, 90);
-		imagedestroy($img);
-		if ($ok) {
-			@chmod($path, 0644);
-		}
-		return (bool) $ok;
+	$blob = @file_get_contents($path);
+	if ($blob === false || $blob === '') {
+		return false;
 	}
 
-	if ($mime === 'image/png') {
-		$img = @imagecreatefrompng($path);
-		if ($img === false) {
-			return false;
+	$img = @imagecreatefromstring($blob);
+	if ($img === false) {
+		$mime = strtolower($mime);
+		if ($mime === 'image/jpeg' || $mime === 'image/jpg' || $mime === 'image/pjpeg') {
+			$img = @imagecreatefromjpeg($path);
+		} elseif ($mime === 'image/png' || $mime === 'image/x-png') {
+			$img = @imagecreatefrompng($path);
 		}
+	}
+	if ($img === false) {
+		return false;
+	}
+
+	if (function_exists('exif_read_data')) {
+		$exif = @exif_read_data($path);
+		$orientation = (int) ($exif['Orientation'] ?? 1);
+		$img = nextrade_orient_jpeg_image($img, $orientation);
+	}
+
+	$ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+	if ($ext === 'png') {
 		imagealphablending($img, false);
 		imagesavealpha($img, true);
 		$ok = imagepng($img, $path, 6);
-		imagedestroy($img);
-		if ($ok) {
-			@chmod($path, 0644);
-		}
-		return (bool) $ok;
+	} else {
+		$ok = imagejpeg($img, $path, 90);
 	}
-
-	return false;
+	imagedestroy($img);
+	if ($ok) {
+		@chmod($path, 0644);
+	}
+	return (bool) $ok;
 }
 
 /** @param resource $img */

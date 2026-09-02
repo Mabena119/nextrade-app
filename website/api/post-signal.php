@@ -2,7 +2,7 @@
 /**
  * MT5 / Python bridge — publish a copy-trade signal into `signals`.
  * POST /api/post-signal
- * Body: { "ea_secret": "...", "signal": { "asset", "action", "price", "tp", "sl", "lot?" } }
+ * Body: { "ea_secret": "...", "signal": { "asset", "action", "price", "tp?", "sl?", "lot?" } }
  */
 require __DIR__ . '/bootstrap.php';
 require __DIR__ . '/ea-copy-lib.php';

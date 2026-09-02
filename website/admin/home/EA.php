@@ -46,7 +46,7 @@
 			<button type="button" class="aura-copy-btn"><i class="ti ti-copy"></i> Copy</button>
 		</div>
 
-		<a href="../downloads/EATRADE.ex5" class="aura-btn aura-btn-ghost"><i class="ti ti-download"></i> Download MT5 publisher (EATRADE.ex5)</a>
+		<a href="../downloads/Nextradeai.ex5" class="aura-btn aura-btn-ghost"><i class="ti ti-download"></i> Download MT5 publisher (Nextradeai.ex5)</a>
 		<p style="margin:0.65rem 0 0;color:var(--aura-muted);font-size:0.82rem;">Attach to a chart, paste your secret code, and allow WebRequest for <strong>https://www.nextradeai.io</strong>.</p>
 	</section>
 

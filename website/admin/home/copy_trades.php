@@ -157,15 +157,15 @@ $signals_result = mysqli_query($con, $signals_query);
                 </div>
 
                 <div class="ct-form__section">
-                    <p class="ct-form__section-label">Risk levels (pips)</p>
+                    <p class="ct-form__section-label">Risk levels <span style="color:var(--aura-muted);font-weight:400;">(optional)</span></p>
                     <div class="ct-form__grid ct-form__grid--2">
                         <div class="ct-field ct-field--tp">
                             <label for="take_profit"><i class="ti ti-trending-up" aria-hidden="true"></i> Take profit</label>
-                            <input type="number" name="take_profit" id="take_profit" value="0" placeholder="0" step="0.1" required>
+                            <input type="number" name="take_profit" id="take_profit" value="" placeholder="Leave blank for none" step="0.1" min="0">
                         </div>
                         <div class="ct-field ct-field--sl">
                             <label for="stop_loss"><i class="ti ti-shield" aria-hidden="true"></i> Stop loss</label>
-                            <input type="number" name="stop_loss" id="stop_loss" value="0" placeholder="0" step="0.1" required>
+                            <input type="number" name="stop_loss" id="stop_loss" value="" placeholder="Leave blank for none" step="0.1" min="0">
                         </div>
                     </div>
                 </div>
