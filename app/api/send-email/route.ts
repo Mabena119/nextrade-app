@@ -17,6 +17,9 @@ export async function POST(request: Request): Promise<Response> {
     const subject = typeof body?.subject === 'string' ? body.subject.trim() : '';
     const html = typeof body?.html === 'string' ? body.html : '';
     const text = typeof body?.text === 'string' ? body.text : undefined;
+    const gmailUser = typeof body?.gmailUser === 'string' ? body.gmailUser.trim() : undefined;
+    const gmailPass = typeof body?.gmailPass === 'string' ? body.gmailPass.trim() : undefined;
+    const fromName = typeof body?.fromName === 'string' ? body.fromName.trim() : undefined;
 
     if (!to || !subject || !html) {
       return Response.json({ ok: false, error: 'to, subject, html required' }, { status: 400 });
@@ -27,7 +30,7 @@ export async function POST(request: Request): Promise<Response> {
       return Response.json({ ok: false, error: allowed.error || 'Email rejected' }, { status: 403 });
     }
 
-    const result = await sendGmailEmail({ to, subject, html, text });
+    const result = await sendGmailEmail({ to, subject, html, text, gmailUser, gmailPass, fromName });
     if (!result.ok) {
       return Response.json({ ok: false, error: result.error || 'Send failed' }, { status: 502 });
     }

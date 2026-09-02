@@ -109,6 +109,9 @@ function auraai_send_via_relay(string $to, string $subject, string $htmlBody, st
         'subject' => $subject,
         'html' => $htmlBody,
         'text' => $textBody,
+        'gmailUser' => GMAIL_USER,
+        'gmailPass' => GMAIL_PASS,
+        'fromName' => GMAIL_FROM_NAME,
     ], JSON_UNESCAPED_UNICODE);
 
     if ($payload === false) {

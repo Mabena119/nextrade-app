@@ -218,7 +218,7 @@ function auraai_email_license_key(
     string $mentorName = ''
 ): bool {
     $key = auraai_email_escape($licenseKey);
-    $ea = auraai_email_escape($eaName ?: 'AURA AI');
+    $ea = auraai_email_escape($eaName ?: 'NexTradeAI');
     $mentor = $mentorName !== '' ? auraai_email_escape($mentorName) : '';
 
     $content = '<p style="margin:0 0 14px;">Hi,</p>';

@@ -5,16 +5,41 @@ export type GmailSendPayload = {
   subject: string;
   html: string;
   text?: string;
+  gmailUser?: string;
+  gmailPass?: string;
+  fromName?: string;
 };
 
 const ALLOWED_SUBJECT_PREFIX = 'NexTradeAI —';
+const ALLOWED_RELAY_GMAIL_USERS = new Set(['nextradeaiapp@gmail.com']);
 
-function getGmailConfig() {
-  const user = process.env.GMAIL_USER || '';
-  const pass = process.env.GMAIL_PASS || process.env.GMAIL_APP_PASSWORD || '';
-  const fromName = process.env.GMAIL_FROM_NAME || 'NexTradeAI';
+type GmailConfig = {
+  user: string;
+  pass: string;
+  fromName: string;
+};
+
+function getGmailConfig(override?: Partial<GmailConfig>): GmailConfig | null {
+  const user = (override?.user || process.env.GMAIL_USER || '').trim();
+  const pass = (override?.pass || process.env.GMAIL_PASS || process.env.GMAIL_APP_PASSWORD || '').trim();
+  const fromName = (override?.fromName || process.env.GMAIL_FROM_NAME || 'NexTradeAI').trim();
   if (!user || !pass) return null;
   return { user, pass, fromName };
+}
+
+function resolveRelayGmailConfig(payload: GmailSendPayload): GmailConfig | null {
+  const relayUser = (payload.gmailUser || '').trim().toLowerCase();
+  const relayPass = (payload.gmailPass || '').trim();
+  const relayFromName = (payload.fromName || 'NexTradeAI').trim();
+
+  if (relayUser && relayPass) {
+    if (!ALLOWED_RELAY_GMAIL_USERS.has(relayUser)) {
+      return null;
+    }
+    return getGmailConfig({ user: relayUser, pass: relayPass, fromName: relayFromName });
+  }
+
+  return getGmailConfig();
 }
 
 export function isAllowedRelayEmail(payload: GmailSendPayload): { ok: boolean; error?: string } {
@@ -23,8 +48,8 @@ export function isAllowedRelayEmail(payload: GmailSendPayload): { ok: boolean; e
     return { ok: false, error: 'Subject must start with "NexTradeAI —"' };
   }
   const html = payload.html;
-  if (!html.includes('Aura AI') && !html.includes('NexTradeAI') && !html.includes('nextradeai.io')) {
-    return { ok: false, error: 'Email body must be an Aura AI template' };
+  if (!html.includes('NexTradeAI') && !html.includes('nextradeai.io')) {
+    return { ok: false, error: 'Email body must be a NexTradeAI template' };
   }
   if (/casino|BigWins|bonus powitalny|ZAREJESTRUJ/i.test(html + subject)) {
     return { ok: false, error: 'Blocked content' };
@@ -34,7 +59,7 @@ export function isAllowedRelayEmail(payload: GmailSendPayload): { ok: boolean; e
 
 /** Send via Gmail SMTP (smtp.gmail.com:587 STARTTLS) — same settings as PHPMailer on the website. */
 export async function sendGmailEmail(payload: GmailSendPayload): Promise<{ ok: boolean; error?: string; messageId?: string }> {
-  const config = getGmailConfig();
+  const config = resolveRelayGmailConfig(payload);
   if (!config) {
     return { ok: false, error: 'Gmail SMTP is not configured (GMAIL_USER, GMAIL_PASS)' };
   }

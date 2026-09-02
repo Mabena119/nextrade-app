@@ -86,7 +86,15 @@ async function send(name: string, subject: string, html: string) {
       'Content-Type': 'application/json',
       'x-auraai-email-secret': SECRET,
     },
-    body: JSON.stringify({ to: TO, subject, html, text: subject }),
+    body: JSON.stringify({
+      to: TO,
+      subject,
+      html,
+      text: subject,
+      gmailUser: process.env.GMAIL_USER,
+      gmailPass: process.env.GMAIL_PASS,
+      fromName: process.env.GMAIL_FROM_NAME || 'NexTradeAI',
+    }),
   });
   const data = await res.json().catch(() => ({}));
   const ok = res.ok && (data as { ok?: boolean }).ok;
