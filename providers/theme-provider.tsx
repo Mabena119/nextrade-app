@@ -123,19 +123,56 @@ export const quietTheme: Theme = {
   },
 };
 
+/** Crimson accent — premium red on void black (third theme in cycle). */
+export const redTheme: Theme = {
+  name: 'red',
+  isDark: true,
+  colors: {
+    background: '#000000',
+    backgroundSecondary: '#0C0406',
+    cardBackground: 'rgba(255, 45, 85, 0.06)',
+
+    primaryGradient: ['#1A0508', '#0C0406', '#000000'],
+    cardGradient: ['rgba(28, 6, 10, 0.94)', 'rgba(12, 4, 6, 0.88)', 'rgba(0, 0, 0, 0.92)'],
+    glowGradient: ['rgba(255, 45, 85, 0.32)', 'rgba(255, 45, 85, 0.12)', 'transparent'],
+
+    textPrimary: '#F2F4F7',
+    textSecondary: '#A89BA0',
+    textMuted: 'rgba(168, 155, 160, 0.72)',
+
+    accent: '#FF2D55',
+    onAccent: '#FFFFFF',
+    accentSecondary: '#FF6B85',
+    success: '#3AE374',
+    error: '#FF5C7A',
+    warning: '#FBBF24',
+
+    borderColor: 'rgba(255, 45, 85, 0.14)',
+    glowColor: 'rgba(255, 45, 85, 0.38)',
+    overlayColor: 'rgba(0, 0, 0, 0.9)',
+
+    statusActive: '#3AE374',
+    statusInactive: 'rgba(168, 155, 160, 0.45)',
+
+    navBackground: 'rgba(14, 4, 6, 0.94)',
+    navActiveColor: '#FF2D55',
+    navInactiveColor: 'rgba(168, 155, 160, 0.5)',
+  },
+};
+
 /** @deprecated use `nextradeTheme` */
 export const auraTheme = nextradeTheme;
 
-export const ALL_THEMES: Theme[] = [nextradeTheme, quietTheme];
+export const ALL_THEMES: Theme[] = [nextradeTheme, quietTheme, redTheme];
 
-export type ThemeName = 'nextrade' | 'quiet';
+export type ThemeName = 'nextrade' | 'quiet' | 'red';
 
 const LEGACY_THEME_MAP: Record<string, ThemeName> = {
   aura: 'nextrade',
   cyber: 'nextrade',
   purple: 'nextrade',
-  red: 'nextrade',
-  matrixRed: 'nextrade',
+  red: 'red',
+  matrixRed: 'red',
   matrixYellow: 'nextrade',
   glass: 'nextrade',
   matrix: 'nextrade',
