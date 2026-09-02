@@ -52,12 +52,12 @@ const tests: { name: string; subject: string; html: string }[] = [
   {
     name: 'member_whop',
     subject: 'NexTradeAI — Welcome, your membership is active',
-    html: wrap('Welcome to NexTradeAI', `<p>Hi,</p><p>Your NexTradeAI membership payment via <strong>Whop</strong> was successful.</p><p>Your email <strong>${TO}</strong> is now linked to your membership.</p>`, { label: 'Get started', url: APP }),
+    html: wrap('Welcome to NexTradeAI', `<p>Hi,</p><p>Your NexTradeAI membership payment was successful.</p><p>Your email <strong>${TO}</strong> is now linked to your membership.</p>`, { label: 'Get started', url: APP }),
   },
   {
     name: 'member_paystack',
     subject: 'NexTradeAI — Welcome, your membership is active',
-    html: wrap('Welcome to NexTradeAI', `<p>Hi,</p><p>Your NexTradeAI membership payment via <strong>Paystack</strong> was successful.</p><p>Your email <strong>${TO}</strong> is now linked to your membership.</p>`, { label: 'Get started', url: APP }),
+    html: wrap('Welcome to NexTradeAI', `<p>Hi,</p><p>Your NexTradeAI membership payment was successful.</p><p>Your email <strong>${TO}</strong> is now linked to your membership.</p>`, { label: 'Get started', url: APP }),
   },
   {
     name: 'scanner_activated',

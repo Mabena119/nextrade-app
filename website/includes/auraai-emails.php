@@ -179,12 +179,11 @@ function auraai_email_mentor_status_changed(string $email, string $displayName, 
     );
 }
 
-/** Member joined via Whop or Paystack (shop membership) */
+/** Member joined after shop membership payment */
 function auraai_email_member_joined(string $email, string $source = 'payment', bool $isScanner = false): bool
 {
-    $sourceLabel = auraai_email_escape(ucfirst(strtolower($source)));
     $content = '<p style="margin:0 0 14px;">Hi,</p>'
-        . '<p style="margin:0 0 14px;">Your NexTradeAI membership payment via <strong>' . $sourceLabel . '</strong> was successful.</p>'
+        . '<p style="margin:0 0 14px;">Your NexTradeAI membership payment was successful.</p>'
         . '<p style="margin:0 0 14px;">Your email <strong>' . auraai_email_escape($email) . '</strong> is now linked to your membership. Open the NexTradeAI app and sign in with this email to get started.</p>';
 
     if ($isScanner) {
