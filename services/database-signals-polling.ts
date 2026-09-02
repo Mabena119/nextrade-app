@@ -1,7 +1,7 @@
 import { CPANEL_DB } from '../config/database';
 import { Platform } from 'react-native';
 import { resolveApiBaseUrl } from '../utils/api-base-url';
-import { parseSignalUtcDatetime } from '../utils/signal-datetime';
+import { parseSignalUtcDatetime, toSignalUtcIso } from '../utils/signal-datetime';
 
 /** DB-backed signal routes via app host (Render proxies to NexTrade). */
 function getApiBaseUrl(): string {
@@ -361,7 +361,12 @@ class DatabaseSignalsPollingService {
         throw new Error(`API call failed: ${response.status}`);
       }
       const data = await response.json();
-      return data.signals;
+      const signals = Array.isArray(data.signals) ? data.signals : [];
+      return signals.map((signal: DatabaseSignal) => ({
+        ...signal,
+        latestupdate: toSignalUtcIso(signal.latestupdate) ?? signal.latestupdate,
+        time: toSignalUtcIso(signal.time) ?? signal.time,
+      }));
     } catch (error) {
       console.error('Error fetching new signals via API:', error);
       throw new Error('Failed to fetch new signals');
@@ -381,7 +386,13 @@ class DatabaseSignalsPollingService {
         throw new Error(`API call failed: ${response.status}`);
       }
       const data = await response.json();
-      return data.signal ?? null;
+      const signal = data.signal ?? null;
+      if (!signal) return null;
+      return {
+        ...signal,
+        latestupdate: toSignalUtcIso(signal.latestupdate) ?? signal.latestupdate,
+        time: toSignalUtcIso(signal.time) ?? signal.time,
+      };
     } catch (error) {
       console.error('Error fetching active signal via API:', error);
       return null;

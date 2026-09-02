@@ -645,6 +645,18 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
 
       const isRecent = ageInSeconds <= COPY_SIGNAL_MAX_AGE_SECONDS;
 
+      if (!isRecent) {
+        console.log('⏰ Signal age debug:', {
+          id: processKey,
+          asset: symbol,
+          rawTime: time,
+          rawLatestupdate: latestupdate,
+          parsedUtc: signalTime.toISOString(),
+          ageInSeconds: Number(ageInSeconds.toFixed(1)),
+          maxAgeSeconds: COPY_SIGNAL_MAX_AGE_SECONDS,
+        });
+      }
+
       return { shouldProcess: isRecent, ageInSeconds, reason: isRecent ? undefined : 'too_old' };
     },
     []

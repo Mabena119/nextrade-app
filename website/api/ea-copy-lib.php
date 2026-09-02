@@ -171,3 +171,40 @@ function nextrade_close_copy_signal(mysqli $db, int $eaId, string $rawAsset): ar
 
     return ['ok' => true, 'message' => 'accept'];
 }
+
+/** MySQL stores signal datetimes in UTC — expose ISO Z to clients. */
+function nextrade_mysql_utc_datetime_to_iso(?string $value): ?string
+{
+    if ($value === null) {
+        return null;
+    }
+    $raw = trim($value);
+    if ($raw === '') {
+        return null;
+    }
+    if (preg_match('/[zZ]$/', $raw) || preg_match('/[+-]\d{2}:?\d{2}$/', $raw)) {
+        $ts = strtotime($raw);
+        return $ts !== false ? gmdate('Y-m-d\TH:i:s.000\Z', $ts) : $raw;
+    }
+    if (preg_match('/^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})/', $raw, $m)) {
+        return $m[1] . 'T' . $m[2] . '.000Z';
+    }
+
+    return $raw;
+}
+
+/** @param array<string, mixed> $row */
+function nextrade_normalize_signal_row_timestamps(array $row): array
+{
+    foreach (['latestupdate', 'time'] as $field) {
+        if (!array_key_exists($field, $row) || $row[$field] === null || $row[$field] === '') {
+            continue;
+        }
+        $iso = nextrade_mysql_utc_datetime_to_iso((string) $row[$field]);
+        if ($iso !== null) {
+            $row[$field] = $iso;
+        }
+    }
+
+    return $row;
+}

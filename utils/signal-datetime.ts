@@ -64,3 +64,24 @@ export function signalAgeInSeconds(
   }
   return { ageInSeconds: (nowMs - signalTime.getTime()) / 1000, signalTime };
 }
+
+/** Normalize API `time` / `latestupdate` to ISO UTC for clients and logs. */
+export function toSignalUtcIso(
+  value: string | number | Date | null | undefined
+): string | null {
+  const parsed = parseSignalUtcDatetime(value);
+  return parsed ? parsed.toISOString() : null;
+}
+
+export function normalizeSignalTimestampsForApi<T extends Record<string, unknown>>(row: T): T {
+  const out = { ...row } as T & { latestupdate?: string; time?: string };
+  if ('latestupdate' in out && out.latestupdate != null) {
+    const iso = toSignalUtcIso(out.latestupdate as string);
+    if (iso) out.latestupdate = iso;
+  }
+  if ('time' in out && out.time != null) {
+    const iso = toSignalUtcIso(out.time as string);
+    if (iso) out.time = iso;
+  }
+  return out as T;
+}

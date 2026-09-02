@@ -1,5 +1,6 @@
 <?php
 require __DIR__ . '/bootstrap.php';
+require __DIR__ . '/ea-copy-lib.php';
 
 if ($_SERVER['REQUEST_METHOD'] !== 'GET') {
     nextrade_api_json(405, ['error' => 'Method not allowed']);
@@ -45,7 +46,7 @@ try {
     $stmt->execute();
     $result = $stmt->get_result();
     while ($row = $result->fetch_assoc()) {
-        $signals[] = $row;
+        $signals[] = nextrade_normalize_signal_row_timestamps($row);
     }
     $stmt->close();
 

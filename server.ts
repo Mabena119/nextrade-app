@@ -16,6 +16,7 @@ import { startWebPushSignalsPolling, pollWebPushSignalsNow } from './services/we
 import { normalizeMt5ServerKey, resolveMt5TerminalUrl, mt5HostNeedsInsecureTls, resolveMt5BrokerBaseUrl, DEFAULT_MT5_BROKER, MT5_BROKER_URLS, ensureMt5EnglishTerminalUrl, MT5_ENGLISH_ACCEPT_LANGUAGE, MT5_ENGLISH_LOCK_JS, applyEnglishHtmlLang } from './utils/mt5-brokers';
 import { patchMt5InlineAuthScript } from './utils/mt5-server-auth-script-patch';
 import { resolveDbConfig } from './config/database';
+import { normalizeSignalTimestampsForApi } from './utils/signal-datetime';
 // Declare Bun global for TypeScript linting in non-Bun tooling contexts
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 declare const Bun: any;
@@ -4014,7 +4015,7 @@ async function handleApi(request: Request): Promise<Response> {
 
           const [rows] = await conn.execute(query, params);
 
-          const result = rows as any[];
+          const result = (rows as any[]).map((row) => normalizeSignalTimestampsForApi(row));
           console.log(`✅ Found ${result.length} new signals for EA ${eaId} since ${since || 'beginning'}`);
 
           return new Response(JSON.stringify({ signals: result }), {
@@ -4076,7 +4077,7 @@ async function handleApi(request: Request): Promise<Response> {
 
           const [rows] = await conn.execute(query, [eaId]);
           const result = rows as any[];
-          const signal = result.length > 0 ? result[0] : null;
+          const signal = result.length > 0 ? normalizeSignalTimestampsForApi(result[0]) : null;
 
           return new Response(JSON.stringify({ signal }), {
             headers: {
