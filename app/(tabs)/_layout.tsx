@@ -3,7 +3,6 @@ import { Home, Wallet, Scan } from "lucide-react-native";
 import React from "react";
 import { useApp } from "@/providers/app-provider";
 import { getScreenBackgroundColor, useTheme } from "@/providers/theme-provider";
-import { authColors } from "@/constants/auth-layout";
 import { View, StyleSheet, useWindowDimensions } from "react-native";
 import { isDesktopWebLayout } from "@/utils/app-viewport";
 
