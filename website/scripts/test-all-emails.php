@@ -15,7 +15,8 @@ if ($to === '' || !filter_var($to, FILTER_VALIDATE_EMAIL)) {
 }
 
 $root = dirname(__DIR__);
-require $root . '/includes/auraai-emails.php';
+require_once $root . '/includes/bootstrap.php';
+auraai_email_bootstrap();
 
 $tests = [
     'mentor_signup_pending' => fn () => auraai_email_mentor_signup_pending($to, 'Test Mentor'),

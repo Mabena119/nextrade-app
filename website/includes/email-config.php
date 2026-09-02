@@ -34,6 +34,20 @@ function auraai_email_load_secrets(): void
 
 auraai_email_load_secrets();
 
+/** Branding defaults (safe before SMTP secrets — used when building HTML). */
+if (!defined('GMAIL_FROM_NAME')) {
+    define('GMAIL_FROM_NAME', 'NexTradeAI');
+}
+if (!defined('LOGO_URL')) {
+    define('LOGO_URL', NEXTRADE_SITE_URL . '/assets/img/sitelogo.png');
+}
+if (!defined('EMAIL_LOGO_URL')) {
+    define('EMAIL_LOGO_URL', LOGO_URL);
+}
+if (!defined('ADMIN_NOTIFY_EMAIL')) {
+    define('ADMIN_NOTIFY_EMAIL', NEXTRADE_SUPPORT_EMAIL);
+}
+
 /** Validate Gmail + relay secrets right before send (not on every include). */
 function auraai_email_require_secrets(): void
 {

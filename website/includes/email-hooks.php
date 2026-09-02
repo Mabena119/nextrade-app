@@ -35,10 +35,12 @@ function nextrade_email_dispatch(string $event, callable $sender): bool
         nextrade_email_bootstrap();
         $ok = (bool) $sender();
         if (!$ok) {
-            error_log('[NexTradeAI Email] ' . $event . ' failed: ' . auraai_email_last_error());
+            $detail = function_exists('auraai_email_last_error') ? auraai_email_last_error() : '';
+            error_log('[NexTradeAI Email] ' . $event . ' failed' . ($detail !== '' ? ': ' . $detail : ''));
         }
         return $ok;
     } catch (Throwable $e) {
+        $GLOBALS['_auraai_email_last_error'] = $e->getMessage();
         error_log('[NexTradeAI Email] ' . $event . ': ' . $e->getMessage());
         return false;
     }

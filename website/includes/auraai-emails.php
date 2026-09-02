@@ -12,8 +12,11 @@ function auraai_email_escape(string $value): string
 
 function auraai_email_wrap(string $title, string $contentHtml, ?string $ctaLabel = null, ?string $ctaUrl = null): string
 {
-    $logo = auraai_email_escape(defined('EMAIL_LOGO_URL') ? EMAIL_LOGO_URL : LOGO_URL);
-    $brand = auraai_email_escape(GMAIL_FROM_NAME);
+    $logoSrc = defined('EMAIL_LOGO_URL')
+        ? EMAIL_LOGO_URL
+        : (defined('LOGO_URL') ? LOGO_URL : NEXTRADE_SITE_URL . '/assets/img/sitelogo.png');
+    $logo = auraai_email_escape($logoSrc);
+    $brand = auraai_email_escape(defined('GMAIL_FROM_NAME') ? GMAIL_FROM_NAME : 'NexTradeAI');
     $heading = auraai_email_escape($title);
     $year = date('Y');
 
@@ -55,6 +58,14 @@ function auraai_email_wrap(string $title, string $contentHtml, ?string $ctaLabel
 
 function auraai_email_send(string $to, string $subject, string $title, string $contentHtml, ?string $ctaLabel = null, ?string $ctaUrl = null): bool
 {
+    try {
+        auraai_email_require_secrets();
+    } catch (Throwable $e) {
+        $GLOBALS['_auraai_email_last_error'] = $e->getMessage();
+        error_log('[NexTradeAI Email] Config error: ' . $e->getMessage());
+        return false;
+    }
+
     $html = auraai_email_wrap($title, $contentHtml, $ctaLabel, $ctaUrl);
     $result = auraai_smtp_send($to, $subject, $html);
     if (!$result['ok']) {
