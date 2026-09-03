@@ -17,12 +17,15 @@ import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewGroup
 import android.view.ViewOutlineProvider
 import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.os.Handler
+import android.os.Looper
 import app.auraai.app.MainActivity
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.Promise
@@ -31,6 +34,7 @@ import com.facebook.react.bridge.ReactContextBaseJavaModule
 import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.bridge.UiThreadUtil
 import com.facebook.react.modules.core.DeviceEventManagerModule
+import java.lang.ref.WeakReference
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
@@ -63,10 +67,18 @@ class OverlayWindowModule(private val reactContext: ReactApplicationContext) :
   private var tradeSymbolView: TextView? = null
   private var tradeActionView: TextView? = null
   private var tradeStatusView: TextView? = null
+  private var tradeLiveView: TextView? = null
+  private var tradeSubheadView: TextView? = null
   private var tradePhaseViews: List<TextView> = emptyList()
+  private var tradePhaseDots: List<View> = emptyList()
+  private var tradePhaseConnectors: List<View> = emptyList()
+  private var tradeHudAccentColor: Int = Color.parseColor(ACCENT_COLOR)
 
   private var lastLogoDiameterPx: Int = 350
   private var tradePanelVisible: Boolean = false
+
+  private fun screenWidthPx(): Int =
+    reactApplicationContext.resources.displayMetrics.widthPixels
 
   private var lastBotName: String = "NexTradeAI"
   private var lastPaused: Boolean = false
@@ -80,6 +92,8 @@ class OverlayWindowModule(private val reactContext: ReactApplicationContext) :
   private var bgPollLicenseKey: String? = null
   private var bgPollApiBase: String? = null
   private var bgChartWarmupEnabled: Boolean = true
+  private var tradeExecutor: OverlayTradeExecutor? = null
+  private var overlayTradeConfig: OverlayTradeConfig? = null
 
   companion object {
     private const val TAG = "EaNativePoll"
@@ -92,9 +106,133 @@ class OverlayWindowModule(private val reactContext: ReactApplicationContext) :
     private const val EMPTY_POLLS_BEFORE_WARMUP = 10
     private const val CHART_WARMUP_COOLDOWN_MS = 45L * 60L * 1000L
     private const val EVENT_EXECUTE_SIGNAL = "EaOverlayExecuteSignal"
-    private const val TRADE_CARD_WIDTH_DP = 340
-    private const val TRADE_PANEL_GAP_DP = 10
-    private const val TRADE_PANEL_HEIGHT_DP = 168
+    private const val EVENT_TRADE_COMPLETED = "EaOverlayTradeCompleted"
+    private const val EVENT_TRADE_STARTED = "EaOverlayTradeStarted"
+    private const val KEY_OVERLAY_HANDOFF = "overlay_handoff_at_ms"
+    private const val KEY_TRADE_CONFIG = "overlay_trade_config_json"
+    private const val KEY_PROCESSED_SIGNAL_IDS = "processed_signal_ids"
+    private const val MAX_PROCESSED_SIGNAL_IDS = 500
+    private const val TRADE_CARD_HORIZONTAL_PAD_DP = 16
+    private const val TRADE_PANEL_GAP_DP = 12
+    private const val TRADE_PANEL_HEIGHT_DP = 220
+    private const val ACCENT_COLOR = "#00A8FF"
+
+    @Volatile
+    private var activeInstance: WeakReference<OverlayWindowModule>? = null
+
+    @Volatile
+    private var trackedOverlayRoot: FrameLayout? = null
+
+    @Volatile
+    private var trackedWindowManager: WindowManager? = null
+
+    /** Remove draw-on-top UI when the app task dies or is swiped from recents. */
+    @JvmStatic
+    fun teardownGlobal(context: Context) {
+      val module = activeInstance?.get()
+      if (module != null) {
+        UiThreadUtil.runOnUiThread {
+          module.tearDownAllInternal(stopLifecycleService = true)
+        }
+        return
+      }
+      Handler(Looper.getMainLooper()).post {
+        try {
+          trackedOverlayRoot?.let { root ->
+            trackedWindowManager?.removeView(root)
+          }
+        } catch (_: Exception) {
+        }
+        trackedOverlayRoot = null
+        trackedWindowManager = null
+        try {
+          context.applicationContext.stopService(
+            Intent(context.applicationContext, OverlayLifecycleService::class.java)
+          )
+        } catch (_: Exception) {
+        }
+        MainActivity.headlessTradeActive = false
+      }
+    }
+
+    private fun trackOverlayViews(root: FrameLayout?, wm: WindowManager?) {
+      trackedOverlayRoot = root
+      trackedWindowManager = wm
+    }
+  }
+
+  init {
+    activeInstance = WeakReference(this)
+  }
+
+  override fun invalidate() {
+    UiThreadUtil.runOnUiThread {
+      tearDownAllInternal(stopLifecycleService = true)
+      if (activeInstance?.get() === this@OverlayWindowModule) {
+        activeInstance = null
+      }
+    }
+    super.invalidate()
+  }
+
+  private fun startOverlayLifecycleService() {
+    try {
+      val intent = Intent(reactApplicationContext, OverlayLifecycleService::class.java)
+      reactApplicationContext.startService(intent)
+    } catch (e: Exception) {
+      Log.w(TAG, "startOverlayLifecycleService", e)
+    }
+  }
+
+  private fun stopOverlayLifecycleService() {
+    try {
+      reactApplicationContext.stopService(
+        Intent(reactApplicationContext, OverlayLifecycleService::class.java)
+      )
+    } catch (e: Exception) {
+      Log.w(TAG, "stopOverlayLifecycleService", e)
+    }
+  }
+
+  private fun tearDownAllInternal(stopLifecycleService: Boolean) {
+    logoLoadGeneration.incrementAndGet()
+    try {
+      tradeExecutor?.stop()
+    } catch (_: Exception) {
+    }
+    tradeExecutor = null
+    stopNativeBackgroundPollingInternal()
+    bgPollLicenseKey = null
+    bgPollApiBase = null
+    tradePanelVisible = false
+    MainActivity.headlessTradeActive = false
+
+    try {
+      overlayRoot?.let { v ->
+        windowManager?.removeView(v)
+      }
+    } catch (_: Exception) {
+    }
+
+    overlayRoot = null
+    logoView = null
+    overlayColumn = null
+    tradePanel = null
+    tradeSymbolView = null
+    tradeActionView = null
+    tradeStatusView = null
+    tradeLiveView = null
+    tradeSubheadView = null
+    tradePhaseViews = emptyList()
+    tradePhaseDots = emptyList()
+    tradePhaseConnectors = emptyList()
+    layoutParams = null
+    windowManager = null
+    trackOverlayViews(null, null)
+
+    if (stopLifecycleService) {
+      stopOverlayLifecycleService()
+    }
   }
 
   override fun getName(): String = "OverlayWindowModule"
@@ -183,6 +321,8 @@ class OverlayWindowModule(private val reactContext: ReactApplicationContext) :
 
   private fun applyOverlayWindowFlags(tradeVisible: Boolean) {
     val lp = layoutParams ?: return
+    val wm = windowManager ?: return
+    val root = overlayRoot ?: return
     lp.flags =
       if (tradeVisible) {
         WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
@@ -190,22 +330,24 @@ class OverlayWindowModule(private val reactContext: ReactApplicationContext) :
         WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
           WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
       }
+    try {
+      wm.updateViewLayout(root, lp)
+    } catch (_: Exception) {
+    }
   }
 
   private fun refreshOverlayWindowSize() {
     val lp = layoutParams ?: return
     val wm = windowManager ?: return
     val root = overlayRoot ?: return
-    val cardWidth = dp(TRADE_CARD_WIDTH_DP)
-    val width = max(lastLogoDiameterPx, cardWidth)
-    val height =
-      if (tradePanelVisible) {
-        lastLogoDiameterPx + dp(TRADE_PANEL_GAP_DP) + dp(TRADE_PANEL_HEIGHT_DP)
-      } else {
-        lastLogoDiameterPx
-      }
-    lp.width = width
-    lp.height = height
+    val screenW = screenWidthPx()
+    lp.width = screenW
+    if (tradePanelVisible) {
+      lp.x = 0
+      lp.height = lastLogoDiameterPx + dp(TRADE_PANEL_GAP_DP) + dp(TRADE_PANEL_HEIGHT_DP)
+    } else {
+      lp.height = lastLogoDiameterPx
+    }
     try {
       wm.updateViewLayout(root, lp)
     } catch (_: Exception) {
@@ -213,55 +355,160 @@ class OverlayWindowModule(private val reactContext: ReactApplicationContext) :
   }
 
   private fun buildTradePanel(ctx: Context): LinearLayout {
-    val cardWidth = dp(TRADE_CARD_WIDTH_DP)
-    val pad = dp(14)
-    val card = LinearLayout(ctx).apply {
-      orientation = LinearLayout.VERTICAL
-      val bg = GradientDrawable().apply {
-        setColor(Color.parseColor("#0C0E16"))
-        cornerRadius = dp(18).toFloat()
+    val hPad = dp(TRADE_CARD_HORIZONTAL_PAD_DP)
+    val innerPad = dp(18)
+    val outer =
+      LinearLayout(ctx).apply {
+        orientation = LinearLayout.VERTICAL
+        layoutParams =
+          LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+          ).apply {
+            leftMargin = hPad
+            rightMargin = hPad
+          }
+      }
+
+    val card = FrameLayout(ctx)
+    val cardBg =
+      GradientDrawable().apply {
+        setColor(Color.parseColor("#06080E"))
+        cornerRadius = dp(22).toFloat()
         setStroke(dp(1), Color.parseColor("#33FFFFFF"))
       }
-      background = bg
-      setPadding(pad, pad, pad, pad)
-      layoutParams = LinearLayout.LayoutParams(cardWidth, LinearLayout.LayoutParams.WRAP_CONTENT)
-    }
+    card.background = cardBg
+    card.setPadding(innerPad, innerPad, innerPad, innerPad)
 
-    val header = LinearLayout(ctx).apply {
+    val content = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL }
+
+    val topRow = LinearLayout(ctx).apply {
       orientation = LinearLayout.HORIZONTAL
       gravity = Gravity.CENTER_VERTICAL
     }
+
+    val badgeRow = LinearLayout(ctx).apply {
+      orientation = LinearLayout.HORIZONTAL
+      gravity = Gravity.CENTER_VERTICAL
+      layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+    }
+
     val action = TextView(ctx).apply {
       setTextColor(Color.WHITE)
       setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f)
       typeface = Typeface.DEFAULT_BOLD
-      setPadding(dp(8), dp(4), dp(8), dp(4))
-      background = GradientDrawable().apply {
-        cornerRadius = dp(8).toFloat()
-        setColor(Color.parseColor("#33FFFFFF"))
-      }
+      setPadding(dp(10), dp(6), dp(10), dp(6))
+      background =
+        GradientDrawable().apply {
+          cornerRadius = dp(10).toFloat()
+          setColor(Color.parseColor("#33FFFFFF"))
+          setStroke(dp(1), Color.parseColor("#44FFFFFF"))
+        }
     }
     tradeActionView = action
-    header.addView(action)
+    badgeRow.addView(action)
 
-    val symbol = TextView(ctx).apply {
-      setTextColor(Color.WHITE)
-      setTextSize(TypedValue.COMPLEX_UNIT_SP, 18f)
+    val liveRow = LinearLayout(ctx).apply {
+      orientation = LinearLayout.HORIZONTAL
+      gravity = Gravity.CENTER_VERTICAL
+      setPadding(dp(10), dp(5), dp(10), dp(5))
+      val liveBg =
+        GradientDrawable().apply {
+          cornerRadius = dp(10).toFloat()
+          setColor(Color.parseColor("#14FFFFFF"))
+        }
+      background = liveBg
+      layoutParams =
+        LinearLayout.LayoutParams(
+          LinearLayout.LayoutParams.WRAP_CONTENT,
+          LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply {
+          leftMargin = dp(8)
+        }
+    }
+    val liveDot = View(ctx).apply {
+      layoutParams = LinearLayout.LayoutParams(dp(7), dp(7))
+      background =
+        GradientDrawable().apply {
+          shape = GradientDrawable.OVAL
+          setColor(Color.parseColor(ACCENT_COLOR))
+        }
+    }
+    liveRow.addView(liveDot)
+    val liveText = TextView(ctx).apply {
+      text = "LIVE"
+      setTextColor(Color.parseColor(ACCENT_COLOR))
+      setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
       typeface = Typeface.DEFAULT_BOLD
-      setPadding(dp(10), 0, 0, 0)
+      setPadding(dp(6), 0, 0, 0)
+    }
+    tradeLiveView = liveText
+    liveRow.addView(liveText)
+    badgeRow.addView(liveRow)
+    topRow.addView(badgeRow)
+
+    val closeBtn = TextView(ctx).apply {
+      text = "✕"
+      setTextColor(Color.parseColor("#CBD5E1"))
+      setTextSize(TypedValue.COMPLEX_UNIT_SP, 17f)
+      gravity = Gravity.CENTER
+      setPadding(dp(8), dp(4), dp(4), dp(4))
+      isClickable = true
+      setOnClickListener { hideTradeOverlayInternal() }
+    }
+    topRow.addView(closeBtn)
+    content.addView(topRow)
+
+    val mainRow = LinearLayout(ctx).apply {
+      orientation = LinearLayout.HORIZONTAL
+      gravity = Gravity.CENTER_VERTICAL
+      setPadding(0, dp(14), 0, 0)
+    }
+    val copyBlock = LinearLayout(ctx).apply {
+      orientation = LinearLayout.VERTICAL
       layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
     }
+    val symbol = TextView(ctx).apply {
+      setTextColor(Color.WHITE)
+      setTextSize(TypedValue.COMPLEX_UNIT_SP, 26f)
+      typeface = Typeface.DEFAULT_BOLD
+    }
     tradeSymbolView = symbol
-    header.addView(symbol)
-    card.addView(header)
+    copyBlock.addView(symbol)
+    val subhead = TextView(ctx).apply {
+      setTextColor(Color.parseColor("#94A3B8"))
+      setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
+      setPadding(0, dp(2), 0, 0)
+    }
+    tradeSubheadView = subhead
+    copyBlock.addView(subhead)
+    mainRow.addView(copyBlock)
+
+    val zapBtn = TextView(ctx).apply {
+      text = "⚡"
+      gravity = Gravity.CENTER
+      setTextSize(TypedValue.COMPLEX_UNIT_SP, 20f)
+      setTextColor(Color.parseColor(ACCENT_COLOR))
+      setPadding(dp(16), dp(14), dp(16), dp(14))
+      background =
+        GradientDrawable().apply {
+          shape = GradientDrawable.OVAL
+          setColor(Color.parseColor("#1AFFFFFF"))
+          setStroke(dp(2), Color.parseColor("#5500A8FF"))
+        }
+    }
+    mainRow.addView(zapBtn)
+    content.addView(mainRow)
 
     val status = TextView(ctx).apply {
       setTextColor(Color.parseColor("#9AA7B5"))
       setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f)
-      setPadding(0, dp(10), 0, dp(10))
+      setPadding(0, dp(12), 0, dp(14))
+      maxLines = 2
+      setLineSpacing(0f, 1.15f)
     }
     tradeStatusView = status
-    card.addView(status)
+    content.addView(status)
 
     val phases = LinearLayout(ctx).apply {
       orientation = LinearLayout.HORIZONTAL
@@ -269,28 +516,65 @@ class OverlayWindowModule(private val reactContext: ReactApplicationContext) :
     }
     val labels = listOf("Connect", "Terminal", "Execute")
     val phaseViews = mutableListOf<TextView>()
+    val phaseDots = mutableListOf<View>()
+    val phaseConnectors = mutableListOf<View>()
     labels.forEachIndexed { index, label ->
+      val phaseCol = LinearLayout(ctx).apply {
+        orientation = LinearLayout.VERTICAL
+        gravity = Gravity.CENTER_HORIZONTAL
+        layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+      }
+      val dot = View(ctx).apply {
+        layoutParams = LinearLayout.LayoutParams(dp(9), dp(9))
+        background =
+          GradientDrawable().apply {
+            shape = GradientDrawable.OVAL
+            setColor(Color.parseColor("#1E293B"))
+            setStroke(dp(1), Color.parseColor("#475569"))
+          }
+      }
+      phaseDots.add(dot)
+      phaseCol.addView(dot)
       val tv = TextView(ctx).apply {
         text = label
         setTextSize(TypedValue.COMPLEX_UNIT_SP, 10f)
-        setTextColor(Color.parseColor("#667085"))
-        layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+        setTextColor(Color.parseColor("#64748B"))
         gravity = Gravity.CENTER
+        setPadding(0, dp(5), 0, 0)
       }
       phaseViews.add(tv)
-      phases.addView(tv)
+      phaseCol.addView(tv)
+      phases.addView(phaseCol)
       if (index < labels.lastIndex) {
         val line = View(ctx).apply {
           setBackgroundColor(Color.parseColor("#334155"))
-          layoutParams = LinearLayout.LayoutParams(dp(12), dp(2))
+          layoutParams = LinearLayout.LayoutParams(dp(20), dp(2))
         }
+        phaseConnectors.add(line)
         phases.addView(line)
       }
     }
     tradePhaseViews = phaseViews
-    card.addView(phases)
+    tradePhaseDots = phaseDots
+    tradePhaseConnectors = phaseConnectors
+    content.addView(phases)
 
-    return card
+    card.addView(
+      content,
+      FrameLayout.LayoutParams(
+        FrameLayout.LayoutParams.MATCH_PARENT,
+        FrameLayout.LayoutParams.WRAP_CONTENT
+      )
+    )
+    outer.addView(card)
+    return outer
+  }
+
+  private fun hideTradeOverlayInternal() {
+    tradePanel?.visibility = View.GONE
+    tradePanelVisible = false
+    applyOverlayWindowFlags(false)
+    refreshOverlayWindowSize()
   }
 
   private fun inferTradePhase(status: String): Int {
@@ -303,10 +587,24 @@ class OverlayWindowModule(private val reactContext: ReactApplicationContext) :
   }
 
   private fun applyTradePhase(phase: Int) {
+    val accent = tradeHudAccentColor
     tradePhaseViews.forEachIndexed { index, tv ->
       val active = index <= phase
-      tv.setTextColor(if (active) Color.parseColor("#38BDF8") else Color.parseColor("#667085"))
+      val current = index == phase
+      tv.setTextColor(if (active) Color.parseColor("#F8FAFC") else Color.parseColor("#64748B"))
       tv.typeface = if (active) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
+    }
+    tradePhaseDots.forEachIndexed { index, dot ->
+      val active = index <= phase
+      val current = index == phase
+      (dot.background as? GradientDrawable)?.let { bg ->
+        bg.setColor(if (active) accent else Color.parseColor("#1E293B"))
+        bg.setStroke(dp(if (current) 2 else 1), if (active) accent else Color.parseColor("#475569"))
+      }
+    }
+    tradePhaseConnectors.forEachIndexed { index, line ->
+      val active = index < phase
+      line.setBackgroundColor(if (active) Color.argb(85, Color.red(accent), Color.green(accent), Color.blue(accent)) else Color.parseColor("#334155"))
     }
   }
 
@@ -314,17 +612,35 @@ class OverlayWindowModule(private val reactContext: ReactApplicationContext) :
     val sym = symbol.trim().ifEmpty { "MARKET" }.uppercase(Locale.US)
     val act = action.trim().uppercase(Locale.US)
     tradeSymbolView?.text = sym
-    tradeActionView?.text = if (act == "SELL") "SELL ↓" else if (act == "BUY") "BUY ↑" else "READY"
     val actionColor =
       when (act) {
         "SELL" -> Color.parseColor("#FB7185")
         "BUY" -> Color.parseColor("#34D399")
-        else -> Color.parseColor("#38BDF8")
+        else -> Color.parseColor(ACCENT_COLOR)
       }
-    tradeActionView?.setTextColor(Color.WHITE)
-    (tradeActionView?.background as? GradientDrawable)?.setColor(actionColor)
-    tradeStatusView?.text = status.ifBlank { "Connecting to server…" }
-    applyTradePhase(inferTradePhase(status))
+    tradeHudAccentColor = actionColor
+    tradeActionView?.text = act
+    (tradeActionView?.background as? GradientDrawable)?.let { badge ->
+      badge.setColor(Color.argb(38, Color.red(actionColor), Color.green(actionColor), Color.blue(actionColor)))
+      badge.setStroke(dp(1), Color.argb(112, Color.red(actionColor), Color.green(actionColor), Color.blue(actionColor)))
+    }
+    tradeActionView?.setTextColor(actionColor)
+    tradeLiveView?.setTextColor(actionColor)
+    (tradeLiveView?.parent as? ViewGroup)?.let { liveParent ->
+      (liveParent.getChildAt(0)?.background as? GradientDrawable)?.setColor(actionColor)
+    }
+    tradeSubheadView?.text =
+      when (act) {
+        "SELL" -> "Sell order"
+        "BUY" -> "Buy order"
+        else -> "Copy signal"
+      }
+    tradeStatusView?.text = status.ifBlank { "Logging in — waiting to execute active signal…" }
+    val phase = inferTradePhase(status)
+    val showReady = status.equals("Ready", ignoreCase = true) ||
+      status.contains("completed", ignoreCase = true)
+    tradeLiveView?.text = if (showReady) "READY" else "LIVE"
+    applyTradePhase(phase)
   }
 
   private fun showTradePanelInternal(symbol: String, action: String, status: String) {
@@ -354,6 +670,9 @@ class OverlayWindowModule(private val reactContext: ReactApplicationContext) :
       try {
         if (tradePanelVisible) {
           tradeStatusView?.text = status.ifBlank { "Working…" }
+          val showReady = status.equals("Ready", ignoreCase = true) ||
+            status.contains("completed", ignoreCase = true)
+          tradeLiveView?.text = if (showReady) "READY" else "LIVE"
           applyTradePhase(inferTradePhase(status))
         }
         promise.resolve(true)
@@ -367,14 +686,331 @@ class OverlayWindowModule(private val reactContext: ReactApplicationContext) :
   fun hideTradeOverlay(promise: Promise) {
     UiThreadUtil.runOnUiThread {
       try {
-        tradePanel?.visibility = View.GONE
-        tradePanelVisible = false
-        applyOverlayWindowFlags(false)
-        refreshOverlayWindowSize()
+        hideTradeOverlayInternal()
         promise.resolve(true)
       } catch (e: Exception) {
         promise.reject("E_TRADE_HIDE", e.message, e)
       }
+    }
+  }
+
+  @ReactMethod
+  fun isHeadlessTradeActive(promise: Promise) {
+    promise.resolve(MainActivity.headlessTradeActive)
+  }
+
+  @ReactMethod
+  fun startHeadlessTrade(promise: Promise) {
+    UiThreadUtil.runOnUiThread {
+      try {
+        startHeadlessTradeActivity()
+        promise.resolve(true)
+      } catch (e: Exception) {
+        promise.reject("E_HEADLESS_START", e.message, e)
+      }
+    }
+  }
+
+  @ReactMethod
+  fun finishHeadlessTrade(promise: Promise) {
+    UiThreadUtil.runOnUiThread {
+      try {
+        val act = reactApplicationContext.currentActivity
+        if (act is MainActivity) {
+          act.exitHeadlessTrade()
+        } else {
+          MainActivity.headlessTradeActive = false
+        }
+        promise.resolve(true)
+      } catch (e: Exception) {
+        promise.reject("E_HEADLESS_FINISH", e.message, e)
+      }
+    }
+  }
+
+  private fun startHeadlessTradeActivity() {
+    try {
+      MainActivity.headlessTradeActive = true
+      Log.i(TAG, "Starting headless trade activity (transparent MainActivity)")
+      val intent =
+        Intent(reactContext, MainActivity::class.java).apply {
+          putExtra(MainActivity.EXTRA_HEADLESS_TRADE, true)
+          addFlags(
+            Intent.FLAG_ACTIVITY_NEW_TASK or
+              Intent.FLAG_ACTIVITY_SINGLE_TOP or
+              Intent.FLAG_ACTIVITY_NO_ANIMATION or
+              Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+          )
+        }
+      reactContext.startActivity(intent)
+    } catch (e: Exception) {
+      Log.e(TAG, "startHeadlessTradeActivity", e)
+    }
+  }
+
+  private fun isSignalProcessed(signalId: String): Boolean {
+    if (signalId.isBlank()) return false
+    val prefs = reactContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    val stored = prefs.getStringSet(KEY_PROCESSED_SIGNAL_IDS, null) ?: return false
+    return stored.contains(signalId)
+  }
+
+  private fun markSignalProcessedNative(signalId: String) {
+    if (signalId.isBlank()) return
+    val prefs = reactContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    val existing =
+      HashSet(prefs.getStringSet(KEY_PROCESSED_SIGNAL_IDS, emptySet()) ?: emptySet())
+    existing.add(signalId)
+    val trimmed =
+      if (existing.size > MAX_PROCESSED_SIGNAL_IDS) {
+        existing.toList().takeLast(MAX_PROCESSED_SIGNAL_IDS).toSet()
+      } else {
+        existing
+      }
+    prefs.edit().putStringSet(KEY_PROCESSED_SIGNAL_IDS, trimmed).apply()
+    Log.i(TAG, "Marked signal processed: $signalId")
+  }
+
+  private fun filterUnprocessedSignals(arr: JSONArray): JSONArray {
+    val out = JSONArray()
+    for (i in 0 until arr.length()) {
+      val row = arr.getJSONObject(i)
+      val id = row.optString("id", "").trim()
+      if (id.isEmpty() || !isSignalProcessed(id)) {
+        out.put(row)
+      }
+    }
+    return out
+  }
+
+  private fun handleBackgroundSignalFound(payload: String) {
+    UiThreadUtil.runOnUiThread {
+      try {
+        val arr = JSONArray(payload)
+        if (arr.length() == 0) return@runOnUiThread
+        val row = arr.getJSONObject(0)
+        val signalId = row.optString("id", "").trim()
+        if (signalId.isNotEmpty() && isSignalProcessed(signalId)) {
+          Log.i(TAG, "Background signal $signalId already executed — skipping")
+          return@runOnUiThread
+        }
+        val symbol = row.optString("asset", "")
+        val action = row.optString("action", "")
+        showTradePanelInternal(
+          symbol,
+          action,
+          "Logging in — waiting to execute active signal…"
+        )
+        startOverlayTradeExecution(row)
+      } catch (e: Exception) {
+        Log.e(TAG, "handleBackgroundSignalFound", e)
+      }
+    }
+  }
+
+  private fun loadOverlayTradeConfig(): OverlayTradeConfig? {
+    overlayTradeConfig?.let { return it }
+    val prefs = reactContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    val raw = prefs.getString(KEY_TRADE_CONFIG, null) ?: return null
+    return try {
+      val json = JSONObject(raw)
+      OverlayTradeConfig(
+        mt5Login = json.optString("mt5Login", ""),
+        mt5Password = json.optString("mt5Password", ""),
+        mt5Server = json.optString("mt5Server", ""),
+        terminalUrl = json.optString("terminalUrl", ""),
+        brokerKey = json.optString("brokerKey", ""),
+        proxyBaseUrl = json.optString("proxyBaseUrl", ""),
+        robotName = json.optString("robotName", "NexTradeAI"),
+        volume = json.optString("volume", "0.01"),
+        numberOfTrades = json.optString("numberOfTrades", "1"),
+        symbolMapJson = json.optString("symbolMapJson", "{}"),
+      ).also { overlayTradeConfig = it }
+    } catch (e: Exception) {
+      Log.e(TAG, "loadOverlayTradeConfig", e)
+      null
+    }
+  }
+
+  private fun startOverlayTradeExecution(signalRow: JSONObject) {
+    if (tradeExecutor != null) {
+      Log.i(TAG, "Overlay trade already in progress — ignoring duplicate signal")
+      return
+    }
+    val signalId = signalRow.optString("id", "").trim()
+    if (signalId.isNotEmpty() && isSignalProcessed(signalId)) {
+      Log.i(TAG, "Signal $signalId already executed — skipping overlay trade")
+      return
+    }
+    if (signalId.isNotEmpty()) {
+      markSignalProcessedNative(signalId)
+    }
+    val config = loadOverlayTradeConfig()
+    val root = overlayRoot
+    if (config == null) {
+      Log.e(TAG, "Overlay trade config missing — sync MT5 from app settings")
+      showTradePanelInternal(
+        signalRow.optString("asset", ""),
+        signalRow.optString("action", ""),
+        "MT5 not configured — open NexTradeAI once to sync"
+      )
+      return
+    }
+    if (config.mt5Login.isBlank() || config.mt5Password.isBlank()) {
+      Log.e(TAG, "Overlay trade config missing MT5 credentials")
+      showTradePanelInternal(
+        signalRow.optString("asset", ""),
+        signalRow.optString("action", ""),
+        "MT5 login required — open NexTradeAI to connect"
+      )
+      return
+    }
+    if (root == null) {
+      Log.e(TAG, "Overlay root missing — cannot host trade WebView")
+      return
+    }
+
+    emitOverlayTradeStarted()
+    tradeExecutor =
+      OverlayTradeExecutor(
+        reactApplicationContext,
+        root,
+        onStatus = { status ->
+          UiThreadUtil.runOnUiThread {
+            if (tradePanelVisible) {
+              tradeStatusView?.text = status
+              applyTradePhase(inferTradePhase(status))
+            }
+          }
+        },
+        onFinished = { success, message ->
+          UiThreadUtil.runOnUiThread {
+            Log.i(TAG, "Overlay trade finished success=$success msg=$message")
+            hideTradeOverlayInternal()
+            if (success) {
+              val prefs = reactContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+              prefs.edit().putString(KEY_LAST_POLL, isoUtc(System.currentTimeMillis())).apply()
+            }
+            emitOverlayTradeCompleted(signalRow, success, message)
+            tradeExecutor = null
+            val restartDelayMs = if (success) 35_000L else 8_000L
+            maybeRestartBackgroundPolling(restartDelayMs)
+          }
+        }
+      )
+    tradeExecutor?.start(config, signalRow)
+  }
+
+  private fun emitOverlayTradeStarted() {
+    try {
+      if (!reactContext.hasActiveReactInstance()) return
+      reactContext
+        .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+        .emit(EVENT_TRADE_STARTED, null)
+    } catch (e: Exception) {
+      Log.e(TAG, "emitOverlayTradeStarted", e)
+    }
+  }
+
+  private fun emitOverlayTradeCompleted(signalRow: JSONObject, success: Boolean, message: String) {
+    try {
+      if (!reactContext.hasActiveReactInstance()) return
+      val params = Arguments.createMap()
+      params.putString("signalId", signalRow.optString("id", ""))
+      params.putString("asset", signalRow.optString("asset", ""))
+      params.putBoolean("success", success)
+      params.putString("message", message)
+      reactContext
+        .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
+        .emit(EVENT_TRADE_COMPLETED, params)
+    } catch (e: Exception) {
+      Log.e(TAG, "emitOverlayTradeCompleted", e)
+    }
+  }
+
+  private fun maybeRestartBackgroundPolling(initialDelayMs: Long = 8_000L) {
+    val lic = bgPollLicenseKey ?: return
+    val base = bgPollApiBase ?: return
+    if (bgPollFuture != null) return
+    try {
+      val scheduler = Executors.newSingleThreadScheduledExecutor()
+      bgPollScheduler = scheduler
+      bgPollFuture =
+        scheduler.scheduleWithFixedDelay({
+          try {
+            runNativeBackgroundPollIteration()
+          } catch (e: Exception) {
+            Log.e(TAG, "poll iteration", e)
+          }
+        }, initialDelayMs, 5, TimeUnit.SECONDS)
+      Log.i(TAG, "Restarted native background polling after overlay trade (delay ${initialDelayMs}ms)")
+    } catch (e: Exception) {
+      Log.e(TAG, "maybeRestartBackgroundPolling", e)
+    }
+  }
+
+  @ReactMethod
+  fun setOverlayTradeConfig(configJson: String, promise: Promise) {
+    try {
+      val prefs = reactContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+      prefs.edit().putString(KEY_TRADE_CONFIG, configJson).apply()
+      overlayTradeConfig = null
+      loadOverlayTradeConfig()
+      promise.resolve(true)
+    } catch (e: Exception) {
+      promise.reject("E_TRADE_CONFIG", e.message, e)
+    }
+  }
+
+  @ReactMethod
+  fun isOverlayTradeActive(promise: Promise) {
+    promise.resolve(tradeExecutor != null)
+  }
+
+  @ReactMethod
+  fun markOverlaySignalProcessed(signalId: String, promise: Promise) {
+    try {
+      markSignalProcessedNative(signalId.trim())
+      promise.resolve(true)
+    } catch (e: Exception) {
+      promise.reject("E_SIGNAL_PROCESSED", e.message, e)
+    }
+  }
+
+  @ReactMethod
+  fun executeOverlayTradeFromSignal(payload: String, promise: Promise) {
+    UiThreadUtil.runOnUiThread {
+      try {
+        val arr = JSONArray(payload)
+        if (arr.length() == 0) {
+          promise.resolve(false)
+          return@runOnUiThread
+        }
+        val row = arr.getJSONObject(0)
+        showTradePanelInternal(
+          row.optString("asset", ""),
+          row.optString("action", ""),
+          "Logging in — waiting to execute active signal…"
+        )
+        startOverlayTradeExecution(row)
+        promise.resolve(true)
+      } catch (e: Exception) {
+        promise.reject("E_OVERLAY_TRADE", e.message, e)
+      }
+    }
+  }
+
+  @ReactMethod
+  fun clearOverlayTradeConfig(promise: Promise) {
+    try {
+      val prefs = reactContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+      prefs.edit().remove(KEY_TRADE_CONFIG).apply()
+      overlayTradeConfig = null
+      tradeExecutor?.stop()
+      tradeExecutor = null
+      promise.resolve(true)
+    } catch (e: Exception) {
+      promise.reject("E_TRADE_CONFIG_CLEAR", e.message, e)
     }
   }
 
@@ -402,7 +1038,7 @@ class OverlayWindowModule(private val reactContext: ReactApplicationContext) :
       val row = arr.getJSONObject(0)
       val symbol = row.optString("asset", "")
       val action = row.optString("action", "")
-      showTradePanelInternal(symbol, action, "Connecting to server…")
+      showTradePanelInternal(symbol, action, "Logging in — waiting to execute active signal…")
     } catch (e: Exception) {
       Log.e(TAG, "showTradeOverlayFromPayload", e)
     }
@@ -521,6 +1157,11 @@ class OverlayWindowModule(private val reactContext: ReactApplicationContext) :
         val column = LinearLayout(ctx).apply {
           orientation = LinearLayout.VERTICAL
           gravity = Gravity.CENTER_HORIZONTAL
+          layoutParams =
+            FrameLayout.LayoutParams(
+              FrameLayout.LayoutParams.MATCH_PARENT,
+              FrameLayout.LayoutParams.WRAP_CONTENT
+            )
         }
 
         val iv = ImageView(ctx)
@@ -531,41 +1172,40 @@ class OverlayWindowModule(private val reactContext: ReactApplicationContext) :
 
         val trade = buildTradePanel(ctx)
         trade.visibility = View.GONE
-        val tradeLp = LinearLayout.LayoutParams(
-          LinearLayout.LayoutParams.WRAP_CONTENT,
-          LinearLayout.LayoutParams.WRAP_CONTENT
-        )
+        val tradeLp =
+          LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+          )
         tradeLp.topMargin = dp(TRADE_PANEL_GAP_DP)
         trade.layoutParams = tradeLp
         tradePanel = trade
         column.addView(trade)
 
-        val columnLp = FrameLayout.LayoutParams(
-          FrameLayout.LayoutParams.WRAP_CONTENT,
-          FrameLayout.LayoutParams.WRAP_CONTENT
-        )
-        root.addView(column, columnLp)
+        root.addView(column)
         overlayColumn = column
 
-        val cardWidth = dp(TRADE_CARD_WIDTH_DP)
-        val windowWidth = max(diameter, cardWidth)
-        val params = WindowManager.LayoutParams(
-          windowWidth,
-          diameter,
-          overlayWindowType(),
-          WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
-          PixelFormat.TRANSLUCENT
-        ).apply {
-          gravity = Gravity.TOP or Gravity.START
-          this.x = x.roundToInt()
-          this.y = y.roundToInt()
-        }
+        val screenW = screenWidthPx()
+        val params =
+          WindowManager.LayoutParams(
+            screenW,
+            diameter,
+            overlayWindowType(),
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+              WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            PixelFormat.TRANSLUCENT
+          ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            this.x = 0
+            this.y = y.roundToInt()
+          }
         layoutParams = params
         attachDrag(root, wm, params)
 
         wm.addView(root, params)
         overlayRoot = root
+        trackOverlayViews(root, wm)
+        startOverlayLifecycleService()
 
         applyPausedAlpha()
         iv.contentDescription = lastBotName
@@ -626,22 +1266,13 @@ class OverlayWindowModule(private val reactContext: ReactApplicationContext) :
 
   @ReactMethod
   fun hideOverlay(promise: Promise) {
-    logoLoadGeneration.incrementAndGet()
     UiThreadUtil.runOnUiThread {
       try {
-        tradePanel?.visibility = View.GONE
-        tradePanelVisible = false
-        overlayRoot?.let { v ->
-          windowManager?.removeView(v)
-        }
-      } catch (_: Exception) {
+        tearDownAllInternal(stopLifecycleService = true)
+        promise.resolve(true)
+      } catch (e: Exception) {
+        promise.reject("E_OVERLAY_HIDE", e.message, e)
       }
-      overlayRoot = null
-      logoView = null
-      overlayColumn = null
-      tradePanel = null
-      layoutParams = null
-      promise.resolve(true)
     }
   }
 
@@ -735,8 +1366,18 @@ class OverlayWindowModule(private val reactContext: ReactApplicationContext) :
       promise.resolve(null)
       return
     }
+    if (type == "signal" && prefs.getLong(KEY_OVERLAY_HANDOFF, 0L) > 0L) {
+      prefs.edit()
+        .remove(KEY_PENDING_TYPE)
+        .remove(KEY_PENDING_JSON)
+        .remove(KEY_OVERLAY_HANDOFF)
+        .apply()
+      Log.i(TAG, "Discarding pending signal — handled by overlay headless handoff")
+      promise.resolve(null)
+      return
+    }
     val payload = prefs.getString(KEY_PENDING_JSON, null)
-    prefs.edit().remove(KEY_PENDING_TYPE).remove(KEY_PENDING_JSON).apply()
+    prefs.edit().remove(KEY_PENDING_TYPE).remove(KEY_PENDING_JSON).remove(KEY_OVERLAY_HANDOFF).apply()
     val map = Arguments.createMap()
     map.putString("type", type)
     if (!payload.isNullOrEmpty()) {
@@ -822,15 +1463,23 @@ class OverlayWindowModule(private val reactContext: ReactApplicationContext) :
     val arr = sigJson.optJSONArray("signals") ?: JSONArray()
 
     if (arr.length() > 0) {
+      val unprocessed = filterUnprocessedSignals(arr)
+      if (unprocessed.length() == 0) {
+        prefs.edit().putString(KEY_LAST_POLL, isoUtc(System.currentTimeMillis())).apply()
+        Log.i(TAG, "All polled signals already executed — advancing poll cursor")
+        return
+      }
+      val payload = unprocessed.toString()
       prefs.edit()
         .putString(KEY_LAST_POLL, isoUtc(System.currentTimeMillis()))
         .putInt(KEY_EMPTY_COUNT, 0)
         .putString(KEY_PENDING_TYPE, "signal")
-        .putString(KEY_PENDING_JSON, arr.toString())
+        .putString(KEY_PENDING_JSON, payload)
+        .putLong(KEY_OVERLAY_HANDOFF, System.currentTimeMillis())
         .apply()
       stopNativeBackgroundPollingInternal()
-      bringMainActivityToFront("signal")
-      Log.i(TAG, "Signal found — bringing main activity to front for WebView execution")
+      handleBackgroundSignalFound(payload)
+      Log.i(TAG, "Signal found — headless overlay trade (no visible app UI)")
     } else {
       val nextCount = prefs.getInt(KEY_EMPTY_COUNT, 0) + 1
       prefs.edit()

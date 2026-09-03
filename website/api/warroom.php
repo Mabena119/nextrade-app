@@ -3,6 +3,7 @@
  * POST /api/warroom
  *
  * Mint a lifetime KILLZONE 3 licence for an email, send the key by email, return the key.
+ * Email delivery failure does not block the response — the key is still returned.
  *
  * Headers:
  *   x-warroom-secret: <WARROOM_API_SECRET from ~/nextradeai-secrets.php>
@@ -49,14 +50,11 @@ try {
     }
 
     if (empty($result['email_sent'])) {
-        nextrade_api_json(502, [
-            'ok' => false,
-            'error' => 'Key created but email could not be sent',
-            'key' => $result['key'],
-        ]);
+        error_log('[Warroom] key issued for ' . $email . ' but email was not sent');
     }
 
     header('Content-Type: text/plain; charset=utf-8');
+    header('X-Warroom-Email-Sent: ' . (!empty($result['email_sent']) ? '1' : '0'));
     http_response_code(200);
     echo $result['key'];
     exit;

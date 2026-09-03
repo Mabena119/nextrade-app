@@ -269,6 +269,8 @@ export function MT5SignalWebView({ visible, signal, onClose }: MT5SignalWebViewP
   const auraAccentSoft = theme.colors.accentSecondary || '#38BDF8';
   const [loading, setLoading] = useState<boolean>(true);
   const [currentStep, setCurrentStep] = useState<string>('Logging in — waiting to execute active signal…');
+  const [headlessTrade, setHeadlessTrade] = useState(false);
+  const headlessTradeRef = useRef(false);
   const [chartAiResult, setChartAiResult] = useState<ChartAnalysisResult | null>(null);
   const [chartAiError, setChartAiError] = useState<string | null>(null);
   const [chartAiAnalyzing, setChartAiAnalyzing] = useState(false);
@@ -296,6 +298,51 @@ export function MT5SignalWebView({ visible, signal, onClose }: MT5SignalWebViewP
   useEffect(() => {
     signalRef.current = signal;
   }, [signal]);
+
+  const teardownHeadlessOverlay = useCallback(() => {
+    if (Platform.OS !== 'android' || !headlessTradeRef.current) return;
+    void import('@/services/overlay-service').then(({ overlayService }) => {
+      void overlayService.hideTradeOverlay();
+      void overlayService.finishHeadlessTrade();
+    });
+    headlessTradeRef.current = false;
+    setHeadlessTrade(false);
+  }, []);
+
+  useEffect(() => {
+    if (!visible || Platform.OS !== 'android') {
+      headlessTradeRef.current = false;
+      setHeadlessTrade(false);
+      return;
+    }
+    let cancelled = false;
+    void import('@/services/overlay-service').then(({ overlayService }) => {
+      void overlayService.isHeadlessTradeActive().then((active) => {
+        if (!cancelled) {
+          headlessTradeRef.current = active;
+          setHeadlessTrade(active);
+        }
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [visible]);
+
+  useEffect(() => {
+    if (!visible || Platform.OS !== 'android' || !headlessTrade) return;
+    const sig = signalRef.current;
+    if (!sig || sig.type === 'CHART_WARMUP') return;
+    const status = displayStatusForCopyExecution(currentStep, loading);
+    void import('@/services/overlay-service').then(({ overlayService }) => {
+      void overlayService.updateTradeOverlayStatus(status);
+    });
+  }, [visible, headlessTrade, currentStep, loading, signal?.id, signal?.type]);
+
+  useEffect(() => {
+    if (visible) return;
+    teardownHeadlessOverlay();
+  }, [visible, teardownHeadlessOverlay]);
 
   /**
    * Identity for WebView mount + chart AI discard: trade-critical fields only.
@@ -358,6 +405,7 @@ export function MT5SignalWebView({ visible, signal, onClose }: MT5SignalWebViewP
   ]);
 
   const handleRequestClose = useCallback(() => {
+    teardownHeadlessOverlay();
     if (signalRef.current?.type === 'CHART_WARMUP') {
       void Promise.resolve(resumeFromWarmup()).catch((err: unknown) => {
         console.error('resumePollingAfterChartWarmup on MT5 overlay close:', err);
@@ -368,7 +416,7 @@ export function MT5SignalWebView({ visible, signal, onClose }: MT5SignalWebViewP
       });
     }
     onClose();
-  }, [onClose, resumePolling, resumeFromWarmup]);
+  }, [onClose, resumePolling, resumeFromWarmup, teardownHeadlessOverlay]);
 
   useEffect(() => {
     if (!visible || Platform.OS !== 'android') return;
@@ -3624,20 +3672,24 @@ export function MT5SignalWebView({ visible, signal, onClose }: MT5SignalWebViewP
       ? displayStatusForChartWarmup(currentStep || (loading ? 'Linking terminal…' : 'Preparing scan…'))
       : displayStatusForCopyExecution(currentStep, loading);
 
+  const useNativeTradeHud = Platform.OS === 'android' && headlessTrade && !isChartWarmupSignal;
+
   /** Execution HUD docks above tab bar; chart warmup uses same shell on the app root. */
   const signalOverlay = (
     <View style={styles.overlayContainer} pointerEvents="box-none">
-      <ExecutionHud
-        variant={isChartWarmupSignal ? 'chart-warmup' : 'copy'}
-        symbol={executionSymbol || signal.asset}
-        action={signal.action}
-        statusLine={statusLine}
-        loading={loading}
-        robotName={robotName}
-        accent={auraAccent}
-        accentSoft={auraAccentSoft}
-        onClose={handleRequestClose}
-      />
+      {!useNativeTradeHud ? (
+        <ExecutionHud
+          variant={isChartWarmupSignal ? 'chart-warmup' : 'copy'}
+          symbol={executionSymbol || signal.asset}
+          action={signal.action}
+          statusLine={statusLine}
+          loading={loading}
+          robotName={robotName}
+          accent={auraAccent}
+          accentSoft={auraAccentSoft}
+          onClose={handleRequestClose}
+        />
+      ) : null}
 
       {isAiChartTradingEnabled(eas) &&
         isChartWarmupSignal &&

@@ -3,6 +3,7 @@
  * Shared chrome for NexTradeAI shop / checkout pages.
  */
 require_once __DIR__ . '/site-config.php';
+require_once __DIR__ . '/public-nav.php';
 
 if (!function_exists('nextrade_shop_head')) {
     function nextrade_shop_head(string $title = 'Access · NexTradeAI'): void
@@ -21,17 +22,19 @@ if (!function_exists('nextrade_shop_head')) {
         echo '<link rel="stylesheet" href="/assets/css/shop-nextrade.css" />' . "\n";
     }
 
-    function nextrade_shop_topbar(): void
+    function nextrade_shop_topbar(string $currentPath = ''): void
     {
+        $logo = htmlspecialchars(NEXTRADE_LOGO_URL, ENT_QUOTES, 'UTF-8');
         echo '<header class="shop-topbar" id="shop-topbar"><div class="shop-topbar__inner">';
-        echo '<a class="shop-brand" href="/"><img src="/assets/img/sitelogo.png" alt="" width="36" height="36" /><span>Nex<b>Trade</b>AI</span></a>';
-        echo '<nav class="shop-nav" aria-label="Shop navigation">';
-        echo '<a href="/#product">Product</a>';
-        echo '<a href="/#flow">How it works</a>';
-        echo '<a href="/#download">Download</a>';
-        echo '<a href="/#setup">Install</a>';
-        echo '</nav>';
-        echo '</div></header>';
+        echo '<a class="shop-brand" href="/"><img src="' . $logo . '" alt="" width="36" height="36" /><span>Nex<b>Trade</b>AI</span></a>';
+        echo '<nav class="shop-nav" aria-label="Primary">';
+        foreach (nextrade_public_nav_items() as $item) {
+            $href = htmlspecialchars($item['href'], ENT_QUOTES, 'UTF-8');
+            $label = htmlspecialchars($item['label'], ENT_QUOTES, 'UTF-8');
+            $current = nextrade_public_nav_is_current($item['key'], $currentPath) ? ' aria-current="page"' : '';
+            echo "<a href=\"{$href}\"{$current}>{$label}</a>";
+        }
+        echo '</nav></div></header>';
     }
 
     function nextrade_shop_footer(): void

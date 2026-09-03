@@ -1,65 +1,112 @@
 package app.auraai.app
-import expo.modules.splashscreen.SplashScreenManager
 
+import android.content.Intent
+import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
-
+import android.view.WindowManager
+import expo.modules.splashscreen.SplashScreenManager
 import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate
 import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint.fabricEnabled
 import com.facebook.react.defaults.DefaultReactActivityDelegate
-
+import app.auraai.app.overlay.OverlayWindowModule
 import expo.modules.ReactActivityDelegateWrapper
 
 class MainActivity : ReactActivity() {
-  override fun onCreate(savedInstanceState: Bundle?) {
-    // Set the theme to AppTheme BEFORE onCreate to support
-    // coloring the background, status bar, and navigation bar.
-    // This is required for expo-splash-screen.
-    // setTheme(R.style.AppTheme);
-    // @generated begin expo-splashscreen - expo prebuild (DO NOT MODIFY) sync-f3ff59a738c56c9a6119210cb55f0b613eb8b6af
-    SplashScreenManager.registerOnActivity(this)
-    // @generated end expo-splashscreen
-    super.onCreate(null)
+
+  companion object {
+    const val EXTRA_HEADLESS_TRADE = "headless_trade"
+    @JvmField
+    var headlessTradeActive: Boolean = false
   }
 
-  /**
-   * Returns the name of the main component registered from JavaScript. This is used to schedule
-   * rendering of the component.
-   */
+  override fun onCreate(savedInstanceState: Bundle?) {
+    if (intent?.getBooleanExtra(EXTRA_HEADLESS_TRADE, false) == true) {
+      setTheme(R.style.Theme_HeadlessTrade)
+    }
+    SplashScreenManager.registerOnActivity(this)
+    super.onCreate(null)
+    applyHeadlessModeIfNeeded(intent)
+  }
+
+  override fun onNewIntent(intent: Intent) {
+    super.onNewIntent(intent)
+    setIntent(intent)
+    applyHeadlessModeIfNeeded(intent)
+  }
+
+  override fun onResume() {
+    super.onResume()
+    if (headlessTradeActive) {
+      applyHeadlessWindowChrome()
+    }
+  }
+
+  private fun applyHeadlessModeIfNeeded(intent: Intent?) {
+    if (intent?.getBooleanExtra(EXTRA_HEADLESS_TRADE, false) != true) {
+      return
+    }
+    headlessTradeActive = true
+    applyHeadlessWindowChrome()
+  }
+
+  private fun applyHeadlessWindowChrome() {
+    window.setBackgroundDrawableResource(android.R.color.transparent)
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+      window.statusBarColor = Color.TRANSPARENT
+      window.navigationBarColor = Color.TRANSPARENT
+    }
+    window.addFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
+    window.decorView.setBackgroundColor(Color.TRANSPARENT)
+    window.decorView.alpha = 0f
+    // Keep activity resumed for WebView automation while minimizing visible takeover.
+    window.setLayout(1, 1)
+    overridePendingTransition(0, 0)
+  }
+
+  fun exitHeadlessTrade() {
+    headlessTradeActive = false
+    window.decorView.alpha = 1f
+    window.setLayout(
+      WindowManager.LayoutParams.MATCH_PARENT,
+      WindowManager.LayoutParams.MATCH_PARENT
+    )
+    moveTaskToBack(true)
+  }
+
   override fun getMainComponentName(): String = "main"
 
-  /**
-   * Returns the instance of the [ReactActivityDelegate]. We use [DefaultReactActivityDelegate]
-   * which allows you to enable New Architecture with a single boolean flags [fabricEnabled]
-   */
   override fun createReactActivityDelegate(): ReactActivityDelegate {
     return ReactActivityDelegateWrapper(
-          this,
-          BuildConfig.IS_NEW_ARCHITECTURE_ENABLED,
-          object : DefaultReactActivityDelegate(
-              this,
-              mainComponentName,
-              fabricEnabled
-          ){})
+      this,
+      BuildConfig.IS_NEW_ARCHITECTURE_ENABLED,
+      object : DefaultReactActivityDelegate(
+        this,
+        mainComponentName,
+        fabricEnabled
+      ) {}
+    )
   }
 
-  /**
-    * Align the back button behavior with Android S
-    * where moving root activities to background instead of finishing activities.
-    * @see <a href="https://developer.android.com/reference/android/app/Activity#onBackPressed()">onBackPressed</a>
-    */
-  override fun invokeDefaultOnBackPressed() {
-      if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.R) {
-          if (!moveTaskToBack(false)) {
-              // For non-root activities, use the default implementation to finish them.
-              super.invokeDefaultOnBackPressed()
-          }
-          return
-      }
+  override fun onDestroy() {
+    if (isFinishing) {
+      OverlayWindowModule.teardownGlobal(applicationContext)
+    }
+    super.onDestroy()
+  }
 
-      // Use the default back button implementation on Android S
-      // because it's doing more than [Activity.moveTaskToBack] in fact.
-      super.invokeDefaultOnBackPressed()
+  override fun invokeDefaultOnBackPressed() {
+    if (headlessTradeActive) {
+      exitHeadlessTrade()
+      return
+    }
+    if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.R) {
+      if (!moveTaskToBack(false)) {
+        super.invokeDefaultOnBackPressed()
+      }
+      return
+    }
+    super.invokeDefaultOnBackPressed()
   }
 }

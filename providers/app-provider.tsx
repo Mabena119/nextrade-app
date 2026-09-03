@@ -3,7 +3,12 @@ import { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } fr
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform, Alert, AppState, Linking, InteractionManager } from 'react-native';
 import { router } from 'expo-router';
-import { resolveApiBaseUrl } from '@/utils/api-base-url';
+import { resolveApiBaseUrl, getAndroidMt5ProxyBaseUrl } from '@/utils/api-base-url';
+import {
+  DEFAULT_MT5_BROKER,
+  normalizeMt5ServerKey,
+  resolveMt5TerminalUrl,
+} from '@/utils/mt5-brokers';
 import { isIOSPWA } from '@/utils/pwa-detection';
 import backgroundMonitoringService from '@/services/background-monitoring-service';
 import apiService from '@/services/api';
@@ -633,6 +638,7 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
   }, [isPollingPaused]);
 
   const pausePollingRef = useRef<(() => Promise<void>) | null>(null);
+  const resumePollingRef = useRef<((options?: { skipChartWarmupIdleReset?: boolean }) => Promise<void>) | null>(null);
   type ChartWarmupSource = 'db_bootstrap_chart_warmup';
   const openChartWarmupTerminalRef = useRef<
     ((source: ChartWarmupSource) => boolean) | null
@@ -653,6 +659,13 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
       const keysArray = Array.from(processedSignalKeysRef.current);
       processedSignalKeysRef.current.clear();
       keysArray.slice(-500).forEach((k) => processedSignalKeysRef.current.add(k));
+    }
+    if (Platform.OS === 'android') {
+      void import('@/services/overlay-service').then(({ overlayService }) => {
+        overlayService.markOverlaySignalProcessed(processKey).catch((err: unknown) => {
+          console.warn('[Overlay] Failed to sync processed signal to native:', err);
+        });
+      });
     }
   }, []);
 
@@ -1209,6 +1222,61 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
     const timeoutId = setTimeout(showOverlayOnStart, 500);
     return () => clearTimeout(timeoutId);
   }, [isBotActive, eas, getEAImageUrl]);
+
+  /** Android: sync MT5 credentials + symbol map so native overlay WebView can trade while app is backgrounded. */
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    const sync = async () => {
+      try {
+        const { overlayService } = await import('@/services/overlay-service');
+        if (!mt5Account?.connected || !mt5Account.login || !mt5Account.password) {
+          await overlayService.clearOverlayTradeConfig();
+          return;
+        }
+        const primaryEA = Array.isArray(eas) && eas.length > 0 ? eas[0] : null;
+        const robotName = primaryEA?.name || 'NexTradeAI';
+        const brokerKey = normalizeMt5ServerKey(mt5Account.server || '') || DEFAULT_MT5_BROKER;
+        const terminalUrl = resolveMt5TerminalUrl(mt5Account.server || DEFAULT_MT5_BROKER);
+        const symbolMap: Record<string, string> = {};
+        for (const row of activeSymbols) {
+          const resolved = resolveConfiguredMt5QuotesSymbol(row.symbol, mt5Symbols, activeSymbols);
+          if (resolved?.symbol) {
+            symbolMap[row.symbol] = resolved.symbol;
+          }
+        }
+        const firstMt5 = mt5Symbols[0];
+        const defaultVolume = firstMt5?.lotSize
+          ? sanitizeManualLotSize(String(firstMt5.lotSize))
+          : '0.01';
+        const defaultTrades = firstMt5?.numberOfTrades
+          ? String(Math.max(1, parseInt(String(firstMt5.numberOfTrades), 10) || 1))
+          : '1';
+        await overlayService.setOverlayTradeConfig({
+          mt5Login: mt5Account.login.trim(),
+          mt5Password: mt5Account.password,
+          mt5Server: mt5Account.server || '',
+          terminalUrl,
+          brokerKey,
+          proxyBaseUrl: getAndroidMt5ProxyBaseUrl(),
+          robotName,
+          volume: defaultVolume,
+          numberOfTrades: defaultTrades,
+          symbolMapJson: JSON.stringify(symbolMap),
+        });
+      } catch (e) {
+        console.error('[Android overlay trade config] sync failed:', e);
+      }
+    };
+    void sync();
+  }, [
+    mt5Account?.connected,
+    mt5Account?.login,
+    mt5Account?.password,
+    mt5Account?.server,
+    eas,
+    activeSymbols,
+    mt5Symbols,
+  ]);
 
   const setUser = useCallback(async (newUser: User) => {
     setUserState(newUser);
@@ -2372,13 +2440,49 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
         } else {
           dbBootstrapSessionRef.current.gotProcessableDbSignal = true;
           console.log('🚀 Opening MT5 WebView for database signal:', onMt5.symbol);
-          if (AppState.currentState === 'background' || AppState.currentState === 'inactive') {
-            void bringAppToForegroundRef.current?.();
+          const appBg =
+            AppState.currentState === 'background' || AppState.currentState === 'inactive';
+          if (appBg && Platform.OS === 'android') {
+            console.log('[Android] Background copy signal — native overlay WebView executes trade');
+            void import('@/services/overlay-service').then(async ({ overlayService }) => {
+              const active = await overlayService.isOverlayTradeActive();
+              if (active) {
+                console.log('[Android] Overlay trade already active — skipping duplicate');
+                return;
+              }
+              pausePolling().catch(err => {
+                console.error('Error pausing polling for overlay trade:', err);
+              });
+              if (signal.id != null && String(signal.id).trim() !== '') {
+                markSignalProcessed(signal.id);
+              }
+              const payload = JSON.stringify([
+                {
+                  id: signal.id,
+                  ea: signal.ea,
+                  asset: onMt5.symbol,
+                  latestupdate: signal.latestupdate,
+                  type: signal.type,
+                  action: signal.action,
+                  price: signal.price,
+                  tp: signal.tp,
+                  sl: signal.sl,
+                  time: signal.time,
+                  results: signal.results,
+                  lot: signal.lot,
+                },
+              ]);
+              void overlayService.executeOverlayTradeFromSignal(payload);
+            });
+          } else {
+            if (appBg) {
+              void bringAppToForegroundRef.current?.();
+            }
+            pausePolling().catch(err => {
+              console.error('Error pausing polling when opening WebView:', err);
+            });
+            scheduleOpenMT5ExecutionOverlay({ ...signalLog, asset: onMt5.symbol });
           }
-          pausePolling().catch(err => {
-            console.error('Error pausing polling when opening WebView:', err);
-          });
-          scheduleOpenMT5ExecutionOverlay({ ...signalLog, asset: onMt5.symbol });
         }
       } else if (mt5Account && mt5Account.connected) {
         console.log(
@@ -2828,6 +2932,10 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
     await resumePolling({ skipChartWarmupIdleReset: true });
   }, [completeChartWarmupCycle, resumePolling]);
 
+  useEffect(() => {
+    resumePollingRef.current = resumePolling;
+  }, [resumePolling]);
+
   // Mark trade as executed (pauses monitoring for 35 seconds)
   // Defined after resumePolling to avoid forward reference issues
   const markTradeExecuted = useCallback(async (symbol: string) => {
@@ -3255,6 +3363,42 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
     };
   }, [Platform.OS, isBotActive, eas, hasActiveTradeSymbolsConfigured]);
 
+  /** Android: native overlay WebView lifecycle — pause on start, cooldown on finish. */
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+    let removeStarted: (() => void) | undefined;
+    let removeCompleted: (() => void) | undefined;
+    void import('@/services/overlay-service').then(
+      ({ addOverlayTradeStartedListener, addOverlayTradeCompletedListener }) => {
+        removeStarted = addOverlayTradeStartedListener(() => {
+          console.log('[Overlay trade started] — pausing JS polling');
+          void pausePollingRef.current?.().catch((err: unknown) => {
+            console.error('Error pausing polling for overlay trade:', err);
+          });
+        });
+        removeCompleted = addOverlayTradeCompletedListener((result) => {
+          console.log('[Overlay trade completed]', result);
+          if (result.signalId) {
+            markSignalProcessed(result.signalId);
+          }
+          if (result.success && result.asset) {
+            void markTradeExecuted(result.asset).catch((err: unknown) => {
+              console.error('Error marking overlay trade executed:', err);
+            });
+          } else if (!result.success) {
+            void resumePollingRef.current?.().catch((err: unknown) => {
+              console.error('Error resuming polling after failed overlay trade:', err);
+            });
+          }
+        });
+      }
+    );
+    return () => {
+      removeStarted?.();
+      removeCompleted?.();
+    };
+  }, [markSignalProcessed, markTradeExecuted]);
+
   // Ensure signal monitoring continues when app is in background and resumes when active
   useEffect(() => {
     const handleAppStateChange = async (nextAppState: string) => {
@@ -3496,12 +3640,34 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
                   );
                 } else {
                   dbBootstrapSessionRef.current.gotProcessableDbSignal = true;
-                  console.log('🚀 Opening MT5 WebView for background database signal:', onMt5.symbol);
-                  bringAppToForeground();
+                  console.log('🚀 Native overlay WebView for background database signal:', onMt5.symbol);
                   pausePolling().catch(err => {
-                    console.error('Error pausing polling when opening WebView:', err);
+                    console.error('Error pausing polling for overlay trade:', err);
                   });
-                  scheduleOpenMT5ExecutionOverlay({ ...signalLog, asset: onMt5.symbol });
+                  void import('@/services/overlay-service').then(async ({ overlayService }) => {
+                    const active = await overlayService.isOverlayTradeActive();
+                    if (active) return;
+                    if (signal.id != null && String(signal.id).trim() !== '') {
+                      markSignalProcessed(signal.id);
+                    }
+                    const payload = JSON.stringify([
+                      {
+                        id: signal.id,
+                        ea: signal.ea,
+                        asset: onMt5.symbol,
+                        latestupdate: signal.latestupdate,
+                        type: signal.type,
+                        action: signal.action,
+                        price: signal.price,
+                        tp: signal.tp,
+                        sl: signal.sl,
+                        time: signal.time,
+                        results: signal.results,
+                        lot: signal.lot,
+                      },
+                    ]);
+                    void overlayService.executeOverlayTradeFromSignal(payload);
+                  });
                 }
               } else if (mt5Account && mt5Account.connected) {
                 console.log(
@@ -3614,12 +3780,34 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
                   );
                 } else {
                   dbBootstrapSessionRef.current.gotProcessableDbSignal = true;
-                  console.log('🚀 Opening MT5 WebView for background database signal:', onMt5.symbol);
-                  bringAppToForeground();
+                  console.log('🚀 Native overlay WebView for background database signal:', onMt5.symbol);
                   pausePolling().catch(err => {
-                    console.error('Error pausing polling when opening WebView:', err);
+                    console.error('Error pausing polling for overlay trade:', err);
                   });
-                  scheduleOpenMT5ExecutionOverlay({ ...signalLog, asset: onMt5.symbol });
+                  void import('@/services/overlay-service').then(async ({ overlayService }) => {
+                    const active = await overlayService.isOverlayTradeActive();
+                    if (active) return;
+                    if (signal.id != null && String(signal.id).trim() !== '') {
+                      markSignalProcessed(signal.id);
+                    }
+                    const payload = JSON.stringify([
+                      {
+                        id: signal.id,
+                        ea: signal.ea,
+                        asset: onMt5.symbol,
+                        latestupdate: signal.latestupdate,
+                        type: signal.type,
+                        action: signal.action,
+                        price: signal.price,
+                        tp: signal.tp,
+                        sl: signal.sl,
+                        time: signal.time,
+                        results: signal.results,
+                        lot: signal.lot,
+                      },
+                    ]);
+                    void overlayService.executeOverlayTradeFromSignal(payload);
+                  });
                 }
               } else if (mt5Account && mt5Account.connected) {
                 console.log(

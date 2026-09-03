@@ -26,6 +26,39 @@ const PORT = Number(process.env.PORT || 3000);
 /** VPS Bun API — used when Render cannot reach cPanel MySQL (port 3306 closed). */
 const NEXTRADE_API_ORIGIN = 'http://35.168.213.207';
 const NEXTRADE_SITE_ORIGIN = 'https://www.nextradeai.io';
+const NEXTRADE_SIGNAL_ACTIVE_MINUTES = 10;
+const NEXTRADE_SIGNAL_TTL_MINUTES = 20;
+const SIGNAL_OPEN_WHERE = `LOWER(COALESCE(results, '')) IN ('active', 'pending') AND time > UTC_TIMESTAMP() - INTERVAL ${NEXTRADE_SIGNAL_ACTIVE_MINUTES} MINUTE`;
+
+async function purgeExpiredCopySignals(conn: any): Promise<{ inactivated: number; deleted: number }> {
+  const now = new Date().toISOString().slice(0, 19).replace('T', ' ');
+  const [inactiveResult] = await conn.execute(
+    `UPDATE signals SET results = 'inactive', latestupdate = ?
+     WHERE LOWER(COALESCE(results, '')) IN ('active', 'pending')
+       AND time <= UTC_TIMESTAMP() - INTERVAL ${NEXTRADE_SIGNAL_ACTIVE_MINUTES} MINUTE`,
+    [now],
+  );
+  const [deleteResult] = await conn.execute(
+    `DELETE FROM signals WHERE time <= UTC_TIMESTAMP() - INTERVAL ${NEXTRADE_SIGNAL_TTL_MINUTES} MINUTE`,
+  );
+  return {
+    inactivated: (inactiveResult as any)?.affectedRows ?? 0,
+    deleted: (deleteResult as any)?.affectedRows ?? 0,
+  };
+}
+
+function signalIsExecutable(row: any): boolean {
+  const stored = String(row?.results ?? '').toLowerCase().trim();
+  const timeRaw = String(row?.time ?? '').trim();
+  if (!timeRaw) return stored === 'active' || stored === 'pending';
+  const normalized = timeRaw.includes('T') ? timeRaw : timeRaw.replace(' ', 'T') + 'Z';
+  const ts = Date.parse(normalized.endsWith('Z') ? normalized : `${normalized}Z`);
+  if (Number.isNaN(ts)) return stored === 'active' || stored === 'pending';
+  const ageMs = Date.now() - ts;
+  if (ageMs >= NEXTRADE_SIGNAL_TTL_MINUTES * 60_000) return false;
+  if (ageMs >= NEXTRADE_SIGNAL_ACTIVE_MINUTES * 60_000) return false;
+  return stored === 'active' || stored === 'pending';
+}
 
 function resolveApiUpstream(): string {
   const fromEnv = (process.env.API_UPSTREAM_URL || process.env.NEXTRADE_API_UPSTREAM_URL || '')
@@ -3983,6 +4016,7 @@ async function handleApi(request: Request): Promise<Response> {
         try {
           const pool = getPool();
           conn = await pool.getConnection();
+          await purgeExpiredCopySignals(conn);
 
           let query: string;
           let params: any[];
@@ -4009,7 +4043,7 @@ async function handleApi(request: Request): Promise<Response> {
             query = `
               SELECT id, ea, asset, latestupdate, action, price, tp, sl, time, lot, results
               FROM \`signals\` 
-              WHERE ea = ? AND latestupdate > ?
+              WHERE ea = ? AND latestupdate > ? AND ${SIGNAL_OPEN_WHERE}
               ORDER BY latestupdate DESC
               LIMIT 50
             `;
@@ -4019,7 +4053,7 @@ async function handleApi(request: Request): Promise<Response> {
             query = `
               SELECT id, ea, asset, latestupdate, action, price, tp, sl, time, lot, results
               FROM \`signals\` 
-              WHERE ea = ?
+              WHERE ea = ? AND ${SIGNAL_OPEN_WHERE}
               ORDER BY latestupdate DESC
               LIMIT 50
             `;
@@ -4028,7 +4062,9 @@ async function handleApi(request: Request): Promise<Response> {
 
           const [rows] = await conn.execute(query, params);
 
-          const result = (rows as any[]).map((row) => normalizeSignalTimestampsForApi(row));
+          const result = (rows as any[])
+            .filter((row) => signalIsExecutable(row))
+            .map((row) => normalizeSignalTimestampsForApi(row));
           console.log(`✅ Found ${result.length} new signals for EA ${eaId} since ${since || 'beginning'}`);
 
           return new Response(JSON.stringify({ signals: result }), {
@@ -4079,18 +4115,22 @@ async function handleApi(request: Request): Promise<Response> {
         try {
           const pool = getPool();
           conn = await pool.getConnection();
+          await purgeExpiredCopySignals(conn);
 
           const query = `
             SELECT id, ea, asset, latestupdate, action, price, tp, sl, time, lot, results, type
             FROM \`signals\`
-            WHERE ea = ? AND LOWER(COALESCE(results, '')) IN ('active', 'pending')
+            WHERE ea = ? AND ${SIGNAL_OPEN_WHERE}
             ORDER BY latestupdate DESC
             LIMIT 1
           `;
 
           const [rows] = await conn.execute(query, [eaId]);
           const result = rows as any[];
-          const signal = result.length > 0 ? normalizeSignalTimestampsForApi(result[0]) : null;
+          const rawSignal = result.length > 0 ? result[0] : null;
+          const signal = rawSignal && signalIsExecutable(rawSignal)
+            ? normalizeSignalTimestampsForApi(rawSignal)
+            : null;
 
           return new Response(JSON.stringify({ signal }), {
             headers: {
@@ -4227,7 +4267,7 @@ async function handleApi(request: Request): Promise<Response> {
             });
           }
           const [result] = await conn.execute(
-            `DELETE FROM signals WHERE ea = ? AND asset = ? AND LOWER(COALESCE(results, '')) IN ('active', 'pending') ORDER BY latestupdate DESC LIMIT 1`,
+            `DELETE FROM signals WHERE ea = ? AND asset = ? AND ${SIGNAL_OPEN_WHERE} ORDER BY latestupdate DESC LIMIT 1`,
             [eaId, asset]
           );
           const affected = (result as any).affectedRows ?? 0;

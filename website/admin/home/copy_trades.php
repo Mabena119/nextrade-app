@@ -1,11 +1,17 @@
 <?php
+require_once $_SERVER['DOCUMENT_ROOT'] . '/includes/security.php';
+auraai_sec_bootstrap();
 include("include/header.php");
 require("../php-includes/connect.php");
+require dirname(__DIR__, 2) . '/api/ea-copy-lib.php';
 
 $admin_id = get_admin($_SESSION['username'], "id");
 $owner_id = (int) $admin_id;
 $copy_trades_preset_ea = isset($_GET['ea_id']) ? (int) $_GET['ea_id'] : 0;
 
+nextrade_purge_expired_copy_signals($con);
+
+$activeWindowSql = nextrade_signal_open_where_sql('s.results', 's.time');
 $ct_ea_count = 0;
 $ct_total_signals = 0;
 $ct_active_signals = 0;
@@ -16,7 +22,7 @@ if ($ct_ea_res && ($ct_ea_row = mysqli_fetch_assoc($ct_ea_res))) {
 $ct_sig_res = mysqli_query(
     $con,
     "SELECT COUNT(*) AS total,
-            SUM(CASE WHEN LOWER(COALESCE(s.results, '')) = 'active' THEN 1 ELSE 0 END) AS active_cnt
+            SUM(CASE WHEN {$activeWindowSql} THEN 1 ELSE 0 END) AS active_cnt
      FROM signals s
      INNER JOIN eas e ON s.ea = e.id
      WHERE e.owner = " . $owner_id
@@ -104,7 +110,7 @@ $signals_result = mysqli_query($con, $signals_query);
                 </div>
             </div>
 
-            <form method="POST" action="create_signal.php" class="ct-form" id="ctPublishForm">
+            <form method="POST" action="create_signal.php" class="ct-form" id="ctPublishForm" data-ct-action="publish">
                 <div class="ct-form__section">
                     <p class="ct-form__section-label">Automation</p>
                     <div class="ct-field ct-field--full">
@@ -211,7 +217,7 @@ $signals_result = mysqli_query($con, $signals_query);
             </ol>
             <div class="ct-guide-note">
                 <i class="ti ti-clock" aria-hidden="true"></i>
-                <span>Active signals stay open until you close them — even if posted hours ago.</span>
+                <span>Signals stay active for <?php echo (int) NEXTRADE_SIGNAL_ACTIVE_MINUTES; ?> minutes, then go inactive for another <?php echo (int) (NEXTRADE_SIGNAL_TTL_MINUTES - NEXTRADE_SIGNAL_ACTIVE_MINUTES); ?> minutes before they are removed automatically.</span>
             </div>
         </aside>
     </div>
@@ -252,10 +258,10 @@ $signals_result = mysqli_query($con, $signals_query);
                     $lot_disp = isset($signal['lot']) && trim((string) $signal['lot']) !== ''
                         ? htmlspecialchars((string) $signal['lot'], ENT_QUOTES, 'UTF-8')
                         : '—';
-                    $result_raw = isset($signal['results']) ? strtolower(trim((string) $signal['results'])) : '';
-                    $result_label = htmlspecialchars($result_raw !== '' ? $result_raw : 'unknown', ENT_QUOTES, 'UTF-8');
+                    $result_raw = nextrade_signal_effective_status($signal);
+                    $result_label = htmlspecialchars($result_raw, ENT_QUOTES, 'UTF-8');
                     $is_active = ($result_raw === 'active');
-                    $status_class = $is_active ? 'badge-active' : ($result_raw === 'closed' ? 'badge-result-closed' : 'badge-result-other');
+                    $status_class = $is_active ? 'badge-active' : ($result_raw === 'inactive' ? 'badge-result-closed' : 'badge-result-other');
                     $signal_id_esc = (int) ($signal['id'] ?? 0);
                     $created = isset($signal['time']) ? date('M j, Y · H:i', strtotime($signal['time'])) : '—';
                     $filter_state = $is_active ? 'active' : 'other';
@@ -298,14 +304,14 @@ $signals_result = mysqli_query($con, $signals_query);
 
                         <footer class="ct-signal-card__foot">
                             <?php if ($is_active): ?>
-                                <form method="POST" action="close_signal.php" class="ct-close-form" onsubmit="return confirm('Delete this signal from the database? Clients will stop seeing this trade.');">
+                                <form method="POST" action="close_signal.php" class="ct-close-form" data-ct-action="close">
                                     <input type="hidden" name="signal_id" value="<?php echo $signal_id_esc; ?>">
                                     <button type="submit" class="btn-close-signal">
                                         <i class="ti ti-x" aria-hidden="true"></i> Close trade
                                     </button>
                                 </form>
                             <?php else: ?>
-                                <span class="ct-signal-card__closed-note">No action — signal closed</span>
+                                <span class="ct-signal-card__closed-note"><?php echo $result_raw === 'inactive' ? 'Inactive — auto-removed after 20 min' : 'No action — signal closed'; ?></span>
                             <?php endif; ?>
                         </footer>
                     </article>
@@ -404,6 +410,63 @@ $signals_result = mysqli_query($con, $signals_query);
             });
         });
     }
+
+    function submitCopyTradesForm(form, confirmMessage) {
+        if (confirmMessage && !window.confirm(confirmMessage)) {
+            return;
+        }
+        var submitBtn = form.querySelector('button[type="submit"]');
+        if (submitBtn) {
+            submitBtn.disabled = true;
+        }
+        fetch(form.getAttribute('action') || 'copy_trades.php', {
+            method: 'POST',
+            body: new FormData(form),
+            credentials: 'same-origin',
+            headers: {
+                'Accept': 'application/json',
+                'X-Requested-With': 'fetch'
+            }
+        })
+            .then(function (response) {
+                return response.json().then(function (payload) {
+                    return { response: response, payload: payload };
+                }).catch(function () {
+                    return { response: response, payload: null };
+                });
+            })
+            .then(function (result) {
+                var payload = result.payload;
+                if (payload && payload.redirect) {
+                    window.location.replace(payload.redirect);
+                    return;
+                }
+                if (result.response.ok) {
+                    window.location.replace('copy_trades.php');
+                    return;
+                }
+                throw new Error('request_failed');
+            })
+            .catch(function () {
+                alert('Something went wrong. Please refresh the page and try again.');
+                if (submitBtn) submitBtn.disabled = false;
+            });
+    }
+
+    var publishForm = document.getElementById('ctPublishForm');
+    if (publishForm) {
+        publishForm.addEventListener('submit', function (event) {
+            event.preventDefault();
+            submitCopyTradesForm(publishForm, null);
+        });
+    }
+
+    document.querySelectorAll('.ct-close-form').forEach(function (form) {
+        form.addEventListener('submit', function (event) {
+            event.preventDefault();
+            submitCopyTradesForm(form, 'Delete this signal from the database? Clients will stop seeing this trade.');
+        });
+    });
 })();
 </script>
 

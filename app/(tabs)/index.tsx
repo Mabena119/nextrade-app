@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Platform, Dimensions, AppState, Modal, ActivityIndicator } from 'react-native';
 import { Plus, ChevronRight } from 'lucide-react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Notifications from 'expo-notifications';
 import { router, useFocusEffect } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -280,13 +280,24 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView
-      style={[styles.container, { backgroundColor: safeScreenBg }]}
+      style={[
+        styles.container,
+        {
+          backgroundColor: safeScreenBg,
+          // iOS tab bar is effectively "overlaying" this scene; reserve space so the bottom footer
+          // and last card controls are never covered by the home indicator / tab bar.
+          paddingBottom: Platform.OS === 'ios' ? 56 : 0,
+        },
+      ]}
       edges={Platform.OS === 'android' ? ['top', 'right', 'left'] : ['top', 'right', 'bottom', 'left']}
     >
       <ScrollView
         ref={scrollRef}
         style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          Platform.OS === 'ios' ? { paddingBottom: 16 + 56 } : null,
+        ]}
         showsVerticalScrollIndicator={false}
         bounces
         keyboardShouldPersistTaps="handled"

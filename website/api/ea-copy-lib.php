@@ -5,6 +5,98 @@ declare(strict_types=1);
  * Shared helpers for MT5 / Python copy-trade publishers (EA secret_code auth).
  */
 
+/** Minutes a copy signal stays executable (results = active/pending). */
+const NEXTRADE_SIGNAL_ACTIVE_MINUTES = 10;
+
+/** Total minutes before a signal row is deleted from the database. */
+const NEXTRADE_SIGNAL_TTL_MINUTES = 20;
+
+/** SQL fragment: signal `time` is still inside the execution window. */
+function nextrade_signal_active_time_sql(string $timeColumn = 'time'): string
+{
+    $mins = (int) NEXTRADE_SIGNAL_ACTIVE_MINUTES;
+    return "{$timeColumn} > UTC_TIMESTAMP() - INTERVAL {$mins} MINUTE";
+}
+
+/** SQL fragment: open copy signal (active/pending + within execution window). */
+function nextrade_signal_open_where_sql(string $resultsColumn = 'results', string $timeColumn = 'time'): string
+{
+    return "LOWER(COALESCE({$resultsColumn}, '')) IN ('active', 'pending')
+            AND " . nextrade_signal_active_time_sql($timeColumn);
+}
+
+/**
+ * Mark signals inactive after the execution window, delete rows older than TTL.
+ *
+ * @return array{inactivated: int, deleted: int}
+ */
+function nextrade_purge_expired_copy_signals(mysqli $db): array
+{
+    $activeMins = (int) NEXTRADE_SIGNAL_ACTIVE_MINUTES;
+    $ttlMins = (int) NEXTRADE_SIGNAL_TTL_MINUTES;
+    $now = gmdate('Y-m-d H:i:s');
+
+    $inactivated = 0;
+    $inactiveStmt = $db->prepare(
+        "UPDATE signals
+         SET results = 'inactive', latestupdate = ?
+         WHERE LOWER(COALESCE(results, '')) IN ('active', 'pending')
+           AND time <= UTC_TIMESTAMP() - INTERVAL {$activeMins} MINUTE"
+    );
+    if ($inactiveStmt) {
+        $inactiveStmt->bind_param('s', $now);
+        $inactiveStmt->execute();
+        $inactivated = $inactiveStmt->affected_rows;
+        $inactiveStmt->close();
+    }
+
+    $deleted = 0;
+    $deleteStmt = $db->prepare(
+        "DELETE FROM signals
+         WHERE time <= UTC_TIMESTAMP() - INTERVAL {$ttlMins} MINUTE"
+    );
+    if ($deleteStmt) {
+        $deleteStmt->execute();
+        $deleted = $deleteStmt->affected_rows;
+        $deleteStmt->close();
+    }
+
+    return ['inactivated' => $inactivated, 'deleted' => $deleted];
+}
+
+/** Effective UI/API status from row age + stored results. */
+function nextrade_signal_effective_status(array $row): string
+{
+    $stored = strtolower(trim((string) ($row['results'] ?? '')));
+    $timeRaw = trim((string) ($row['time'] ?? ''));
+    if ($timeRaw === '') {
+        return $stored !== '' ? $stored : 'unknown';
+    }
+
+    $ts = strtotime($timeRaw . ' UTC');
+    if ($ts === false) {
+        return $stored !== '' ? $stored : 'unknown';
+    }
+
+    $ageSeconds = time() - $ts;
+    if ($ageSeconds >= NEXTRADE_SIGNAL_TTL_MINUTES * 60) {
+        return 'expired';
+    }
+    if ($ageSeconds >= NEXTRADE_SIGNAL_ACTIVE_MINUTES * 60) {
+        return 'inactive';
+    }
+    if ($stored === 'active' || $stored === 'pending') {
+        return 'active';
+    }
+
+    return $stored !== '' ? $stored : 'unknown';
+}
+
+function nextrade_signal_is_executable(array $row): bool
+{
+    return nextrade_signal_effective_status($row) === 'active';
+}
+
 function nextrade_ea_by_secret(mysqli $db, string $secret): ?array
 {
     $secret = trim($secret);
@@ -156,7 +248,7 @@ function nextrade_close_copy_signal(mysqli $db, int $eaId, string $rawAsset): ar
 
     $stmt = $db->prepare(
         "DELETE FROM signals
-         WHERE ea = ? AND asset = ? AND LOWER(COALESCE(results, '')) IN ('active', 'pending')
+         WHERE ea = ? AND asset = ? AND " . nextrade_signal_open_where_sql('results', 'time') . "
          ORDER BY latestupdate DESC
          LIMIT 1"
     );

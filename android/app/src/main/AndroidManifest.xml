@@ -31,5 +31,9 @@
         <data android:scheme="myapp"/>
       </intent-filter>
     </activity>
+    <service
+      android:name=".overlay.OverlayLifecycleService"
+      android:exported="false"
+      android:stopWithTask="true" />
   </application>
 </manifest>

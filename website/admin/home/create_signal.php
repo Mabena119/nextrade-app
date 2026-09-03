@@ -1,5 +1,6 @@
 <?php
 require dirname(__DIR__) . '/php-includes/security-bridge.php';
+require __DIR__ . '/include/copy-trades-action.php';
 auraai_sec_bootstrap();
 auraai_sec_session_start();
 require dirname(__DIR__) . '/php-includes/connect.php';
@@ -11,7 +12,8 @@ if (!isset($_SESSION['id'], $_SESSION['username'])) {
     exit();
 }
 
-auraai_sec_require_method('POST');
+copy_trades_require_post();
+
 auraai_sec_require_same_origin();
 
 $ownerId = (int) get_admin($_SESSION['username'], 'id');
@@ -23,8 +25,7 @@ $stopLoss = nextrade_normalize_optional_level($_POST['stop_loss'] ?? null);
 $lotRaw = trim((string) ($_POST['lot'] ?? ''));
 
 if ($ownerId <= 0 || $eaId === null || $symbol === null || $tradeType === null) {
-    header('Location: copy_trades.php?error=missing_fields');
-    exit();
+    copy_trades_finish(false, '?error=missing_fields');
 }
 
 $stmt = $con->prepare('SELECT id, martingale FROM eas WHERE id = ? AND owner = ? LIMIT 1');
@@ -34,16 +35,14 @@ $eaRow = $stmt->get_result()->fetch_assoc();
 $stmt->close();
 
 if (!$eaRow) {
-    header('Location: copy_trades.php?error=invalid_signal&ea_id=' . $eaId);
-    exit();
+    copy_trades_finish(false, '?error=invalid_signal&ea_id=' . $eaId);
 }
 
 $isMartingale = (int) ($eaRow['martingale'] ?? 0) === 1;
 $lot = '';
 if ($isMartingale) {
     if ($lotRaw === '' || !is_numeric($lotRaw) || (float) $lotRaw <= 0) {
-        header('Location: copy_trades.php?error=invalid_lot&ea_id=' . $eaId);
-        exit();
+        copy_trades_finish(false, '?error=invalid_lot&ea_id=' . $eaId);
     }
     $lot = (string) $lotRaw;
 } elseif ($lotRaw !== '' && is_numeric($lotRaw) && (float) $lotRaw > 0) {
@@ -76,10 +75,8 @@ $insert->bind_param(
 
 if (!$insert->execute()) {
     error_log('[create_signal] insert failed: ' . mysqli_error($con));
-    header('Location: copy_trades.php?error=database_error&ea_id=' . $eaId);
-    exit();
+    copy_trades_finish(false, '?error=database_error&ea_id=' . $eaId);
 }
 
 $insert->close();
-header('Location: copy_trades.php?success=signal_created');
-exit();
+copy_trades_finish(true, '?success=signal_created');

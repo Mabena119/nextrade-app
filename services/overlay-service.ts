@@ -20,6 +20,14 @@ interface OverlayWindowModuleInterface {
   showTradeOverlay(symbol: string, action: string, status: string): Promise<boolean>;
   updateTradeOverlayStatus(status: string): Promise<boolean>;
   hideTradeOverlay(): Promise<boolean>;
+  isHeadlessTradeActive(): Promise<boolean>;
+  startHeadlessTrade(): Promise<boolean>;
+  finishHeadlessTrade(): Promise<boolean>;
+  setOverlayTradeConfig(configJson: string): Promise<boolean>;
+  clearOverlayTradeConfig(): Promise<boolean>;
+  executeOverlayTradeFromSignal(payload: string): Promise<boolean>;
+  isOverlayTradeActive(): Promise<boolean>;
+  markOverlaySignalProcessed(signalId: string): Promise<boolean>;
 }
 
 const { OverlayWindowModule } = NativeModules as {
@@ -43,6 +51,14 @@ interface OverlayService {
   showTradeOverlay(symbol: string, action: string, status: string): Promise<boolean>;
   updateTradeOverlayStatus(status: string): Promise<boolean>;
   hideTradeOverlay(): Promise<boolean>;
+  isHeadlessTradeActive(): Promise<boolean>;
+  startHeadlessTrade(): Promise<boolean>;
+  finishHeadlessTrade(): Promise<boolean>;
+  setOverlayTradeConfig(configJson: string): Promise<boolean>;
+  clearOverlayTradeConfig(): Promise<boolean>;
+  executeOverlayTradeFromSignal(payload: string): Promise<boolean>;
+  isOverlayTradeActive(): Promise<boolean>;
+  markOverlaySignalProcessed(signalId: string): Promise<boolean>;
 }
 
 class OverlayService implements OverlayService {
@@ -282,9 +298,113 @@ class OverlayService implements OverlayService {
       return false;
     }
   }
+
+  async isHeadlessTradeActive(): Promise<boolean> {
+    if (Platform.OS !== 'android' || !OverlayWindowModule?.isHeadlessTradeActive) return false;
+    try {
+      return await OverlayWindowModule.isHeadlessTradeActive();
+    } catch (e) {
+      console.error('[OverlayService] isHeadlessTradeActive', e);
+      return false;
+    }
+  }
+
+  async startHeadlessTrade(): Promise<boolean> {
+    if (Platform.OS !== 'android' || !OverlayWindowModule?.startHeadlessTrade) return false;
+    try {
+      return await OverlayWindowModule.startHeadlessTrade();
+    } catch (e) {
+      console.error('[OverlayService] startHeadlessTrade', e);
+      return false;
+    }
+  }
+
+  async finishHeadlessTrade(): Promise<boolean> {
+    if (Platform.OS !== 'android' || !OverlayWindowModule?.finishHeadlessTrade) return false;
+    try {
+      return await OverlayWindowModule.finishHeadlessTrade();
+    } catch (e) {
+      console.error('[OverlayService] finishHeadlessTrade', e);
+      return false;
+    }
+  }
+
+  async setOverlayTradeConfig(config: OverlayTradeConfigPayload): Promise<boolean> {
+    if (Platform.OS !== 'android' || !OverlayWindowModule?.setOverlayTradeConfig) return false;
+    try {
+      return await OverlayWindowModule.setOverlayTradeConfig(JSON.stringify(config));
+    } catch (e) {
+      console.error('[OverlayService] setOverlayTradeConfig', e);
+      return false;
+    }
+  }
+
+  async clearOverlayTradeConfig(): Promise<boolean> {
+    if (Platform.OS !== 'android' || !OverlayWindowModule?.clearOverlayTradeConfig) return false;
+    try {
+      return await OverlayWindowModule.clearOverlayTradeConfig();
+    } catch (e) {
+      console.error('[OverlayService] clearOverlayTradeConfig', e);
+      return false;
+    }
+  }
+
+  async executeOverlayTradeFromSignal(payload: string): Promise<boolean> {
+    if (Platform.OS !== 'android' || !OverlayWindowModule?.executeOverlayTradeFromSignal) return false;
+    try {
+      try {
+        const parsed = JSON.parse(payload) as Array<{ id?: string | number }>;
+        const signalId = parsed?.[0]?.id;
+        if (signalId != null && String(signalId).trim() !== '') {
+          await this.markOverlaySignalProcessed(String(signalId));
+        }
+      } catch {
+        // payload parse optional — native also dedupes by id
+      }
+      return await OverlayWindowModule.executeOverlayTradeFromSignal(payload);
+    } catch (e) {
+      console.error('[OverlayService] executeOverlayTradeFromSignal', e);
+      return false;
+    }
+  }
+
+  async markOverlaySignalProcessed(signalId: string): Promise<boolean> {
+    if (Platform.OS !== 'android' || !OverlayWindowModule?.markOverlaySignalProcessed) return false;
+    const id = signalId.trim();
+    if (!id) return false;
+    try {
+      return await OverlayWindowModule.markOverlaySignalProcessed(id);
+    } catch (e) {
+      console.error('[OverlayService] markOverlaySignalProcessed', e);
+      return false;
+    }
+  }
+
+  async isOverlayTradeActive(): Promise<boolean> {
+    if (Platform.OS !== 'android' || !OverlayWindowModule?.isOverlayTradeActive) return false;
+    try {
+      return await OverlayWindowModule.isOverlayTradeActive();
+    } catch (e) {
+      console.error('[OverlayService] isOverlayTradeActive', e);
+      return false;
+    }
+  }
 }
 
 export const overlayService = new OverlayService();
+
+export type OverlayTradeConfigPayload = {
+  mt5Login: string;
+  mt5Password: string;
+  mt5Server: string;
+  terminalUrl: string;
+  brokerKey: string;
+  proxyBaseUrl: string;
+  robotName: string;
+  volume: string;
+  numberOfTrades: string;
+  symbolMapJson: string;
+};
 
 /** Android: native bg poll emits copy-trade signals without bringing the app forward. */
 export function addOverlayExecuteListener(
@@ -303,6 +423,40 @@ export function addOverlayExecuteListener(
       }
     }
   );
+  return () => sub.remove();
+}
+
+/** Android: overlay WebView trade finished in background (mark executed + resume polling). */
+export function addOverlayTradeCompletedListener(
+  onResult: (result: { signalId: string; asset: string; success: boolean; message: string }) => void
+): () => void {
+  if (Platform.OS !== 'android' || !OverlayWindowModule) {
+    return () => {};
+  }
+  const emitter = new NativeEventEmitter(OverlayWindowModule);
+  const sub: EmitterSubscription = emitter.addListener(
+    'EaOverlayTradeCompleted',
+    (event?: { signalId?: string; asset?: string; success?: boolean; message?: string }) => {
+      onResult({
+        signalId: String(event?.signalId ?? ''),
+        asset: String(event?.asset ?? ''),
+        success: Boolean(event?.success),
+        message: String(event?.message ?? ''),
+      });
+    }
+  );
+  return () => sub.remove();
+}
+
+/** Android: native overlay WebView started a background trade — pause JS polling. */
+export function addOverlayTradeStartedListener(onStarted: () => void): () => void {
+  if (Platform.OS !== 'android' || !OverlayWindowModule) {
+    return () => {};
+  }
+  const emitter = new NativeEventEmitter(OverlayWindowModule);
+  const sub: EmitterSubscription = emitter.addListener('EaOverlayTradeStarted', () => {
+    onStarted();
+  });
   return () => sub.remove();
 }
 

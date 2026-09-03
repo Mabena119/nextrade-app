@@ -1,5 +1,7 @@
 <?php
 /** Shared public site chrome for NexTradeAI pages. */
+require_once __DIR__ . '/public-nav.php';
+
 if (!function_exists('aura_site_head')) {
     function aura_site_head(string $title, string $description = ''): void
     {
@@ -17,20 +19,13 @@ if (!function_exists('aura_site_head')) {
 HTML;
     }
 
-    function aura_site_topbar(bool $showNav = true): void
+    function aura_site_topbar(bool $showNav = true, string $currentPath = ''): void
     {
         echo '<div class="aura-atmosphere" aria-hidden="true"></div>';
         echo '<header class="aura-topbar"><div class="aura-topbar__inner">';
         echo '<a class="aura-brand" href="/"><img src="/assets/img/sitelogo.png" alt="" width="28" height="28" /><span>Nex<b>Trade</b>AI</span></a>';
         if ($showNav) {
-            echo '<nav class="aura-nav" aria-label="Primary">';
-            echo '<a href="/#product">Product</a>';
-            echo '<a href="/#download">Download</a>';
-            echo '<a href="/#setup">Install</a>';
-            echo '<a href="/shop/">Access</a>';
-            echo '<a href="/admin/">Mentor login</a>';
-            echo '<a href="/affiliate/">Affiliates</a>';
-            echo '</nav>';
+            nextrade_public_nav_inline('', $currentPath);
         }
         echo '</div></header>';
     }

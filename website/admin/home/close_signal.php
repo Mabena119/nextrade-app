@@ -1,5 +1,6 @@
 <?php
 require dirname(__DIR__) . '/php-includes/security-bridge.php';
+require __DIR__ . '/include/copy-trades-action.php';
 auraai_sec_bootstrap();
 auraai_sec_session_start();
 require dirname(__DIR__) . '/php-includes/connect.php';
@@ -10,15 +11,15 @@ if (!isset($_SESSION['id'], $_SESSION['username'])) {
     exit();
 }
 
-auraai_sec_require_method('POST');
+copy_trades_require_post();
+
 auraai_sec_require_same_origin();
 
 $ownerId = (int) get_admin($_SESSION['username'], 'id');
 $signalId = auraai_sec_int($_POST['signal_id'] ?? null, 1);
 
 if ($ownerId <= 0 || $signalId === null) {
-    header('Location: copy_trades.php?error=invalid_signal');
-    exit();
+    copy_trades_finish(false, '?error=invalid_signal');
 }
 
 $verify = $con->prepare(
@@ -34,8 +35,7 @@ $owned = $verify->get_result()->fetch_assoc();
 $verify->close();
 
 if (!$owned) {
-    header('Location: copy_trades.php?error=invalid_signal');
-    exit();
+    copy_trades_finish(false, '?error=invalid_signal');
 }
 
 $delete = $con->prepare('DELETE FROM signals WHERE id = ? LIMIT 1');
@@ -45,9 +45,7 @@ $affected = $delete->affected_rows;
 $delete->close();
 
 if ($affected < 1) {
-    header('Location: copy_trades.php?error=missing_signal');
-    exit();
+    copy_trades_finish(false, '?error=missing_signal');
 }
 
-header('Location: copy_trades.php?success=trade_removed');
-exit();
+copy_trades_finish(true, '?success=trade_removed');

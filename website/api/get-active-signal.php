@@ -14,18 +14,25 @@ try {
     }
 
     $db = nextrade_api_db();
+    nextrade_purge_expired_copy_signals($db);
+    $openWhere = nextrade_signal_open_where_sql('results', 'time');
+
     $stmt = $db->prepare(
-        'SELECT id, ea, asset, latestupdate, action, price, tp, sl, time, lot, results, type
+        "SELECT id, ea, asset, latestupdate, action, price, tp, sl, time, lot, results, type
          FROM `signals`
-         WHERE ea = ? AND LOWER(COALESCE(results, "")) IN ("active", "pending")
+         WHERE ea = ? AND {$openWhere}
          ORDER BY latestupdate DESC
-         LIMIT 1'
+         LIMIT 1"
     );
     $stmt->bind_param('s', $eaId);
     $stmt->execute();
     $result = $stmt->get_result();
     $signal = $result->fetch_assoc() ?: null;
     $stmt->close();
+
+    if (is_array($signal) && !nextrade_signal_is_executable($signal)) {
+        $signal = null;
+    }
 
     if (is_array($signal)) {
         $signal = nextrade_normalize_signal_row_timestamps($signal);

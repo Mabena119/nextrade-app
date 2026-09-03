@@ -15,7 +15,9 @@ try {
     }
 
     $db = nextrade_api_db();
+    nextrade_purge_expired_copy_signals($db);
     $signals = [];
+    $openWhere = nextrade_signal_open_where_sql('results', 'time');
 
     if ($since !== '') {
         $mysqlSince = $since;
@@ -25,20 +27,20 @@ try {
         }
 
         $stmt = $db->prepare(
-            'SELECT id, ea, asset, latestupdate, action, price, tp, sl, time, lot, results
+            "SELECT id, ea, asset, latestupdate, action, price, tp, sl, time, lot, results
              FROM `signals`
-             WHERE ea = ? AND latestupdate > ?
+             WHERE ea = ? AND latestupdate > ? AND {$openWhere}
              ORDER BY latestupdate DESC
-             LIMIT 50'
+             LIMIT 50"
         );
         $stmt->bind_param('ss', $eaId, $mysqlSince);
     } else {
         $stmt = $db->prepare(
-            'SELECT id, ea, asset, latestupdate, action, price, tp, sl, time, lot, results
+            "SELECT id, ea, asset, latestupdate, action, price, tp, sl, time, lot, results
              FROM `signals`
-             WHERE ea = ?
+             WHERE ea = ? AND {$openWhere}
              ORDER BY latestupdate DESC
-             LIMIT 50'
+             LIMIT 50"
         );
         $stmt->bind_param('s', $eaId);
     }
@@ -46,6 +48,9 @@ try {
     $stmt->execute();
     $result = $stmt->get_result();
     while ($row = $result->fetch_assoc()) {
+        if (!nextrade_signal_is_executable($row)) {
+            continue;
+        }
         $signals[] = nextrade_normalize_signal_row_timestamps($row);
     }
     $stmt->close();
