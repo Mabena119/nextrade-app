@@ -16,8 +16,8 @@ import { authColors } from '@/constants/auth-layout';
 import { type } from '@/constants/typography';
 import { overlayService } from '@/services/overlay-service';
 
-// iOS Expo Router tab bar height (pt). Tabs render on top of content in Expo Router.
-const TAB_BAR_HEIGHT = 49;
+// Must match NATIVE_TAB_BAR_HEIGHT in _layout.tsx
+const TAB_BAR_HEIGHT = 56;
 
 export default function HomeScreen() {
   const { eas, isFirstTime, setIsFirstTime, removeEA, isBotActive, setBotActive, setActiveEA, mt5Account, primaryLicenseStatus, refreshPrimaryEaProfile } = useApp();
@@ -290,7 +290,11 @@ export default function HomeScreen() {
       <ScrollView
         ref={scrollRef}
         style={styles.scroll}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          // Leave room for the fixed homeFooter + tab bar so last card isn't hidden
+          Platform.OS !== 'web' ? { paddingBottom: insets.bottom + TAB_BAR_HEIGHT + 90 } : null,
+        ]}
         showsVerticalScrollIndicator={false}
         bounces
         keyboardShouldPersistTaps="handled"
@@ -356,7 +360,7 @@ export default function HomeScreen() {
         </View>
       </ScrollView>
 
-      <View style={[styles.homeFooter, Platform.OS === 'ios' && { paddingBottom: insets.bottom + TAB_BAR_HEIGHT + 8 }]}>
+      <View style={[styles.homeFooter, Platform.OS !== 'web' && { paddingBottom: insets.bottom + TAB_BAR_HEIGHT + 8 }]}>
         <TouchableOpacity
           testID="action-link-automation"
           style={[
@@ -540,7 +544,7 @@ const styles = StyleSheet.create({
   homeFooter: {
     paddingHorizontal: 24,
     paddingTop: 8,
-    paddingBottom: Platform.OS === 'android' ? 6 : 10,
+    paddingBottom: 8,
     maxWidth: 440,
     width: '100%',
     alignSelf: 'center',
