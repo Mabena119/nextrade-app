@@ -16,10 +16,14 @@ import { authColors } from '@/constants/auth-layout';
 import { type } from '@/constants/typography';
 import { overlayService } from '@/services/overlay-service';
 
+// iOS Expo Router tab bar height (pt). Tabs render on top of content in Expo Router.
+const TAB_BAR_HEIGHT = 49;
+
 export default function HomeScreen() {
   const { eas, isFirstTime, setIsFirstTime, removeEA, isBotActive, setBotActive, setActiveEA, mt5Account, primaryLicenseStatus, refreshPrimaryEaProfile } = useApp();
   const { theme, toggleTheme } = useTheme();
   const scrollRef = useRef<ScrollView>(null);
+  const insets = useSafeAreaInsets();
 
   // Safely get the primary EA (first one in the list)
   const primaryEA = Array.isArray(eas) && eas.length > 0 ? eas[0] : null;
@@ -280,24 +284,13 @@ export default function HomeScreen() {
 
   return (
     <SafeAreaView
-      style={[
-        styles.container,
-        {
-          backgroundColor: safeScreenBg,
-          // iOS tab bar is effectively "overlaying" this scene; reserve space so the bottom footer
-          // and last card controls are never covered by the home indicator / tab bar.
-          paddingBottom: Platform.OS === 'ios' ? 56 : 0,
-        },
-      ]}
-      edges={Platform.OS === 'android' ? ['top', 'right', 'left'] : ['top', 'right', 'bottom', 'left']}
+      style={[styles.container, { backgroundColor: safeScreenBg }]}
+      edges={Platform.OS === 'android' ? ['top', 'right', 'left'] : ['top', 'right', 'left']}
     >
       <ScrollView
         ref={scrollRef}
         style={styles.scroll}
-        contentContainerStyle={[
-          styles.scrollContent,
-          Platform.OS === 'ios' ? { paddingBottom: 16 + 56 } : null,
-        ]}
+        contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         bounces
         keyboardShouldPersistTaps="handled"
@@ -363,7 +356,7 @@ export default function HomeScreen() {
         </View>
       </ScrollView>
 
-      <View style={styles.homeFooter}>
+      <View style={[styles.homeFooter, Platform.OS === 'ios' && { paddingBottom: insets.bottom + TAB_BAR_HEIGHT + 8 }]}>
         <TouchableOpacity
           testID="action-link-automation"
           style={[
