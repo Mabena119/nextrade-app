@@ -643,6 +643,9 @@ export default function MetaTraderScreen() {
   const brokerFetchRef = useRef<any>(null);
   const mt5WebViewRef = useRef<any>(null);
   const mt4WebViewRef = useRef<any>(null);
+  const serverInputRef = useRef<TextInput>(null);
+  /** After picking a server, ignore the TextInput focus that returns when the modal closes (prevents reopen loop). */
+  const skipBrokerListOpenRef = useRef(false);
   const authTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fallbackSuccessRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const brokerFetchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -3174,6 +3177,7 @@ export default function MetaTraderScreen() {
                   >
                     <Database color={theme.colors.textMuted} size={18} style={styles.serverIcon} />
                     <TextInput
+                      ref={serverInputRef}
                       style={[styles.serverInput, { color: theme.colors.textPrimary }]}
                       placeholder={activeTab === 'MT4' ? 'Search MT4 broker…' : 'Select HF Markets server…'}
                       placeholderTextColor={theme.colors.textMuted}
@@ -3182,7 +3186,16 @@ export default function MetaTraderScreen() {
                         setServer(text);
                         setShowBrokerList(true);
                       }}
-                      onFocus={() => setShowBrokerList(true)}
+                      onFocus={() => {
+                        // Selecting a row closes the modal; iOS/Android often refocus the input and
+                        // would reopen the sheet forever without this guard.
+                        if (skipBrokerListOpenRef.current) {
+                          skipBrokerListOpenRef.current = false;
+                          serverInputRef.current?.blur();
+                          return;
+                        }
+                        setShowBrokerList(true);
+                      }}
                       autoCapitalize="none"
                       editable
                     />
@@ -3200,7 +3213,16 @@ export default function MetaTraderScreen() {
                     ) : null}
                     <TouchableOpacity
                       style={styles.serverIconBtn}
-                      onPress={() => setShowBrokerList((open) => !open)}
+                      onPress={() => {
+                        if (showBrokerList) {
+                          skipBrokerListOpenRef.current = true;
+                          serverInputRef.current?.blur();
+                          Keyboard.dismiss();
+                          setShowBrokerList(false);
+                        } else {
+                          setShowBrokerList(true);
+                        }
+                      }}
                       activeOpacity={0.8}
                       accessibilityLabel={showBrokerList ? 'Hide servers' : 'Show servers'}
                     >
@@ -3419,13 +3441,23 @@ export default function MetaTraderScreen() {
         visible={showBrokerList}
         transparent
         animationType="slide"
-        onRequestClose={() => setShowBrokerList(false)}
+        onRequestClose={() => {
+          skipBrokerListOpenRef.current = true;
+          serverInputRef.current?.blur();
+          Keyboard.dismiss();
+          setShowBrokerList(false);
+        }}
         statusBarTranslucent
       >
         <View style={styles.brokerModalRoot}>
           <Pressable
             style={styles.brokerModalBackdrop}
-            onPress={() => setShowBrokerList(false)}
+            onPress={() => {
+              skipBrokerListOpenRef.current = true;
+              serverInputRef.current?.blur();
+              Keyboard.dismiss();
+              setShowBrokerList(false);
+            }}
             accessibilityRole="button"
             accessibilityLabel="Close server list"
           />
@@ -3458,7 +3490,12 @@ export default function MetaTraderScreen() {
                   </TouchableOpacity>
                 ) : null}
                 <TouchableOpacity
-                  onPress={() => setShowBrokerList(false)}
+                  onPress={() => {
+                    skipBrokerListOpenRef.current = true;
+                    serverInputRef.current?.blur();
+                    Keyboard.dismiss();
+                    setShowBrokerList(false);
+                  }}
                   style={styles.brokerPanelIconBtn}
                 >
                   <X color={theme.colors.textMuted} size={16} strokeWidth={2} />
@@ -3503,6 +3540,9 @@ export default function MetaTraderScreen() {
                         },
                       ]}
                       onPress={() => {
+                        skipBrokerListOpenRef.current = true;
+                        Keyboard.dismiss();
+                        serverInputRef.current?.blur();
                         setServer(activeTab === 'MT5' ? normalizeMt5ServerKey(item) : item);
                         setShowBrokerList(false);
                       }}
