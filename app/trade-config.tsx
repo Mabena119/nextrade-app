@@ -2,7 +2,7 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput } from 'react-native';
 import { Trash2 } from 'lucide-react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useApp, type MT5TradeMode } from '@/providers/app-provider';
+import { useApp } from '@/providers/app-provider';
 import { useTheme } from '@/providers/theme-provider';
 import { AuraScreen, AuraHeader, AuraCard, AuraButton } from '@/components/aura';
 import { auraUi } from '@/constants/aura-ui';
@@ -52,15 +52,8 @@ export default function TradeConfigScreen() {
   const autoLotDisplay = savedMt5 ? savedMt5.lotSize : preset.lotSize;
   const autoTradesDisplay = savedMt5 ? savedMt5.numberOfTrades : preset.numberOfTrades;
 
-  const [tradeMode, setTradeMode] = useState<MT5TradeMode>('swing');
   const [manualLot, setManualLot] = useState('0.01');
   const [manualTrades, setManualTrades] = useState('1');
-
-  useEffect(() => {
-    if (!symbol) return;
-    const existing = mt5Symbols.find((s) => s.symbol === symbol);
-    setTradeMode(existing?.tradeMode === 'scalper' ? 'scalper' : 'swing');
-  }, [symbol, mt5Symbols]);
 
   useEffect(() => {
     if (!symbol) return;
@@ -101,7 +94,6 @@ export default function TradeConfigScreen() {
       lotSize: lot,
       direction: 'BOTH',
       numberOfTrades,
-      tradeMode,
     });
     router.back();
   };
@@ -121,7 +113,7 @@ export default function TradeConfigScreen() {
         subtitle={
           isMartingale
             ? 'Martingale automation — choose lot from signal or your own'
-            : 'Lots: Auto/Manual · Scalper/Swing = execution style'
+            : 'Lots: Auto (AI) or Manual'
         }
         onBack={handleBack}
       />
@@ -213,43 +205,6 @@ export default function TradeConfigScreen() {
                 </View>
               </>
             )}
-          </View>
-
-          <View style={styles.configSection}>
-            <Text style={[styles.sectionTitle, { color: theme.colors.textMuted }]}>TRADE MODE</Text>
-            <View style={styles.modeRow}>
-              {(['scalper', 'swing'] as const).map((m) => {
-                const selected = tradeMode === m;
-                return (
-                  <TouchableOpacity
-                    key={m}
-                    onPress={() => setTradeMode(m)}
-                    activeOpacity={0.75}
-                    style={[
-                      styles.modeChip,
-                      {
-                        borderColor: selected ? theme.colors.accent : theme.colors.borderColor,
-                        backgroundColor: selected
-                          ? `${theme.colors.accent}22`
-                          : 'rgba(255,255,255,0.04)',
-                      },
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.modeChipText,
-                        {
-                          color: theme.colors.textPrimary,
-                          fontWeight: selected ? '800' : '600',
-                        },
-                      ]}
-                    >
-                      {m === 'scalper' ? 'Scalper' : 'Swing'}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
           </View>
 
           {isMartingale && !useOwnMartingaleLot ? (
