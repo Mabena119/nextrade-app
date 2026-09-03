@@ -290,11 +290,7 @@ export default function HomeScreen() {
       <ScrollView
         ref={scrollRef}
         style={styles.scroll}
-        contentContainerStyle={[
-          styles.scrollContent,
-          // Leave room for the fixed homeFooter + tab bar so last card isn't hidden
-          Platform.OS !== 'web' ? { paddingBottom: insets.bottom + TAB_BAR_HEIGHT + 90 } : null,
-        ]}
+        contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
         bounces
         keyboardShouldPersistTaps="handled"
@@ -358,33 +354,34 @@ export default function HomeScreen() {
             </>
           )}
         </View>
-      </ScrollView>
 
-      <View style={[styles.homeFooter, Platform.OS !== 'web' && { paddingBottom: insets.bottom + TAB_BAR_HEIGHT + 24 }]}>
-        <TouchableOpacity
-          testID="action-link-automation"
-          style={[
-            styles.addEAButton,
-            {
-              borderColor: theme.colors.accent,
-              backgroundColor: theme.colors.accent,
-            },
-          ]}
-          onPress={handleAddNewEA}
-          activeOpacity={0.88}
-        >
-          <View style={[styles.addIconWrap, { backgroundColor: `${theme.colors.onAccent}18` }]}>
-            <Plus color={theme.colors.onAccent} size={18} strokeWidth={2.2} />
-          </View>
-          <View style={styles.addEATextContainer}>
-            <Text style={[styles.addEATitle, { color: theme.colors.onAccent }]}>Link automation</Text>
-            <Text style={[styles.addEASubtitle, { color: `${theme.colors.onAccent}B8` }]}>
-              Add another automation key
-            </Text>
-          </View>
-          <ChevronRight color={`${theme.colors.onAccent}CC`} size={18} strokeWidth={1.8} />
-        </TouchableOpacity>
-      </View>
+        {/* Link automation — inside scroll so it never overlaps the tab bar */}
+        <View style={[styles.homeFooter, { paddingBottom: insets.bottom + TAB_BAR_HEIGHT + 16 }]}>
+          <TouchableOpacity
+            testID="action-link-automation"
+            style={[
+              styles.addEAButton,
+              {
+                borderColor: theme.colors.accent,
+                backgroundColor: theme.colors.accent,
+              },
+            ]}
+            onPress={handleAddNewEA}
+            activeOpacity={0.88}
+          >
+            <View style={[styles.addIconWrap, { backgroundColor: `${theme.colors.onAccent}18` }]}>
+              <Plus color={theme.colors.onAccent} size={18} strokeWidth={2.2} />
+            </View>
+            <View style={styles.addEATextContainer}>
+              <Text style={[styles.addEATitle, { color: theme.colors.onAccent }]}>Link automation</Text>
+              <Text style={[styles.addEASubtitle, { color: `${theme.colors.onAccent}B8` }]}>
+                Add another automation key
+              </Text>
+            </View>
+            <ChevronRight color={`${theme.colors.onAccent}CC`} size={18} strokeWidth={1.8} />
+          </TouchableOpacity>
+        </View>
+      </ScrollView>
 
       <Modal
         visible={removeConfirmVisible}
