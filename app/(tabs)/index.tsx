@@ -360,7 +360,7 @@ export default function HomeScreen() {
         </View>
       </ScrollView>
 
-      <View style={[styles.homeFooter, Platform.OS !== 'web' && { paddingBottom: insets.bottom + TAB_BAR_HEIGHT + 8 }]}>
+      <View style={[styles.homeFooter, Platform.OS !== 'web' && { paddingBottom: insets.bottom + TAB_BAR_HEIGHT + 24 }]}>
         <TouchableOpacity
           testID="action-link-automation"
           style={[
