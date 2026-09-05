@@ -1,6 +1,6 @@
 <?php
 /**
- * Shared marketing nav — Product · How it works · Download · Install
+ * Shared marketing nav — Product · How it works · Tutorial · Download · Install
  */
 require_once __DIR__ . '/site-config.php';
 
