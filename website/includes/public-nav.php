@@ -11,6 +11,7 @@ if (!function_exists('nextrade_public_nav_items')) {
         return [
             ['key' => 'product', 'href' => '/#product', 'label' => 'Product'],
             ['key' => 'flow', 'href' => '/#flow', 'label' => 'How it works'],
+            ['key' => 'tutorial', 'href' => '/#tutorial', 'label' => 'Tutorial'],
             ['key' => 'download', 'href' => '/#download', 'label' => 'Download'],
             ['key' => 'install', 'href' => '/how-to-install/', 'label' => 'Install'],
         ];

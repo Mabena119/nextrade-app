@@ -270,6 +270,23 @@
             font-size: 0.95rem;
         }
 
+        .tut-frame {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 16 / 9;
+            border-radius: 22px;
+            overflow: hidden;
+            border: 1px solid var(--line);
+            background: #070708;
+        }
+        .tut-frame iframe {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            border: 0;
+        }
+
         .tiles {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -390,6 +407,7 @@
             <ul class="nav-links">
                 <li><a href="#product">Product</a></li>
                 <li><a href="#flow">How it works</a></li>
+                <li><a href="#tutorial">Tutorial</a></li>
                 <li><a href="#download">Download</a></li>
                 <li><a href="/how-to-install/">Install</a></li>
             </ul>
@@ -403,6 +421,7 @@
     <div class="drawer" id="drawer" hidden>
         <a href="#product">Product</a>
         <a href="#flow">How it works</a>
+        <a href="#tutorial">Tutorial</a>
         <a href="#download">Download</a>
         <a href="/how-to-install/">Install</a>
     </div>
@@ -467,6 +486,26 @@
                         <p>Link your account and manage everything on the go.</p>
                     </li>
                 </ol>
+            </div>
+        </section>
+
+        <section id="tutorial">
+            <div class="wrap">
+                <header class="sec-head">
+                    <p class="kicker">Tutorial</p>
+                    <h2>Watch the walkthrough</h2>
+                    <p>See how to install, connect your license, and go live.</p>
+                </header>
+                <div class="tut-frame">
+                    <iframe
+                        src="https://www.youtube.com/embed/kcyxip_TNgA"
+                        title="NexTradeAI tutorial"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                        referrerpolicy="strict-origin-when-cross-origin"
+                        allowfullscreen
+                        loading="lazy"
+                    ></iframe>
+                </div>
             </div>
         </section>
 
