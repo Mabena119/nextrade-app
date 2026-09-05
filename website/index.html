@@ -166,6 +166,7 @@
         .btn-ghost:hover { border-color: rgba(255,255,255,0.22); }
 
         section { padding: 5.5rem 0; border-top: 1px solid var(--line); }
+        section[id] { scroll-margin-top: calc(var(--nav) + 0.75rem); }
         .sec-head {
             text-align: center;
             max-width: 36rem;
@@ -274,10 +275,8 @@
             position: relative;
             width: 100%;
             aspect-ratio: 16 / 9;
-            border-radius: 22px;
             overflow: hidden;
-            border: 1px solid var(--line);
-            background: #070708;
+            background: #050505;
         }
         .tut-frame iframe {
             position: absolute;
@@ -285,6 +284,29 @@
             width: 100%;
             height: 100%;
             border: 0;
+        }
+        #tutorial {
+            padding: 0;
+            border-top: 1px solid var(--line);
+        }
+        #tutorial .tut-head {
+            width: min(var(--max), calc(100% - var(--gutter) * 2));
+            margin: 0 auto;
+            padding: 3.25rem 0 1.5rem;
+            text-align: center;
+        }
+        #tutorial .tut-head .kicker { margin-bottom: 0.55rem; }
+        #tutorial .tut-head h2 {
+            margin: 0;
+            font-size: clamp(1.65rem, 3vw, 2.2rem);
+            font-weight: 600;
+            letter-spacing: -0.04em;
+            line-height: 1.15;
+        }
+        #tutorial .tut-bleed {
+            width: 100%;
+            border-top: 1px solid var(--line);
+            border-bottom: 1px solid var(--line);
         }
 
         .tiles {
@@ -406,8 +428,8 @@
             </a>
             <ul class="nav-links">
                 <li><a href="#product">Product</a></li>
-                <li><a href="#flow">How it works</a></li>
                 <li><a href="#tutorial">Tutorial</a></li>
+                <li><a href="#flow">How it works</a></li>
                 <li><a href="#download">Download</a></li>
                 <li><a href="/how-to-install/">Install</a></li>
             </ul>
@@ -420,8 +442,8 @@
 
     <div class="drawer" id="drawer" hidden>
         <a href="#product">Product</a>
-        <a href="#flow">How it works</a>
         <a href="#tutorial">Tutorial</a>
+        <a href="#flow">How it works</a>
         <a href="#download">Download</a>
         <a href="/how-to-install/">Install</a>
     </div>
@@ -434,6 +456,26 @@
                 <p>Keep automations online 24/7. Manage licenses. Watch signals. All from your phone.</p>
                 <div class="hero__actions">
                     <a class="btn btn-primary" href="#download">Download</a>
+                    <a class="btn btn-ghost" href="#tutorial">Watch tutorial</a>
+                </div>
+            </div>
+        </section>
+
+        <section id="tutorial">
+            <div class="tut-head">
+                <p class="kicker">Tutorial</p>
+                <h2>Watch the walkthrough</h2>
+            </div>
+            <div class="tut-bleed">
+                <div class="tut-frame">
+                    <iframe
+                        src="https://www.youtube.com/embed/kcyxip_TNgA"
+                        title="NexTradeAI tutorial"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                        referrerpolicy="strict-origin-when-cross-origin"
+                        allowfullscreen
+                        loading="lazy"
+                    ></iframe>
                 </div>
             </div>
         </section>
@@ -486,26 +528,6 @@
                         <p>Link your account and manage everything on the go.</p>
                     </li>
                 </ol>
-            </div>
-        </section>
-
-        <section id="tutorial">
-            <div class="wrap">
-                <header class="sec-head">
-                    <p class="kicker">Tutorial</p>
-                    <h2>Watch the walkthrough</h2>
-                    <p>See how to install, connect your license, and go live.</p>
-                </header>
-                <div class="tut-frame">
-                    <iframe
-                        src="https://www.youtube.com/embed/kcyxip_TNgA"
-                        title="NexTradeAI tutorial"
-                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                        referrerpolicy="strict-origin-when-cross-origin"
-                        allowfullscreen
-                        loading="lazy"
-                    ></iframe>
-                </div>
             </div>
         </section>
 
