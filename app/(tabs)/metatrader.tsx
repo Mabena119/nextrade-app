@@ -3346,10 +3346,9 @@ export default function MetaTraderScreen() {
             Platform.OS
           );
           const mt5LinkUrl = resolveMt5LinkWebViewUrl(server, Platform.OS, mt5ProxyUrl);
-          // Render proxy HTML already injects auth — skip client double-inject.
-          const usesNativeMt5Proxy =
-            Platform.OS !== 'web' && isMt5ProxyWebViewUrl(mt5LinkUrl);
-          const usesDirectTerminalLoad = Platform.OS !== 'web' && !usesNativeMt5Proxy;
+          // Proxy HTML already injects auth — skip client double-inject (web + native).
+          const usesMt5ProxyHtml = isMt5ProxyWebViewUrl(mt5LinkUrl);
+          const usesDirectTerminalLoad = Platform.OS !== 'web' && !usesMt5ProxyHtml;
 
           return (
             <View
@@ -3361,7 +3360,7 @@ export default function MetaTraderScreen() {
                   key={`mt5-web-${mt5WebViewKey}`}
                   scopeId={WEBVIEW_SCOPE_MT5_LINK}
                   url={mt5LinkUrl}
-                  script={mt5LinkScript}
+                  script={usesMt5ProxyHtml ? '' : mt5LinkScript}
                   onMessage={onMT5WebViewMessage}
                   onLoadEnd={() => console.log('MT5 Web WebView loaded')}
                   style={styles.invisibleWebView}
@@ -3372,7 +3371,7 @@ export default function MetaTraderScreen() {
                   url={mt5LinkUrl}
                   postLoadDelayMs={getMt5ShellReadyDelayMs(server, Platform.OS === 'android')}
                   directTerminalLoad={usesDirectTerminalLoad}
-                  script={usesNativeMt5Proxy ? '' : mt5LinkScript}
+                  script={usesMt5ProxyHtml ? '' : mt5LinkScript}
                   brokerServer={server}
                   onMessage={onMT5WebViewMessage}
                   onLoadEnd={() => console.log('MT5 CustomWebView loaded')}

@@ -468,9 +468,10 @@ function connectSheetUiVisible() {
       return false;
     });
     if (bt.indexOf('Connect to account') < 0) return false;
-    return pageHasBrokerAccountsSheet(bt) ||
-      bt.indexOf('Enter Login') >= 0 ||
-      bt.indexOf('Enter Password') >= 0;
+    // Require real form copy — broker chrome alone (e.g. "HF Markets") is not the sheet.
+    return bt.indexOf('Enter Login') >= 0 ||
+      bt.indexOf('Enter Password') >= 0 ||
+      (bt.indexOf('Login') >= 0 && bt.indexOf('Password') >= 0);
   } catch (e) { return false; }
 }
 function mt5LoginFormReady() {

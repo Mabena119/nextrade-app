@@ -182,6 +182,108 @@ function isMt5ProxyPublicHost(hostname: string): boolean {
   );
 }
 
+const MT5_BROKER_COOKIE = 'nextrade_mt5_broker';
+
+function resolveBrokerKeyFromParam(raw: string | null | undefined): string {
+  const trimmed = (raw || '').trim();
+  if (!trimmed) return '';
+  const normalized = normalizeMt5ServerKey(trimmed);
+  if (normalized && MT5_BROKER_URLS[normalized]) return normalized;
+  const brokerKey = trimmed.toLowerCase().replace(/\s+/g, '-');
+  if (MT5_BROKER_BASE_URL_MAP[brokerKey]) {
+    // Prefer canonical key when map hit is a known server key
+    if (MT5_BROKER_URLS[brokerKey]) return brokerKey;
+    for (const key of Object.keys(MT5_BROKER_URLS)) {
+      try {
+        if (resolveMt5BrokerBaseUrl(key) === MT5_BROKER_BASE_URL_MAP[brokerKey]) return key;
+      } catch {
+        /* skip */
+      }
+    }
+  }
+  for (const [key, mappedUrl] of Object.entries(MT5_BROKER_BASE_URL_MAP)) {
+    if (brokerKey.includes(key.replace(/-/g, '')) || key.includes(brokerKey.replace(/-/g, ''))) {
+      if (MT5_BROKER_URLS[key]) return key;
+      for (const serverKey of Object.keys(MT5_BROKER_URLS)) {
+        try {
+          if (resolveMt5BrokerBaseUrl(serverKey) === mappedUrl) return serverKey;
+        } catch {
+          /* skip */
+        }
+      }
+    }
+  }
+  return normalized || '';
+}
+
+/** Cookie so ES module imports (/terminal/*.js without ?broker=) hit the same HFM host as the HTML. */
+function buildMt5BrokerCookieHeader(broker: string, request: Request): string {
+  const key = resolveBrokerKeyFromParam(broker) || DEFAULT_MT5_BROKER;
+  const forwarded = (request.headers.get('x-forwarded-proto') || '').split(',')[0]?.trim().toLowerCase();
+  const urlProto = (() => {
+    try {
+      return new URL(request.url).protocol;
+    } catch {
+      return '';
+    }
+  })();
+  const isHttps = forwarded === 'https' || urlProto === 'https:';
+  // Cross-site iframe (Expo web → Render proxy) needs SameSite=None; Secure.
+  if (isHttps) {
+    return `${MT5_BROKER_COOKIE}=${encodeURIComponent(key)}; Path=/; Max-Age=7200; SameSite=None; Secure`;
+  }
+  return `${MT5_BROKER_COOKIE}=${encodeURIComponent(key)}; Path=/; Max-Age=7200; SameSite=Lax`;
+}
+
+function readMt5BrokerCookie(request: Request): string {
+  const cookie = request.headers.get('cookie') || '';
+  const match = cookie.match(new RegExp(`(?:^|;\\s*)${MT5_BROKER_COOKIE}=([^;]+)`));
+  if (!match?.[1]) return '';
+  try {
+    return resolveBrokerKeyFromParam(decodeURIComponent(match[1]));
+  } catch {
+    return resolveBrokerKeyFromParam(match[1]);
+  }
+}
+
+function readMt5BrokerFromReferer(referer: string): string {
+  if (!referer) return '';
+  try {
+    const refUrl = new URL(referer);
+    const fromQuery = resolveBrokerKeyFromParam(refUrl.searchParams.get('broker'));
+    if (fromQuery) return fromQuery;
+  } catch {
+    /* ignore */
+  }
+  return '';
+}
+
+/**
+ * Resolve broker origin for /terminal/* assets.
+ * Module imports omit ?broker= — use cookie / referer query / referer domain.
+ */
+function resolveBrokerBaseUrlForTerminalAsset(request: Request, url: URL): string {
+  const fromQuery = resolveBrokerKeyFromParam(url.searchParams.get('broker'));
+  if (fromQuery) return resolveMt5BrokerBaseUrl(fromQuery);
+
+  const fromCookie = readMt5BrokerCookie(request);
+  if (fromCookie) return resolveMt5BrokerBaseUrl(fromCookie);
+
+  const referer = request.headers.get('referer') || '';
+  const fromRefererQuery = readMt5BrokerFromReferer(referer);
+  if (fromRefererQuery) return resolveMt5BrokerBaseUrl(fromRefererQuery);
+
+  let brokerBaseUrl = DEFAULT_MT5_BROKER_BASE_URL;
+  for (const brokerUrl of Object.values(MT5_BROKER_BASE_URL_MAP)) {
+    const domain = brokerUrl.replace(/^https?:\/\//, '').split('/')[0];
+    if (domain && referer.includes(domain) && brokerUrl !== DEFAULT_MT5_BROKER_BASE_URL) {
+      brokerBaseUrl = brokerUrl;
+      break;
+    }
+  }
+  return brokerBaseUrl;
+}
+
 /** Prefer the browser-facing host when behind Render/Cloudflare (X-Forwarded-Host). */
 function resolveMt5ProxyOrigin(request: Request, url: URL): string {
   const forwarded = (request.headers.get('x-forwarded-host') || '')
@@ -1475,7 +1577,7 @@ async function handleApi(request: Request): Promise<Response> {
             console.error('❌ Script injection failed - authenticateMT5 function not found in HTML');
           }
 
-          // Return modified HTML with CORS headers
+          // Return modified HTML with CORS headers + broker cookie for module asset graph
           return new Response(html, {
             headers: {
               'Content-Type': 'text/html; charset=utf-8',
@@ -1484,6 +1586,7 @@ async function handleApi(request: Request): Promise<Response> {
               'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
               'Access-Control-Allow-Headers': 'Content-Type',
               'X-Frame-Options': 'SAMEORIGIN',
+              'Set-Cookie': buildMt5BrokerCookieHeader(broker, request),
             },
           });
         } catch (error) {
@@ -3981,7 +4084,7 @@ async function handleApi(request: Request): Promise<Response> {
             console.error('❌ Trading script injection failed - authenticateMT5 function not found in HTML');
           }
 
-          // Return modified HTML with CORS headers
+          // Return modified HTML with CORS headers + broker cookie for module asset graph
           return new Response(html, {
             headers: {
               'Content-Type': 'text/html; charset=utf-8',
@@ -3990,6 +4093,7 @@ async function handleApi(request: Request): Promise<Response> {
               'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
               'Access-Control-Allow-Headers': 'Content-Type',
               'X-Frame-Options': 'SAMEORIGIN',
+              'Set-Cookie': buildMt5BrokerCookieHeader(broker, request),
             },
           });
         } catch (error) {
@@ -4465,44 +4569,12 @@ const server = Bun.serve({
     if (url.pathname.startsWith('/terminal/')) {
       try {
         const assetPath = url.pathname.replace('/terminal/', '');
-
-        // Determine broker URL from referer header, query param, or default
-        const referer = request.headers.get('referer') || '';
-        const brokerParam = url.searchParams.get('broker');
-        let brokerBaseUrl = DEFAULT_MT5_BROKER_BASE_URL;
-        const brokerUrlMap = MT5_BROKER_BASE_URL_MAP;
-
-        // Try to detect broker from query param first
-        if (brokerParam) {
-          const normalized = normalizeMt5ServerKey(brokerParam);
-          if (normalized) {
-            brokerBaseUrl = resolveMt5BrokerBaseUrl(normalized);
-          } else {
-            const brokerKey = brokerParam.toLowerCase().replace(/\s+/g, '-');
-            if (brokerUrlMap[brokerKey]) {
-              brokerBaseUrl = brokerUrlMap[brokerKey];
-            } else {
-              // Try partial match
-              for (const [key, mappedUrl] of Object.entries(brokerUrlMap)) {
-                if (brokerKey.includes(key.replace(/-/g, '')) || key.includes(brokerKey.replace(/-/g, ''))) {
-                  brokerBaseUrl = mappedUrl;
-                  break;
-                }
-              }
-            }
-          }
-        }
-
-        // Fallback: Check referer for broker domain when still on default
-        if (brokerBaseUrl === DEFAULT_MT5_BROKER_BASE_URL) {
-          for (const brokerUrl of Object.values(brokerUrlMap)) {
-            const domain = brokerUrl.replace('https://', '').replace('http://', '').split('/')[0];
-            if (domain && referer.includes(domain) && brokerUrl !== DEFAULT_MT5_BROKER_BASE_URL) {
-              brokerBaseUrl = brokerUrl;
-              break;
-            }
-          }
-        }
+        const brokerBaseUrl = resolveBrokerBaseUrlForTerminalAsset(request, url);
+        const brokerKeyForAssets =
+          resolveBrokerKeyFromParam(url.searchParams.get('broker')) ||
+          readMt5BrokerCookie(request) ||
+          readMt5BrokerFromReferer(request.headers.get('referer') || '') ||
+          DEFAULT_MT5_BROKER;
 
         // Brokers that serve terminal from root (no /terminal path)
         const rootTerminalBrokers = ['mt5.profinwealth.com', 'profinwealth'];
@@ -4552,7 +4624,7 @@ const server = Bun.serve({
         }
 
         if (response.ok) {
-          const content = await response.arrayBuffer();
+          let content = await response.arrayBuffer();
 
           // Always infer content type from file extension (more reliable than server response)
           const ext = assetPath.split('.').pop()?.toLowerCase();
@@ -4589,23 +4661,53 @@ const server = Bun.serve({
             contentStr.includes('<sprite>') ||
             response.headers.get('content-type')?.includes('text/html');
 
-          // If we got HTML but expected an asset, try fetching directly from broker (bypass proxy)
+          // Never 302 to the broker for modules — that triggers CORS and kills the shell (0 inputs).
           if (isHtml && (ext === 'js' || ext === 'css')) {
             console.error(`⚠️ Got HTML instead of ${ext.toUpperCase()} for asset: ${targetUrl}`);
-            console.error(`Broker: ${brokerParam || 'unknown'}, BrokerBaseUrl: ${brokerBaseUrl}`);
+            console.error(`Broker: ${brokerKeyForAssets}, BrokerBaseUrl: ${brokerBaseUrl}`);
             console.error(`Response preview: ${contentStr.substring(0, 300)}`);
-            console.error(`Attempting direct fetch from broker...`);
+            return new Response(
+              `/* nextrade mt5-proxy: expected ${ext} from ${targetUrl} (broker=${brokerKeyForAssets}) but got HTML */\n`,
+              {
+                status: 502,
+                headers: {
+                  'Content-Type': 'application/javascript; charset=utf-8',
+                  'Access-Control-Allow-Origin': '*',
+                  'Access-Control-Allow-Methods': 'GET, OPTIONS',
+                  'Access-Control-Allow-Headers': 'Content-Type',
+                  'Set-Cookie': buildMt5BrokerCookieHeader(brokerKeyForAssets, request),
+                },
+              }
+            );
+          }
 
-            // Return a redirect or fetch directly - but for now, return the broker URL directly
-            // The browser will fetch it directly, bypassing CORS issues if possible
-            // Actually, better to return 302 redirect to original broker URL
-            return new Response(null, {
-              status: 302,
-              headers: {
-                'Location': targetUrl,
-                'Access-Control-Allow-Origin': '*',
-              },
-            });
+          // Keep ?broker= on relative ES module imports so the asset graph stays on the right HFM host.
+          if (ext === 'js' || assetPath.includes('.js')) {
+            try {
+              let js = new TextDecoder().decode(content);
+              const bq = encodeURIComponent(brokerKeyForAssets);
+              const withBroker = (path: string) =>
+                path.includes('broker=') ? path : `${path}${path.includes('?') ? '&' : '?'}broker=${bq}`;
+              js = js.replace(
+                /(from\s*["'])(\.?\.?\/[^"']+\.js)(["'])/g,
+                (_m, a, path, c) => `${a}${withBroker(path)}${c}`
+              );
+              js = js.replace(
+                /(import\s*\(\s*["'])(\.?\.?\/[^"']+\.js)(["']\s*\))/g,
+                (_m, a, path, c) => `${a}${withBroker(path)}${c}`
+              );
+              js = js.replace(
+                /(from\s*["'])(\/terminal\/[^"']+)(["'])/g,
+                (_m, a, path, c) => `${a}${withBroker(path)}${c}`
+              );
+              js = js.replace(
+                /(import\s*\(\s*["'])(\/terminal\/[^"']+)(["']\s*\))/g,
+                (_m, a, path, c) => `${a}${withBroker(path)}${c}`
+              );
+              content = new TextEncoder().encode(js).buffer as ArrayBuffer;
+            } catch (rewriteErr) {
+              console.error('MT5 JS broker rewrite failed:', rewriteErr);
+            }
           }
 
           return new Response(content, {
@@ -4615,16 +4717,16 @@ const server = Bun.serve({
               'Access-Control-Allow-Origin': '*',
               'Access-Control-Allow-Methods': 'GET, OPTIONS',
               'Access-Control-Allow-Headers': 'Content-Type',
+              'Set-Cookie': buildMt5BrokerCookieHeader(brokerKeyForAssets, request),
             },
           });
         } else {
           console.error(`Failed to fetch asset: ${targetUrl}, status: ${response.status}`);
-          // Return redirect to original URL so browser can try direct fetch
-          return new Response(null, {
-            status: 302,
+          return new Response(`Asset not found upstream: ${targetUrl}`, {
+            status: response.status === 404 ? 404 : 502,
             headers: {
-              'Location': targetUrl,
               'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Methods': 'GET, OPTIONS',
             },
           });
         }
