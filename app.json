@@ -78,7 +78,7 @@
       }
     },
     "android": {
-      "versionCode": 35,
+      "versionCode": 36,
       "softwareKeyboardLayoutMode": "pan",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
