@@ -13,7 +13,7 @@ import {
   isPushConfigured,
 } from './services/push-service';
 import { startWebPushSignalsPolling, pollWebPushSignalsNow } from './services/web-push-signals-polling';
-import { normalizeMt5ServerKey, resolveMt5TerminalUrl, mt5HostNeedsInsecureTls, resolveMt5BrokerBaseUrl, DEFAULT_MT5_BROKER, MT5_BROKER_URLS, ensureMt5EnglishTerminalUrl, MT5_ENGLISH_ACCEPT_LANGUAGE, MT5_ENGLISH_LOCK_JS, applyEnglishHtmlLang } from './utils/mt5-brokers';
+import { normalizeMt5ServerKey, resolveMt5TerminalUrl, resolveMt5TerminalServerCredential, mt5HostNeedsInsecureTls, resolveMt5BrokerBaseUrl, DEFAULT_MT5_BROKER, MT5_BROKER_URLS, ensureMt5EnglishTerminalUrl, MT5_ENGLISH_ACCEPT_LANGUAGE, MT5_ENGLISH_LOCK_JS, applyEnglishHtmlLang } from './utils/mt5-brokers';
 import { patchMt5InlineAuthScript } from './utils/mt5-server-auth-script-patch';
 import { resolveDbConfig } from './config/database';
 import { normalizeSignalTimestampsForApi } from './utils/signal-datetime';
@@ -715,7 +715,7 @@ async function handleApi(request: Request): Promise<Response> {
     if (pathname === '/api/mt5-proxy') {
       if (request.method === 'GET') {
         const broker = normalizeMt5ServerKey(url.searchParams.get('broker') || '');
-        const server = broker;
+        const server = resolveMt5TerminalServerCredential(broker);
         const terminalUrl = ensureMt5EnglishTerminalUrl(
           url.searchParams.get('url') || resolveMt5TerminalUrl(broker)
         );
@@ -1625,6 +1625,7 @@ async function handleApi(request: Request): Promise<Response> {
 
           const loginValue = escapeValue(login || '');
           const passwordValue = escapeValue(password || '');
+          const terminalServerCredential = escapeValue(resolveMt5TerminalServerCredential(broker));
           const symbolValue = escapeValue(symbol || '');
           const actionValue = escapeValue(action || '');
           const slValue = escapeValue(sl || '');
@@ -1786,7 +1787,7 @@ async function handleApi(request: Request): Promise<Response> {
 
               const loginCredential = '${loginValue}';
               const passwordCredential = '${passwordValue}';
-              const serverCredential = '${escapeValue(broker || '')}';
+              const serverCredential = '${terminalServerCredential}';
 
               function isTerminalSessionVisible() {
                 try {

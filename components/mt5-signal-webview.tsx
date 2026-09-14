@@ -38,6 +38,7 @@ import {
   MT5_FORM_INPUT_HELPERS_JS,
   MT5_TERMINAL_READY_WAIT_JS,
   normalizeMt5ServerKey,
+  resolveMt5TerminalServerCredential,
   resolveMt5TerminalUrl,
   resolveMt5LinkWebViewUrl,
   resolveMt5ApiProxyUrl,
@@ -451,16 +452,16 @@ export function MT5SignalWebView({ visible, signal, onClose }: MT5SignalWebViewP
     return resolveMt5TerminalUrl(mt5Account.server);
   }, [mt5Account]);
 
-  /** Android + RCG: load via VPS trading proxy (incomplete TLS). Web/Render stays relative. */
-  const usesAndroidMt5Proxy =
-    Platform.OS === 'android' &&
+  /** Native + RCG / HF Cyprus SA: load via Render trading proxy. Web stays relative. */
+  const usesNativeMt5Proxy =
+    Platform.OS !== 'web' &&
     mt5ServerNeedsNativeWebViewProxy(mt5Account?.server || DEFAULT_MT5_BROKER);
-  const usesAndroidMt5ProxyRef = useRef(usesAndroidMt5Proxy);
-  usesAndroidMt5ProxyRef.current = usesAndroidMt5Proxy;
+  const usesNativeMt5ProxyRef = useRef(usesNativeMt5Proxy);
+  usesNativeMt5ProxyRef.current = usesNativeMt5Proxy;
 
   const mt5BootstrapJs = useMemo(
-    () => getMt5WebViewBootstrapJs(usesAndroidMt5Proxy),
-    [usesAndroidMt5Proxy]
+    () => getMt5WebViewBootstrapJs(usesNativeMt5Proxy),
+    [usesNativeMt5Proxy]
   );
 
   /** Prefer Quotes row that fuzzy-matches broker suffixes (e.g. `.USTECH.` ↔ `USTECH`). */
@@ -511,7 +512,7 @@ export function MT5SignalWebView({ visible, signal, onClose }: MT5SignalWebViewP
       ? resolveMt5TerminalUrl(DEFAULT_MT5_BROKER)
       : resolveMt5TerminalUrl(mt5Account.server);
 
-    if (!usesAndroidMt5Proxy || !mt5Account || !signal) {
+    if (!usesNativeMt5Proxy || !mt5Account || !signal) {
       return { uri: terminalUrl, headers: MT5_ENGLISH_WEBVIEW_HEADERS };
     }
 
@@ -538,7 +539,7 @@ export function MT5SignalWebView({ visible, signal, onClose }: MT5SignalWebViewP
       headers: MT5_ENGLISH_WEBVIEW_HEADERS,
     };
   }, [
-    usesAndroidMt5Proxy,
+    usesNativeMt5Proxy,
     mt5Account,
     signal,
     eas,
@@ -693,7 +694,7 @@ export function MT5SignalWebView({ visible, signal, onClose }: MT5SignalWebViewP
     const escapeForJS = (v: string) => (v || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"').replace(/\n/g, '\\n').replace(/\r/g, '\\r');
     const loginVal = escapeForJS(login || '');
     const passwordVal = escapeForJS(password || '');
-    const serverVal = escapeForJS(normalizeMt5ServerKey(server || ''));
+    const serverVal = escapeForJS(resolveMt5TerminalServerCredential(server || ''));
     const terminalUrl = getMT5Url();
     const baseUrl = terminalUrl.replace(/\/terminal\/?/, '').replace(/\/$/, '');
     const wsUrl = `${baseUrl.replace('http://', 'wss://').replace('https://', 'wss://')}/terminal/ws`;
@@ -3205,7 +3206,7 @@ export function MT5SignalWebView({ visible, signal, onClose }: MT5SignalWebViewP
           return;
         }
         // Android RCG via VPS trading-proxy: auth/trade script is already in the HTML.
-        if (usesAndroidMt5ProxyRef.current || isMt5ProxyWebViewUrl(mt5WebViewSource.uri || '')) {
+        if (usesNativeMt5ProxyRef.current || isMt5ProxyWebViewUrl(mt5WebViewSource.uri || '')) {
           mainScriptInjectedForWebViewRef.current = true;
           setLoading(false);
           setCurrentStep('Signing in to MT5...');
@@ -3660,9 +3661,9 @@ export function MT5SignalWebView({ visible, signal, onClose }: MT5SignalWebViewP
     ? resolveMt5LinkWebViewUrl(mt5Account?.server ?? '', Platform.OS, proxyUrl)
     : null;
   /** Allowlist base: proxy page origin on Android RCG, else direct broker terminal. */
-  const terminalAllowBaseUrl = usesAndroidMt5Proxy ? mt5WebViewSource.uri : mt5Url;
+  const terminalAllowBaseUrl = usesNativeMt5Proxy ? mt5WebViewSource.uri : mt5Url;
   /** Android RCG: allow Render proxy origin (+ VPS fallback) for /terminal asset navigations. */
-  const terminalExtraOrigins = usesAndroidMt5Proxy
+  const terminalExtraOrigins = usesNativeMt5Proxy
     ? [getAndroidMt5ProxyBaseUrl(), getNativeApiBaseUrl()]
     : [];
 
@@ -3835,7 +3836,7 @@ export function MT5SignalWebView({ visible, signal, onClose }: MT5SignalWebViewP
               }
               shellReadyProbeScheduledRef.current = true;
               // Android RCG proxy already embeds the trading script — do not also inject client script.
-              if (usesAndroidMt5Proxy) {
+              if (usesNativeMt5Proxy) {
                 mainScriptInjectedForWebViewRef.current = true;
                 setLoading(false);
                 setCurrentStep('Signing in to MT5...');

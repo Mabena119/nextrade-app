@@ -129,11 +129,34 @@ export function mt5HostNeedsInsecureTls(hostname: string): boolean {
   return host === 'webtrader.rcgmarkets.com' || host.endsWith('.rcgmarkets.com');
 }
 
-/** True when native Android must load this broker via the VPS MT5 HTML proxy. */
+/** HF Cyprus SA terminals (Live 2 / Demo 2) — slow shell on native WebView; use same Render proxy as web. */
+export function mt5HostNeedsNativeWebViewProxy(hostname: string): boolean {
+  const host = (hostname || '').toLowerCase();
+  if (mt5HostNeedsInsecureTls(host)) return true;
+  return host.includes('hfm-sa-cy.com');
+}
+
+export function mt5ServerUsesHfmSaCyHost(server: string): boolean {
+  try {
+    const hostname = new URL(resolveMt5TerminalUrl(server || DEFAULT_MT5_BROKER)).hostname;
+    return hostname.toLowerCase().includes('hfm-sa-cy.com');
+  } catch {
+    return false;
+  }
+}
+
+/** MT5 "Server" field expects the broker display name (e.g. HF Markets SA Live 2), not the picker key. */
+export function resolveMt5TerminalServerCredential(server: string): string {
+  const key = normalizeMt5ServerKey(server);
+  const cfg = HF_MARKETS_SERVERS[key];
+  return cfg?.name?.trim() || key;
+}
+
+/** True when native must load this broker via the Render MT5 HTML proxy (TLS or Cyprus SA). */
 export function mt5ServerNeedsNativeWebViewProxy(server: string): boolean {
   try {
     const hostname = new URL(resolveMt5TerminalUrl(server || DEFAULT_MT5_BROKER)).hostname;
-    return mt5HostNeedsInsecureTls(hostname);
+    return mt5HostNeedsNativeWebViewProxy(hostname);
   } catch {
     return false;
   }
@@ -194,22 +217,34 @@ export function resolveMt5LinkWebViewUrl(
   if (platformOs === 'web') {
     return proxyPath;
   }
-  if (platformOs === 'android' && mt5ServerNeedsNativeWebViewProxy(server)) {
+  if (
+    (platformOs === 'android' || platformOs === 'ios') &&
+    mt5ServerNeedsNativeWebViewProxy(server)
+  ) {
     return resolveMt5NativeProxyWebViewUrl(proxyPath);
   }
   return resolveMt5TerminalUrl(server);
 }
 
 /** Delay before injecting auth script after WebView load. */
-export function getMt5ShellReadyDelayMs(_server: string, isAndroid: boolean): number {
+export function getMt5ShellReadyDelayMs(server: string, isAndroid: boolean): number {
+  if (mt5ServerUsesHfmSaCyHost(server)) {
+    return isAndroid ? 7200 : 5200;
+  }
   return isAndroid ? 4800 : 3200;
 }
 
-export function getMt5InnerAuthKickMs(_server: string, isAndroid: boolean): number {
+export function getMt5InnerAuthKickMs(server: string, isAndroid: boolean): number {
+  if (mt5ServerUsesHfmSaCyHost(server)) {
+    return isAndroid ? 2000 : 800;
+  }
   return isAndroid ? 1200 : 450;
 }
 
-export function getMt5InnerAuthFallbackMs(_server: string, isAndroid: boolean): number {
+export function getMt5InnerAuthFallbackMs(server: string, isAndroid: boolean): number {
+  if (mt5ServerUsesHfmSaCyHost(server)) {
+    return isAndroid ? 7800 : 4800;
+  }
   return isAndroid ? 5600 : 3200;
 }
 
@@ -259,8 +294,8 @@ true;
 }
 
 /** Polls terminal DOM; posts page_ready_for_script when connect sheet or session appears. */
-export function getMt5LinkShellProbeMaxWaitMs(_server: string): number {
-  return 12000;
+export function getMt5LinkShellProbeMaxWaitMs(server: string): number {
+  return mt5ServerUsesHfmSaCyHost(server) ? 18000 : 12000;
 }
 
 export function getMt5LinkShellProbeJs(generation: number, maxWaitMs: number): string {
@@ -317,11 +352,13 @@ export function getMt5LinkShellProbeJs(generation: number, maxWaitMs: number): s
 export const MT5_BROKER_SHEET_MARKERS_JS = `
 function pageHasBrokerAccountsSheet(bt) {
   return bt.indexOf('Trading accounts') >= 0 ||
+    bt.indexOf('HF Markets') >= 0 ||
     bt.indexOf('Razor Markets') >= 0 ||
     bt.indexOf('RCG Markets') >= 0;
 }
 function overlayHasBrokerAccountsText(txt) {
   return txt.indexOf('Trading accounts') >= 0 ||
+    txt.indexOf('HF Markets') >= 0 ||
     txt.indexOf('Razor Markets') >= 0 ||
     txt.indexOf('RCG Markets') >= 0;
 }
