@@ -4681,39 +4681,16 @@ const server = Bun.serve({
             );
           }
 
-          // Keep ?broker= on relative ES module imports so the asset graph stays on the right HFM host.
-          if (ext === 'js' || assetPath.includes('.js')) {
-            try {
-              let js = new TextDecoder().decode(content);
-              const bq = encodeURIComponent(brokerKeyForAssets);
-              const withBroker = (path: string) =>
-                path.includes('broker=') ? path : `${path}${path.includes('?') ? '&' : '?'}broker=${bq}`;
-              js = js.replace(
-                /(from\s*["'])(\.?\.?\/[^"']+\.js)(["'])/g,
-                (_m, a, path, c) => `${a}${withBroker(path)}${c}`
-              );
-              js = js.replace(
-                /(import\s*\(\s*["'])(\.?\.?\/[^"']+\.js)(["']\s*\))/g,
-                (_m, a, path, c) => `${a}${withBroker(path)}${c}`
-              );
-              js = js.replace(
-                /(from\s*["'])(\/terminal\/[^"']+)(["'])/g,
-                (_m, a, path, c) => `${a}${withBroker(path)}${c}`
-              );
-              js = js.replace(
-                /(import\s*\(\s*["'])(\/terminal\/[^"']+)(["']\s*\))/g,
-                (_m, a, path, c) => `${a}${withBroker(path)}${c}`
-              );
-              content = new TextEncoder().encode(js).buffer as ArrayBuffer;
-            } catch (rewriteErr) {
-              console.error('MT5 JS broker rewrite failed:', rewriteErr);
-            }
-          }
+          // Do not mutate JS imports (query suffixes break Svelte module identity → c.$$ crashes).
+          // Broker routing for bare /terminal/*.js imports uses cookie + Referer ?broker=.
 
           return new Response(content, {
             headers: {
               'Content-Type': contentType,
-              'Cache-Control': 'public, max-age=3600',
+              // Avoid sticky caches of previously rewritten (broken) module graphs.
+              'Cache-Control': ext === 'js' || assetPath.includes('.js')
+                ? 'no-store'
+                : 'public, max-age=3600',
               'Access-Control-Allow-Origin': '*',
               'Access-Control-Allow-Methods': 'GET, OPTIONS',
               'Access-Control-Allow-Headers': 'Content-Type',

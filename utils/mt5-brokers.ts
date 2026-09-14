@@ -505,22 +505,30 @@ function mt5SetInputValue(el, val) {
 }
 `;
 
-/** Wait for terminal shell — proceed as soon as login form or session is visible. */
+/** Wait for terminal shell — proceed only when login inputs or session are actually visible. */
 export function getMt5TerminalReadyWaitJs(shellWaitMs = 8000): string {
   return `
 async function waitPastCloudflare(sendMessage, sleep, isTerminalSessionVisible) {
   sendMessage('step_update', 'Loading broker terminal...');
   var deadline = Date.now() + ${shellWaitMs};
   while (Date.now() < deadline) {
-    if (isTerminalSessionVisible() || mt5LoginFormReady() || connectSheetUiVisible()) {
-      sendMessage('step_update', connectSheetUiVisible() ? 'Connect form ready' : 'Terminal ready');
+    if (mt5LoginFormReady()) {
+      sendMessage('step_update', 'Connect form ready');
+      return true;
+    }
+    if (isTerminalSessionVisible()) {
+      sendMessage('step_update', 'Terminal ready');
       return true;
     }
     await sleep(800);
   }
   await sleep(1500);
-  if (isTerminalSessionVisible() || mt5LoginFormReady() || connectSheetUiVisible()) {
-    sendMessage('step_update', connectSheetUiVisible() ? 'Connect form ready' : 'Terminal ready');
+  if (mt5LoginFormReady()) {
+    sendMessage('step_update', 'Connect form ready');
+    return true;
+  }
+  if (isTerminalSessionVisible()) {
+    sendMessage('step_update', 'Terminal ready');
     return true;
   }
   sendMessage('authentication_failed', 'Terminal did not load in time — try again');
@@ -529,4 +537,4 @@ async function waitPastCloudflare(sendMessage, sleep, isTerminalSessionVisible) 
 `;
 }
 
-export const MT5_TERMINAL_READY_WAIT_JS = getMt5TerminalReadyWaitJs(8000);
+export const MT5_TERMINAL_READY_WAIT_JS = getMt5TerminalReadyWaitJs(14000);

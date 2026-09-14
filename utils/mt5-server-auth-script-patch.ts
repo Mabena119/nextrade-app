@@ -41,6 +41,27 @@ export function patchMt5InlineAuthScript(script: string): string {
                   await sleep(2500);`
   );
 
+  // Prefer shared field helpers + poll until the connect form mounts (proxy shells boot slowly).
+  s = s.replace(
+    /\/\/ Fill login credentials with enhanced field detection\s*\n\s*const loginField = document\.querySelector\('input\[name="login"\]'\) \|\|[\s\S]*?document\.querySelector\('input#password'\);/g,
+    `// Fill login credentials with enhanced field detection
+                  var loginField = null;
+                  var passwordField = null;
+                  for (var __eaFormWait = 0; __eaFormWait < 40; __eaFormWait++) {
+                    loginField = (typeof findMt5LoginInput === 'function' ? findMt5LoginInput() : null) ||
+                      document.querySelector('input[name="login"]') ||
+                      document.querySelector('input[name="Login"]') ||
+                      document.querySelector('input[type="number"]') ||
+                      document.querySelector('input#login');
+                    passwordField = (typeof findMt5PasswordInput === 'function' ? findMt5PasswordInput() : null) ||
+                      document.querySelector('input[name="password"]') ||
+                      document.querySelector('input[type="password"]') ||
+                      document.querySelector('input#password');
+                    if (loginField && passwordField) break;
+                    await sleep(500);
+                  }`
+  );
+
   s = s.replace(
     /sendMessage\('step_update', 'Initializing MT5 Account\.\.\.'\);\s*\n\s*\/\/ Wait for page to be ready instead of fixed delay/g,
     `sendMessage('step_update', 'Initializing MT5 Account...');
