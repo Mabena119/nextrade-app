@@ -5,7 +5,6 @@
 
 <?php if(isset($_GET['key'])){ $key= mysqli_real_escape_string($con,$_GET['key']); ?>
 <div class="aura-console-page">
-  <a class="aura-back" href="stats.php"><i class="ti ti-arrow-left"></i> Back to insights</a>
   <header class="aura-console-head">
     <div>
       <p class="aura-kicker">Access code</p>

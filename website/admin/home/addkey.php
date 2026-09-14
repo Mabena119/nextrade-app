@@ -49,6 +49,8 @@
     		$query = mysqli_query($con,"INSERT INTO licences (owner,ea,user,k_ey,expires,plan) VALUES ('$User','$ea','$name','$key','$expirationDateString','$plan')");
 		if($query)
 			{
+				require_once __DIR__ . '/include/stats-keys-cache.php';
+				nextrade_bust_stats_keys_cache((int) $User);
 				if (!empty($_POST['send_email']) && !empty($_POST['license_email'])) {
 					try {
 						require_once dirname(__DIR__, 2) . '/includes/email-hooks.php';

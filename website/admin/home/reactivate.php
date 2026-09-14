@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../php-includes/connect.php';
 require_once __DIR__ . '/../php-includes/functions.php';
 require_once __DIR__ . '/include/licence-actions.php';
+require_once __DIR__ . '/include/stats-keys-cache.php';
 
 $session = nextrade_admin_session();
 if (!$session['ok']) {
@@ -21,6 +22,8 @@ $result = nextrade_reactivate_licence(
     (int) $session['admin_id'],
     (bool) $session['is_super']
 );
+
+nextrade_bust_stats_keys_cache((int) $session['admin_id']);
 
 if (!$result['ok']) {
     header('Location: stats.php');

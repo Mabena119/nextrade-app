@@ -1,8 +1,12 @@
 <?php
 include('include/header.php');
+require_once __DIR__ . '/../php-includes/connect.php';
+require_once __DIR__ . '/include/stats-keys-cache.php';
+
 $ownerId = (int) get_admin($_SESSION['username'], 'id');
 $isTrusted = get_admin($_SESSION['username'], 'trusted') == true;
-$totalKeys = (int) total_licences($ownerId, 'jj');
+$licenceRows = nextrade_load_stats_keys($con, $ownerId);
+$totalKeys = count($licenceRows);
 ?>
 
 <div class="aura-console-page">
@@ -32,27 +36,23 @@ $totalKeys = (int) total_licences($ownerId, 'jj');
             </tr>
           </thead>
           <tbody>
-          <?php
-          $i = $totalKeys;
-          if ($i === 0): ?>
+          <?php if ($totalKeys === 0): ?>
             <tr>
               <td colspan="6" style="text-align:center;padding:2.5rem;color:var(--aura-muted);">
                 <i class="ti ti-key" style="display:block;font-size:1.6rem;margin-bottom:0.5rem;color:var(--aura-cyan);"></i>
                 No codes yet — <a href="key.php" style="color:var(--aura-cyan);">mint your first one</a>.
               </td>
             </tr>
-          <?php else: while ($i > 0):
-            $keyId = (int) licence_details($i, 'id', $ownerId);
-            $keyUser = licence_details($i, 'user', $ownerId);
-            $keyCode = licence_details($i, 'k_ey', $ownerId);
-            $keyEa = (int) licence_details($i, 'ea', $ownerId);
-            $keyStatus = licence_details($i, 'status', $ownerId);
-            $keyCreated = licence_details($i, 'created', $ownerId);
-            $eaName = getea($keyEa, $ownerId, 'name');
-            $keyCodeEsc = htmlspecialchars($keyCode, ENT_QUOTES, 'UTF-8');
-            $keyUserEsc = htmlspecialchars($keyUser, ENT_QUOTES, 'UTF-8');
-            $eaNameEsc = htmlspecialchars($eaName, ENT_QUOTES, 'UTF-8');
-            $keyUrl = 'key-info.php?key=' . rawurlencode($keyCode);
+          <?php else: foreach ($licenceRows as $row):
+            $keyId = (int) $row['id'];
+            $keyUserEsc = htmlspecialchars($row['user'], ENT_QUOTES, 'UTF-8');
+            $keyCodeEsc = htmlspecialchars($row['k_ey'], ENT_QUOTES, 'UTF-8');
+            $keyEa = (int) $row['ea'];
+            $keyStatus = $row['status'];
+            $eaNameEsc = htmlspecialchars($row['ea_name'] !== '' ? $row['ea_name'] : '—', ENT_QUOTES, 'UTF-8');
+            $createdTs = strtotime($row['created']);
+            $createdLabel = $createdTs ? date('d M Y', $createdTs) : '—';
+            $keyUrl = 'key-info.php?key=' . rawurlencode($row['k_ey']);
           ?>
             <tr>
               <td><strong><?php echo $keyUserEsc; ?></strong></td>
@@ -72,7 +72,7 @@ $totalKeys = (int) total_licences($ownerId, 'jj');
                   <span class="aura-badge aura-badge-muted"><?php echo htmlspecialchars($keyStatus, ENT_QUOTES, 'UTF-8'); ?></span>
                 <?php endif; ?>
               </td>
-              <td><span style="color:var(--aura-muted);font-size:0.85rem;"><?php echo date('d M Y', strtotime($keyCreated)); ?></span></td>
+              <td><span style="color:var(--aura-muted);font-size:0.85rem;"><?php echo htmlspecialchars($createdLabel, ENT_QUOTES, 'UTF-8'); ?></span></td>
               <td>
                 <div class="aura-row-actions">
                   <a class="aura-icon-btn" href="<?php echo htmlspecialchars($keyUrl, ENT_QUOTES, 'UTF-8'); ?>" title="View"><i class="ti ti-eye"></i></a>
@@ -96,7 +96,7 @@ $totalKeys = (int) total_licences($ownerId, 'jj');
                 </div>
               </td>
             </tr>
-          <?php $i--; endwhile; endif; ?>
+          <?php endforeach; endif; ?>
           </tbody>
         </table>
       </div>
