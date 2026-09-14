@@ -21,6 +21,7 @@ import {
   sanitizeManualTradesCount,
 } from '@/utils/equity-trade-preset';
 import { resolveEaOwnerProfileLogoUrl } from '@/utils/ea-brand-image';
+import { prefetchEaBrandLogoFromRaw } from '@/utils/ea-brand-logo-cache';
 import {
   isAiChartTradingEnabled,
   isMartingaleEa,
@@ -761,6 +762,7 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
         await AsyncStorage.setItem('eas', JSON.stringify(refreshed));
         setEAs(refreshed);
       }
+      void prefetchEaBrandLogoFromRaw(mergedPrimary.userData?.owner?.logo ?? data.owner?.logo);
     } catch (e) {
       console.warn('[App] refreshEaOwnerBrandFromLicense skipped:', e);
     }
@@ -942,6 +944,7 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
             parsedEas = parsed;
             setEAs(parsed);
             void syncLicenseDeviceSecretsFromEas(parsed);
+            void prefetchEaBrandLogoFromRaw(parsed[0]?.userData?.owner?.logo);
             console.log('EAs data loaded successfully:', parsed.length);
           } else {
             setEAs([]);
