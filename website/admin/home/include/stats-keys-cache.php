@@ -1,49 +1,70 @@
 <?php
 /**
- * Fast Analytics keys list: one JOIN query + short file cache per mentor.
+ * Paginated Analytics keys — one indexed query per page (no full-table dump).
  */
 
-function nextrade_stats_keys_cache_path(int $ownerId): string
+function nextrade_stats_keys_cache_dir(): string
 {
-    return rtrim(sys_get_temp_dir(), DIRECTORY_SEPARATOR)
-        . DIRECTORY_SEPARATOR
-        . 'nextrade_stats_keys_' . $ownerId . '.json';
+    $dir = __DIR__ . '/cache';
+    if (!is_dir($dir)) {
+        @mkdir($dir, 0750, true);
+    }
+    return $dir;
 }
 
 function nextrade_bust_stats_keys_cache(int $ownerId): void
 {
-    $path = nextrade_stats_keys_cache_path($ownerId);
-    if (is_file($path)) {
-        @unlink($path);
+    $dir = nextrade_stats_keys_cache_dir();
+    $pattern = $dir . '/keys_' . $ownerId . '_*.json';
+    foreach (glob($pattern) ?: [] as $file) {
+        @unlink($file);
     }
 }
 
 /**
- * @return list<array{id:int,user:string,k_ey:string,ea:int,status:string,created:string,ea_name:string}>
+ * @return array{rows: list<array>, total: int, page: int, per_page: int, pages: int, q: string}
  */
-function nextrade_load_stats_keys(mysqli $con, int $ownerId, int $ttlSeconds = 20): array
-{
-    $cachePath = nextrade_stats_keys_cache_path($ownerId);
-    if (is_readable($cachePath)) {
-        $mtime = @filemtime($cachePath);
-        if ($mtime !== false && (time() - $mtime) <= $ttlSeconds) {
-            $raw = @file_get_contents($cachePath);
-            if (is_string($raw) && $raw !== '') {
-                $decoded = json_decode($raw, true);
-                if (is_array($decoded) && isset($decoded['rows']) && is_array($decoded['rows'])) {
-                    return $decoded['rows'];
-                }
-            }
-        }
+function nextrade_load_stats_keys_page(
+    mysqli $con,
+    int $ownerId,
+    int $page = 1,
+    int $perPage = 50,
+    string $q = ''
+): array {
+    $perPage = max(10, min(100, $perPage));
+    $page = max(1, $page);
+    $q = trim($q);
+
+    $where = "l.owner = {$ownerId}";
+    if ($q !== '') {
+        $safe = mysqli_real_escape_string($con, $q);
+        $where .= " AND (l.k_ey LIKE '%{$safe}%' OR l.user LIKE '%{$safe}%' OR e.name LIKE '%{$safe}%')";
     }
+
+    $total = 0;
+    $countSql = "SELECT COUNT(*) AS c
+                 FROM licences l
+                 LEFT JOIN eas e ON e.id = l.ea AND e.owner = l.owner
+                 WHERE {$where}";
+    $countRes = mysqli_query($con, $countSql);
+    if ($countRes && ($crow = mysqli_fetch_assoc($countRes))) {
+        $total = (int) ($crow['c'] ?? 0);
+    }
+
+    $pages = max(1, (int) ceil($total / $perPage));
+    if ($page > $pages) {
+        $page = $pages;
+    }
+    $offset = ($page - 1) * $perPage;
 
     $rows = [];
     $sql = "SELECT l.id, l.user, l.k_ey, l.ea, l.status, l.created,
                    COALESCE(e.name, '') AS ea_name
             FROM licences l
             LEFT JOIN eas e ON e.id = l.ea AND e.owner = l.owner
-            WHERE l.owner = {$ownerId}
-            ORDER BY l.id DESC";
+            WHERE {$where}
+            ORDER BY l.id DESC
+            LIMIT {$perPage} OFFSET {$offset}";
     $query = mysqli_query($con, $sql);
     if ($query) {
         while ($u = mysqli_fetch_assoc($query)) {
@@ -59,11 +80,19 @@ function nextrade_load_stats_keys(mysqli $con, int $ownerId, int $ttlSeconds = 2
         }
     }
 
-    @file_put_contents(
-        $cachePath,
-        json_encode(['ts' => time(), 'rows' => $rows], JSON_UNESCAPED_UNICODE),
-        LOCK_EX
-    );
+    return [
+        'rows' => $rows,
+        'total' => $total,
+        'page' => $page,
+        'per_page' => $perPage,
+        'pages' => $pages,
+        'q' => $q,
+    ];
+}
 
-    return $rows;
+/** @deprecated keep for older call sites */
+function nextrade_load_stats_keys(mysqli $con, int $ownerId, int $ttlSeconds = 20): array
+{
+    $page = nextrade_load_stats_keys_page($con, $ownerId, 1, 50, '');
+    return $page['rows'];
 }

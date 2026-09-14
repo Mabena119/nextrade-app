@@ -1,0 +1,2 @@
+# Deny web access to Analytics cache files
+Require all denied

@@ -1,12 +1,30 @@
 <?php
+// Skip heavy DataTables assets — this page uses a plain paginated table.
+$GLOBALS['admin_light_assets'] = true;
+
 include('include/header.php');
 require_once __DIR__ . '/../php-includes/connect.php';
 require_once __DIR__ . '/include/stats-keys-cache.php';
 
 $ownerId = (int) get_admin($_SESSION['username'], 'id');
 $isTrusted = get_admin($_SESSION['username'], 'trusted') == true;
-$licenceRows = nextrade_load_stats_keys($con, $ownerId);
-$totalKeys = count($licenceRows);
+
+$page = isset($_GET['page']) ? (int) $_GET['page'] : 1;
+$q = isset($_GET['q']) ? trim((string) $_GET['q']) : '';
+$bundle = nextrade_load_stats_keys_page($con, $ownerId, $page, 50, $q);
+$licenceRows = $bundle['rows'];
+$totalKeys = $bundle['total'];
+$currentPage = $bundle['page'];
+$totalPages = $bundle['pages'];
+
+function nextrade_stats_page_url(int $page, string $q): string
+{
+    $params = ['page' => max(1, $page)];
+    if ($q !== '') {
+        $params['q'] = $q;
+    }
+    return 'stats.php?' . http_build_query($params);
+}
 ?>
 
 <div class="aura-console-page">
@@ -14,12 +32,28 @@ $totalKeys = count($licenceRows);
     <div>
       <p class="aura-kicker">Analytics</p>
       <h1>All access codes</h1>
-      <p>Tap a code to open details. Use the copy-friendly actions on each row.</p>
+      <p><?php echo (int) $totalKeys; ?> code<?php echo $totalKeys === 1 ? '' : 's'; ?> · 50 per page for a fast load.</p>
     </div>
     <a href="key.php" class="aura-btn aura-btn-primary"><i class="ti ti-plus"></i> New code</a>
   </header>
 
   <section class="aura-panel">
+    <form method="get" action="stats.php" style="display:flex;gap:0.55rem;flex-wrap:wrap;margin-bottom:1rem;align-items:center;">
+      <input
+        type="search"
+        name="q"
+        value="<?php echo htmlspecialchars($q, ENT_QUOTES, 'UTF-8'); ?>"
+        class="aura-input"
+        placeholder="Search code, user, or automation"
+        style="flex:1;min-width:12rem;margin:0;"
+        autocomplete="off"
+      />
+      <button type="submit" class="aura-btn aura-btn-primary"><i class="ti ti-search"></i> Search</button>
+      <?php if ($q !== ''): ?>
+        <a href="stats.php" class="aura-btn aura-btn-ghost">Clear</a>
+      <?php endif; ?>
+    </form>
+
     <?php require __DIR__ . '/include/key-analytics-mobile.php'; ?>
 
     <div class="aura-table-wrap key-analytics-wrap">
@@ -40,7 +74,11 @@ $totalKeys = count($licenceRows);
             <tr>
               <td colspan="6" style="text-align:center;padding:2.5rem;color:var(--aura-muted);">
                 <i class="ti ti-key" style="display:block;font-size:1.6rem;margin-bottom:0.5rem;color:var(--aura-cyan);"></i>
-                No codes yet — <a href="key.php" style="color:var(--aura-cyan);">mint your first one</a>.
+                <?php if ($q !== ''): ?>
+                  No matches for “<?php echo htmlspecialchars($q, ENT_QUOTES, 'UTF-8'); ?>”.
+                <?php else: ?>
+                  No codes yet — <a href="key.php" style="color:var(--aura-cyan);">mint your first one</a>.
+                <?php endif; ?>
               </td>
             </tr>
           <?php else: foreach ($licenceRows as $row):
@@ -101,6 +139,32 @@ $totalKeys = count($licenceRows);
         </table>
       </div>
     </div>
+
+    <?php if ($totalPages > 1): ?>
+    <nav style="display:flex;flex-wrap:wrap;gap:0.45rem;align-items:center;justify-content:space-between;margin-top:1rem;" aria-label="Pagination">
+      <p style="margin:0;color:var(--aura-muted);font-size:0.85rem;">
+        Page <?php echo (int) $currentPage; ?> of <?php echo (int) $totalPages; ?>
+      </p>
+      <div style="display:flex;flex-wrap:wrap;gap:0.35rem;">
+        <?php if ($currentPage > 1): ?>
+          <a class="aura-btn aura-btn-ghost" href="<?php echo htmlspecialchars(nextrade_stats_page_url($currentPage - 1, $q), ENT_QUOTES, 'UTF-8'); ?>">Prev</a>
+        <?php endif; ?>
+        <?php
+          $windowStart = max(1, $currentPage - 2);
+          $windowEnd = min($totalPages, $currentPage + 2);
+          for ($p = $windowStart; $p <= $windowEnd; $p++):
+        ?>
+          <a
+            class="aura-btn <?php echo $p === $currentPage ? 'aura-btn-primary' : 'aura-btn-ghost'; ?>"
+            href="<?php echo htmlspecialchars(nextrade_stats_page_url($p, $q), ENT_QUOTES, 'UTF-8'); ?>"
+          ><?php echo (int) $p; ?></a>
+        <?php endfor; ?>
+        <?php if ($currentPage < $totalPages): ?>
+          <a class="aura-btn aura-btn-ghost" href="<?php echo htmlspecialchars(nextrade_stats_page_url($currentPage + 1, $q), ENT_QUOTES, 'UTF-8'); ?>">Next</a>
+        <?php endif; ?>
+      </div>
+    </nav>
+    <?php endif; ?>
   </section>
 </div>
 
