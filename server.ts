@@ -1553,7 +1553,7 @@ async function handleApi(request: Request): Promise<Response> {
               };
                
               // Start authentication after page loads
-              setTimeout(authenticateMT5, 3000);
+              setTimeout(authenticateMT5, 5000);
             })();
         `;
 

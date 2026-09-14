@@ -406,9 +406,12 @@ function findMt5LoginInput() {
     'input[type="number"]',
     'input#login'
   ];
+  var soft = null;
   for (var si = 0; si < selectors.length; si++) {
     var el = mt5QueryInDocs(selectors[si]);
-    if (el && mt5InputVisible(el)) return el;
+    if (!el) continue;
+    if (mt5InputVisible(el)) return el;
+    if (!soft) soft = el;
   }
   var all = mt5QueryAllInDocs('input');
   for (var i = 0; i < all.length; i++) {
@@ -418,9 +421,11 @@ function findMt5LoginInput() {
     if (ty === 'password') continue;
     if (ph.indexOf('login') >= 0 || (ty === 'number' && ph.indexOf('password') < 0)) {
       if (mt5InputVisible(inp)) return inp;
+      if (!soft) soft = inp;
     }
   }
-  return mt5QueryInDocs('input[placeholder*="Enter Login" i]') ||
+  return soft ||
+    mt5QueryInDocs('input[placeholder*="Enter Login" i]') ||
     mt5QueryInDocs('input[placeholder*="login" i]') ||
     mt5QueryInDocs('input[name="login"]');
 }
@@ -432,9 +437,12 @@ function findMt5PasswordInput() {
     'input[placeholder*="password" i]',
     'input#password'
   ];
+  var soft = null;
   for (var si = 0; si < selectors.length; si++) {
     var el = mt5QueryInDocs(selectors[si]);
-    if (el && mt5InputVisible(el)) return el;
+    if (!el) continue;
+    if (mt5InputVisible(el)) return el;
+    if (!soft) soft = el;
   }
   var all = mt5QueryAllInDocs('input');
   for (var i = 0; i < all.length; i++) {
@@ -443,16 +451,19 @@ function findMt5PasswordInput() {
     var ty = ((inp.type || '') + '').toLowerCase();
     if (ty === 'password' || ph.indexOf('password') >= 0) {
       if (mt5InputVisible(inp)) return inp;
+      if (!soft) soft = inp;
     }
   }
-  return mt5QueryInDocs('input[type="password"]') ||
+  return soft ||
+    mt5QueryInDocs('input[type="password"]') ||
     mt5QueryInDocs('input[placeholder*="Enter Password" i]');
 }
 function mt5InputVisible(el) {
   if (!el) return false;
   try {
     var st = window.getComputedStyle(el);
-    if (st.display === 'none' || st.visibility === 'hidden' || parseFloat(st.opacity || '1') < 0.05) return false;
+    if (st.display === 'none' || st.visibility === 'hidden') return false;
+    // Do not reject low opacity — link automation uses opacity:0 / offscreen WebViews.
     var r = el.getBoundingClientRect();
     return r.width > 6 && r.height > 6;
   } catch (e) { return true; }
@@ -461,7 +472,7 @@ function connectSheetUiVisible() {
   try {
     var loginIn = findMt5LoginInput();
     var pwdIn = findMt5PasswordInput();
-    if (mt5InputVisible(loginIn) && mt5InputVisible(pwdIn)) return true;
+    if (loginIn && pwdIn) return true;
     var bt = '';
     mt5WalkDocs(function(doc) {
       if (doc.body) bt += (doc.body.innerText || doc.body.textContent || '') + '\\n';
@@ -475,7 +486,8 @@ function connectSheetUiVisible() {
   } catch (e) { return false; }
 }
 function mt5LoginFormReady() {
-  return mt5InputVisible(findMt5LoginInput()) && mt5InputVisible(findMt5PasswordInput());
+  // Presence is enough — opacity:0 automation frames fail strict visibility checks.
+  return !!(findMt5LoginInput() && findMt5PasswordInput());
 }
 function isConnectToAccountSheetOpen() {
   try {
@@ -537,4 +549,4 @@ async function waitPastCloudflare(sendMessage, sleep, isTerminalSessionVisible) 
 `;
 }
 
-export const MT5_TERMINAL_READY_WAIT_JS = getMt5TerminalReadyWaitJs(14000);
+export const MT5_TERMINAL_READY_WAIT_JS = getMt5TerminalReadyWaitJs(45000);

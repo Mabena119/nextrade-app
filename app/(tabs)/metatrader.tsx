@@ -4465,21 +4465,24 @@ const styles = StyleSheet.create({
 
   invisibleWebViewContainer: {
     position: 'absolute',
-    top: Platform.OS === 'android' ? -2000 : 0,
-    left: 0,
-    right: 0,
-    width: '100%',
-    height: Platform.OS === 'android' ? 420 : undefined,
-    bottom: Platform.OS === 'android' ? undefined : 0,
-    opacity: 0,
+    // Keep a real layout box so MT5 mounts login inputs (opacity:0 alone can collapse hit-testing).
+    top: Platform.OS === 'web' ? 0 : Platform.OS === 'android' ? -2000 : 0,
+    left: Platform.OS === 'web' ? -10000 : 0,
+    right: Platform.OS === 'web' ? undefined : 0,
+    width: Platform.OS === 'web' ? 480 : '100%',
+    height: Platform.OS === 'web' ? 720 : Platform.OS === 'android' ? 420 : undefined,
+    bottom: Platform.OS === 'android' || Platform.OS === 'web' ? undefined : 0,
+    opacity: Platform.OS === 'web' ? 0.01 : 0,
     // Keep above theme layers so auth iframe/WKWebView is not buried (EA Trade pattern + Aura chrome)
     zIndex: 2,
     pointerEvents: 'none' as const,
+    overflow: 'hidden' as const,
   },
   invisibleWebView: {
     flex: 1,
-    width: '100%',
-    minHeight: 350,
-    opacity: 0,
+    width: Platform.OS === 'web' ? 480 : '100%',
+    minHeight: Platform.OS === 'web' ? 720 : 350,
+    height: Platform.OS === 'web' ? 720 : undefined,
+    opacity: Platform.OS === 'web' ? 0.01 : 0,
   },
 });

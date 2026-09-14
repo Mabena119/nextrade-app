@@ -364,6 +364,8 @@ const styles = StyleSheet.create({
   iframe: {
     width: '100%',
     height: '100%',
+    minWidth: 480,
+    minHeight: 720,
     border: 'none',
     backgroundColor: '#000000',
   } as any,
