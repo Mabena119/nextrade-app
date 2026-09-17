@@ -18,7 +18,17 @@ export default function TradeConfigScreen() {
   const { symbol: symbolParam } = useLocalSearchParams<{ symbol?: string | string[] }>();
   const symbol = useMemo(() => {
     const raw = symbolParam == null ? '' : Array.isArray(symbolParam) ? symbolParam[0] : symbolParam;
-    const s = String(raw ?? '').trim();
+    let s = String(raw ?? '').trim();
+    if (!s) return undefined;
+    // Quotes encodes so "#BTCUSD" survives the URL; decode if still percent-encoded.
+    try {
+      if (/%[0-9A-Fa-f]{2}/.test(s)) {
+        s = decodeURIComponent(s);
+      }
+    } catch {
+      // keep raw
+    }
+    s = s.trim();
     return s.length > 0 ? s : undefined;
   }, [symbolParam]);
 

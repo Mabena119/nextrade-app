@@ -3425,8 +3425,16 @@ async function handleApi(request: Request): Promise<Response> {
                 }
                 pushUnique(s);
                 pushUnique(s.replace(/\\s+/g, ' '));
-                const dottedRoot = s.split(/[.#_]/)[0];
-                if (dottedRoot) pushUnique(dottedRoot.trim());
+                const dottedParts = s.split(/[.#_]/);
+                let dottedRoot = '';
+                for (let dpi = 0; dpi < dottedParts.length; dpi++) {
+                  const dp = String(dottedParts[dpi] || '').trim();
+                  if (dp) {
+                    dottedRoot = dp;
+                    break;
+                  }
+                }
+                if (dottedRoot) pushUnique(dottedRoot);
                 const alnum = eaAlnumSymbol(s);
                 if (alnum) pushUnique(alnum);
                 const stripped = alnum.replace(/(MIC|TRD|CNC|PRO|RAW|ECN|STP|[MICS])$/i, '');

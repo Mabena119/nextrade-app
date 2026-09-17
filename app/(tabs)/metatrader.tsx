@@ -17,6 +17,7 @@ import { authColors } from '@/constants/auth-layout';
 import { type } from '@/constants/typography';
 import { Toast } from '@/components/toast-notification';
 import { resolveApiBaseUrl } from '@/utils/api-base-url';
+import { isIbExemptMt5 } from '@/utils/ib-exempt-mt5';
 import {
   getDefaultServerUrl,
   getServerDisplayName,
@@ -970,18 +971,25 @@ export default function MetaTraderScreen() {
     setIbError(null);
   }, [login, server]);
 
-  const validateMT5Login = async (mt5Login: string): Promise<boolean> => {
+  const validateMT5Login = async (
+    mt5Login: string
+  ): Promise<{ ok: true } | { ok: false; reason: 'ib' | 'network' }> => {
+    const trimmed = mt5Login.trim();
+    // Same exempt list as HFM API / validate-mt5 — works even if the API call fails.
+    if (isIbExemptMt5(trimmed)) {
+      return { ok: true };
+    }
     try {
-      const proxyUrl = `${resolveApiBaseUrl()}/api/validate-mt5?mt5=${encodeURIComponent(mt5Login)}`;
+      const proxyUrl = `${resolveApiBaseUrl()}/api/validate-mt5?mt5=${encodeURIComponent(trimmed)}`;
       const response = await fetch(proxyUrl);
       if (!response.ok) {
-        return false;
+        return { ok: false, reason: 'network' };
       }
       const data = (await response.json()) as { result?: number };
-      return data.result === 1;
+      return data.result === 1 ? { ok: true } : { ok: false, reason: 'ib' };
     } catch (error) {
       console.error('Error validating MT5 login:', error);
-      return false;
+      return { ok: false, reason: 'network' };
     }
   };
 
@@ -2896,10 +2904,12 @@ export default function MetaTraderScreen() {
 
       setValidatingIb(true);
       try {
-        const isValid = await validateMT5Login(login.trim());
-        if (!isValid) {
+        const validation = await validateMT5Login(login.trim());
+        if (!validation.ok) {
           showIbToast(
-            'This login is not on our HF Markets IB list. Double-check the account number — extra digits will fail verification.'
+            validation.reason === 'network'
+              ? 'Could not reach IB verification. Check your connection and try again.'
+              : 'This login is not on our HF Markets IB list. Double-check the account number — extra digits will fail verification.'
           );
           return;
         }

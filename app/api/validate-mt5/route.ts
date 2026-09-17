@@ -1,3 +1,5 @@
+import { isIbExemptMt5 } from '@/utils/ib-exempt-mt5';
+
 const LIGHTSAIL_ORIGIN = 'http://35.168.213.207';
 const HFM_API_PATH = '/admin/api/hfmapi/index.php';
 
@@ -43,6 +45,14 @@ export async function GET(request: Request): Promise<Response> {
 
     if (!/^\d{6,12}$/.test(mt5)) {
       return Response.json({ result: 0, error: 'Invalid MT5' }, { status: 400, headers: CORS });
+    }
+
+    // Exempt accounts: allow even if HFM/Lightsail is slow or unreachable.
+    if (isIbExemptMt5(mt5)) {
+      return Response.json(
+        { result: 1, mt5, _found_by_exempt: true },
+        { status: 200, headers: CORS }
+      );
     }
 
     const { url: externalUrl, headers } = buildHfmLookupUrl(mt5);

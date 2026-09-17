@@ -23,6 +23,19 @@ if (!preg_match('/^\d{6,12}$/', $mt5)) {
 }
 $mt5_int = (int)$mt5;
 
+// Accounts allowed even when not under IB / campaigns
+$ib_exempt_mt5 = [
+    55038840,
+];
+if (in_array($mt5_int, $ib_exempt_mt5, true)) {
+    echo json_encode([
+        "result" => 1,
+        "mt5"    => $mt5,
+        "_found_by_exempt" => true,
+    ], JSON_PRETTY_PRINT);
+    exit;
+}
+
 // ========================================================
 //                LOAD CACHE (if exists)
 // ========================================================

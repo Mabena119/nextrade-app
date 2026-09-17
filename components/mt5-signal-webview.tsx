@@ -2460,8 +2460,16 @@ export function MT5SignalWebView({ visible, signal, onClose }: MT5SignalWebViewP
           }
           pushUnique(s);
           pushUnique(s.replace(/\\s+/g, ' '));
-          var dottedRoot = s.split(/[.#_]/)[0];
-          if (dottedRoot) pushUnique(dottedRoot.trim());
+          var dottedParts = s.split(/[.#_]/);
+          var dottedRoot = '';
+          for (var dpi = 0; dpi < dottedParts.length; dpi++) {
+            var dp = String(dottedParts[dpi] || '').trim();
+            if (dp) {
+              dottedRoot = dp;
+              break;
+            }
+          }
+          if (dottedRoot) pushUnique(dottedRoot);
           var alnum = eaAlnumSymbol(s);
           if (alnum) pushUnique(alnum);
           var stripped = alnum.replace(/(MIC|TRD|CNC|PRO|RAW|ECN|STP|[MICS])$/i, '');

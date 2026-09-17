@@ -324,7 +324,8 @@ export default function QuotesScreen() {
 
 
   const handleQuoteTap = (symbol: string) => {
-    router.push(`/trade-config?symbol=${symbol}`);
+    // Must encode: symbols like "#BTCUSD" would otherwise truncate at "#" (URL fragment).
+    router.push(`/trade-config?symbol=${encodeURIComponent(symbol)}`);
   };
 
   if (!hasMt5Linked) {

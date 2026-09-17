@@ -31,6 +31,10 @@ export function isPrefixSymbolMatch(wanted: string, candidate: string): boolean 
   if (wNorm.startsWith(`${cNorm}.`) || wNorm.startsWith(`${cNorm}_`) || wNorm.startsWith(`${cNorm}#`)) {
     return true;
   }
+  // Leading broker markers: "#BTCUSD" ↔ "BTCUSD", ".DE30" ↔ "DE30"
+  if (wNorm.replace(/^[#.]+/, '') === cNorm.replace(/^[#.]+/, '') && /[A-Z0-9]/.test(wNorm)) {
+    return true;
+  }
   const w = alnumSymbolKey(wanted);
   const c = alnumSymbolKey(candidate);
   if (!w || !c || w.length < 3 || c.length < 3) return false;
@@ -68,7 +72,11 @@ export function buildSymbolSearchQueries(symbolName: string): string[] {
   };
   pushUnique(s);
   pushUnique(s.replace(/\s+/g, ' '));
-  const dottedRoot = s.split(/[.#_]/)[0]?.trim();
+  // First non-empty segment — leading "#" / "." must not yield an empty root ("#BTCUSD" → "BTCUSD").
+  const dottedRoot = s
+    .split(/[.#_]/)
+    .map((p) => p.trim())
+    .find((p) => p.length > 0);
   if (dottedRoot) pushUnique(dottedRoot);
   const alnum = alnumSymbolKey(s);
   if (alnum) pushUnique(alnum);
