@@ -2,10 +2,10 @@
   "expo": {
     "name": "NexTradeAI",
     "slug": "nextrade-ai",
-    "version": "1.0.2",
+    "version": "1.0.4",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "auraai",
+    "scheme": "nextradeai",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "statusBar": {
@@ -20,7 +20,7 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "app.auraai.app",
+      "bundleIdentifier": "app.nextradeai.app",
       "statusBar": {
         "style": "light",
         "backgroundColor": "#000000",
@@ -78,13 +78,13 @@
       }
     },
     "android": {
-      "versionCode": 36,
+      "versionCode": 40,
       "softwareKeyboardLayoutMode": "pan",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#000000"
       },
-      "package": "app.auraai.app",
+      "package": "app.nextradeai.app",
       "permissions": [
         "android.permission.POST_NOTIFICATIONS",
         "android.permission.SYSTEM_ALERT_WINDOW"
