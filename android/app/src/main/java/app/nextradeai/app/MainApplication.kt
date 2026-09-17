@@ -1,4 +1,4 @@
-package app.auraai.app
+package app.nextradeai.app
 
 import android.app.Application
 import android.content.res.Configuration
@@ -15,7 +15,7 @@ import com.facebook.soloader.SoLoader
 
 import expo.modules.ApplicationLifecycleDispatcher
 import expo.modules.ReactNativeHostWrapper
-import app.auraai.app.overlay.OverlayWindowPackage
+import app.nextradeai.app.overlay.OverlayWindowPackage
 
 class MainApplication : Application(), ReactApplication {
 

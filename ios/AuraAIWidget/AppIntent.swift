@@ -9,7 +9,7 @@ struct ToggleBotIntent: AppIntent {
     
     func perform() async throws -> some IntentResult {
         // Access shared UserDefaults
-        guard let sharedDefaults = UserDefaults(suiteName: "group.app.auraai.app") else {
+        guard let sharedDefaults = UserDefaults(suiteName: "group.app.nextradeai.app") else {
             return .result()
         }
         
@@ -22,7 +22,7 @@ struct ToggleBotIntent: AppIntent {
         sharedDefaults.synchronize()
         
         // Send Darwin notification to wake up main app immediately
-        let notificationName = CFNotificationName("com.auraai.widgetPollingToggled" as CFString)
+        let notificationName = CFNotificationName("com.nextradeai.widgetPollingToggled" as CFString)
         let center = CFNotificationCenterGetDarwinNotifyCenter()
         CFNotificationCenterPostNotification(
             center,

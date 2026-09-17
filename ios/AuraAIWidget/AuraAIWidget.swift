@@ -52,14 +52,14 @@ struct AuraAIWidgetProvider: TimelineProvider {
     }
     
     private func getBotName() -> String {
-        if let sharedDefaults = UserDefaults(suiteName: "group.app.auraai.app") {
+        if let sharedDefaults = UserDefaults(suiteName: "group.app.nextradeai.app") {
             return sharedDefaults.string(forKey: "botName") ?? "AURA AI"
         }
         return "AURA AI"
     }
     
     private func getBotActiveState() -> Bool {
-        if let sharedDefaults = UserDefaults(suiteName: "group.app.auraai.app") {
+        if let sharedDefaults = UserDefaults(suiteName: "group.app.nextradeai.app") {
             return sharedDefaults.bool(forKey: "isBotActive")
         }
         return false

@@ -1,4 +1,4 @@
-package app.auraai.app.overlay
+package app.nextradeai.app.overlay
 
 import android.app.Service
 import android.content.Intent

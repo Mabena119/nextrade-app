@@ -10,7 +10,7 @@ import SwiftUI
 import WidgetKit
 
 struct AuraAIWidgetControl: ControlWidget {
-    static let kind: String = "app.auraai.app.AuraAIWidget"
+    static let kind: String = "app.nextradeai.app.AuraAIWidget"
 
     var body: some ControlWidgetConfiguration {
         AppIntentControlConfiguration(

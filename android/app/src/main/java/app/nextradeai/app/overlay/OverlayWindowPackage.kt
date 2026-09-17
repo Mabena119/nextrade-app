@@ -1,4 +1,4 @@
-package app.auraai.app.overlay
+package app.nextradeai.app.overlay
 
 import com.facebook.react.ReactPackage
 import com.facebook.react.bridge.NativeModule

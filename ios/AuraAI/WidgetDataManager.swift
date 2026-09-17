@@ -24,7 +24,7 @@ class WidgetDataManager: RCTEventEmitter {
     private var currentActivity: Any?
     
     // App Group identifier
-    private let appGroupIdentifier = "group.app.auraai.app"
+    private let appGroupIdentifier = "group.app.nextradeai.app"
     private let imageFileName = "botImage.png"
     
     // Notification observer for widget button clicks
@@ -37,7 +37,7 @@ class WidgetDataManager: RCTEventEmitter {
     
     deinit {
         // Remove CFNotificationCenter observer
-        let notificationName = CFNotificationName("com.auraai.widgetPollingToggled" as CFString)
+        let notificationName = CFNotificationName("com.nextradeai.widgetPollingToggled" as CFString)
         CFNotificationCenterRemoveObserver(
             CFNotificationCenterGetDarwinNotifyCenter(),
             Unmanaged.passUnretained(self).toOpaque(),
@@ -50,7 +50,7 @@ class WidgetDataManager: RCTEventEmitter {
     private func setupNotificationObserver() {
         // Listen for Darwin notifications using CFNotificationCenter
         // This works across app extensions and main app
-        let notificationName = "com.auraai.widgetPollingToggled" as CFString
+        let notificationName = "com.nextradeai.widgetPollingToggled" as CFString
         
         // C callback function for CFNotificationCenter
         let callback: @convention(c) (CFNotificationCenter?, UnsafeMutableRawPointer?, CFNotificationName?, UnsafeRawPointer?, CFDictionary?) -> Void = { (center, observer, name, object, userInfo) in

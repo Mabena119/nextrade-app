@@ -86,7 +86,7 @@ export function checkNativeAppAvailable(): boolean {
 
   try {
     // Check if App Group data exists (native app would write this)
-    const appGroupData = localStorage.getItem('group.app.auraai.app');
+    const appGroupData = localStorage.getItem('group.app.nextradeai.app');
     return appGroupData !== null;
   } catch {
     return false;

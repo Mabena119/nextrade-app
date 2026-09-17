@@ -1,4 +1,4 @@
-package app.auraai.app.overlay
+package app.nextradeai.app.overlay
 
 import android.content.Context
 import android.content.Intent
@@ -26,7 +26,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.os.Handler
 import android.os.Looper
-import app.auraai.app.MainActivity
+import app.nextradeai.app.MainActivity
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.Promise
 import com.facebook.react.bridge.ReactApplicationContext

@@ -2809,7 +2809,7 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
         console.warn('Native bringAppToForeground failed, trying deep link:', e);
       }
       try {
-        await Linking.openURL('auraai://trade-signal');
+        await Linking.openURL('nextradeai://trade-signal');
         console.log('✅ App brought to foreground (deep link)');
       } catch (error) {
         console.error('Error bringing app to foreground:', error);
@@ -2818,7 +2818,7 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
     }
     if (Platform.OS === 'ios') {
       try {
-        await Linking.openURL('auraai://trade-signal');
+        await Linking.openURL('nextradeai://trade-signal');
         console.log('✅ iOS app brought to foreground (deep link)');
       } catch (error) {
         console.error('Error bringing iOS app to foreground:', error);

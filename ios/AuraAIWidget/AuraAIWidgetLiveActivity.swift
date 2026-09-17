@@ -43,7 +43,7 @@ struct AuraAIWidgetLiveActivity: Widget {
                     
                     Group {
                         // Construct image path from App Group container
-                        let appGroupIdentifier = "group.app.auraai.app"
+                        let appGroupIdentifier = "group.app.nextradeai.app"
                         let imageFileName = "botImage.png"
                         
                         if let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier),
@@ -129,7 +129,7 @@ struct AuraAIWidgetLiveActivity: Widget {
                             )
                         
                         // Bot image
-                        let appGroupIdentifier = "group.app.auraai.app"
+                        let appGroupIdentifier = "group.app.nextradeai.app"
                         if let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier),
                            let imageFilename = context.state.botImageLocalPath, !imageFilename.isEmpty {
                             let imageURL = containerURL.appendingPathComponent(imageFilename)
@@ -209,7 +209,7 @@ struct AuraAIWidgetLiveActivity: Widget {
                 }
             } compactLeading: {
                 // Construct image path from App Group container
-                let appGroupIdentifier = "group.app.auraai.app"
+                let appGroupIdentifier = "group.app.nextradeai.app"
                 if let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier),
                    let imageFilename = context.state.botImageLocalPath, !imageFilename.isEmpty {
                     let imageURL = containerURL.appendingPathComponent(imageFilename)
@@ -236,7 +236,7 @@ struct AuraAIWidgetLiveActivity: Widget {
                     .frame(width: 8, height: 8)
             } minimal: {
                 // Construct image path from App Group container
-                let appGroupIdentifier = "group.app.auraai.app"
+                let appGroupIdentifier = "group.app.nextradeai.app"
                 if let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier),
                    let imageFilename = context.state.botImageLocalPath, !imageFilename.isEmpty {
                     let imageURL = containerURL.appendingPathComponent(imageFilename)
