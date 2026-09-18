@@ -352,15 +352,8 @@ class OverlayService implements OverlayService {
   async executeOverlayTradeFromSignal(payload: string): Promise<boolean> {
     if (Platform.OS !== 'android' || !OverlayWindowModule?.executeOverlayTradeFromSignal) return false;
     try {
-      try {
-        const parsed = JSON.parse(payload) as Array<{ id?: string | number }>;
-        const signalId = parsed?.[0]?.id;
-        if (signalId != null && String(signalId).trim() !== '') {
-          await this.markOverlaySignalProcessed(String(signalId));
-        }
-      } catch {
-        // payload parse optional — native also dedupes by id
-      }
+      // Native marks the signal id only after MT5 config is validated and trade starts.
+      // Marking here first made startOverlayTradeExecution skip as "already executed".
       return await OverlayWindowModule.executeOverlayTradeFromSignal(payload);
     } catch (e) {
       console.error('[OverlayService] executeOverlayTradeFromSignal', e);

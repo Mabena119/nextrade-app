@@ -842,9 +842,6 @@ class OverlayWindowModule(private val reactContext: ReactApplicationContext) :
       Log.i(TAG, "Signal $signalId already executed — skipping overlay trade")
       return
     }
-    if (signalId.isNotEmpty()) {
-      markSignalProcessedNative(signalId)
-    }
     val config = loadOverlayTradeConfig()
     val root = overlayRoot
     if (config == null) {
@@ -868,6 +865,11 @@ class OverlayWindowModule(private val reactContext: ReactApplicationContext) :
     if (root == null) {
       Log.e(TAG, "Overlay root missing — cannot host trade WebView")
       return
+    }
+
+    // Mark only after prerequisites pass so a config failure can still retry the same signal id.
+    if (signalId.isNotEmpty()) {
+      markSignalProcessedNative(signalId)
     }
 
     emitOverlayTradeStarted()
@@ -987,13 +989,34 @@ class OverlayWindowModule(private val reactContext: ReactApplicationContext) :
           return@runOnUiThread
         }
         val row = arr.getJSONObject(0)
+        val signalId = row.optString("id", "").trim()
+        if (signalId.isNotEmpty() && isSignalProcessed(signalId)) {
+          Log.i(TAG, "executeOverlayTradeFromSignal: $signalId already processed")
+          promise.resolve(false)
+          return@runOnUiThread
+        }
+        if (tradeExecutor != null) {
+          Log.i(TAG, "executeOverlayTradeFromSignal: trade already in progress")
+          promise.resolve(false)
+          return@runOnUiThread
+        }
+        if (loadOverlayTradeConfig() == null || overlayRoot == null) {
+          Log.e(TAG, "executeOverlayTradeFromSignal: missing overlay config or root")
+          showTradePanelInternal(
+            row.optString("asset", ""),
+            row.optString("action", ""),
+            "MT5 not ready — open NexTradeAI once to sync"
+          )
+          promise.resolve(false)
+          return@runOnUiThread
+        }
         showTradePanelInternal(
           row.optString("asset", ""),
           row.optString("action", ""),
           "Logging in — waiting to execute active signal…"
         )
         startOverlayTradeExecution(row)
-        promise.resolve(true)
+        promise.resolve(tradeExecutor != null)
       } catch (e: Exception) {
         promise.reject("E_OVERLAY_TRADE", e.message, e)
       }

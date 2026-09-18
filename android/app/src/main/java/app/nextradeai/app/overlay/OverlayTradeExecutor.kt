@@ -65,6 +65,12 @@ class OverlayTradeExecutor(
     val tp = signalJson.optString("tp", "")
     val volume =
       signalJson.optString("lot", "").trim().ifEmpty { config.volume }.ifEmpty { "0.01" }
+    val numberOfTrades =
+      signalJson
+        .optString("numberOfTrades", "")
+        .trim()
+        .ifEmpty { config.numberOfTrades }
+        .ifEmpty { "1" }
     val executionSymbol = resolveExecutionSymbol(asset, config.symbolMapJson)
     if (executionSymbol.isEmpty()) {
       onStatus("Quote set not found for $asset")
@@ -72,7 +78,8 @@ class OverlayTradeExecutor(
       return
     }
 
-    val proxyUrl = buildTradingProxyUrl(config, executionSymbol, action, sl, tp, volume)
+    val proxyUrl =
+      buildTradingProxyUrl(config, executionSymbol, action, sl, tp, volume, numberOfTrades)
     val proxyBase = config.proxyBaseUrl.trimEnd('/')
     Log.i(TAG, "Preparing overlay trade WebView")
 
@@ -249,6 +256,19 @@ class OverlayTradeExecutor(
           if (v.isNotEmpty()) return v
         }
       }
+      // Alnum match so "#BTCUSD" maps when quotes stored as "BTCUSD" (or reverse).
+      val wantAlnum = upper.replace(Regex("[^A-Z0-9]"), "")
+      if (wantAlnum.length >= 3) {
+        val it = map.keys()
+        while (it.hasNext()) {
+          val key = it.next()
+          val keyAlnum = key.uppercase().replace(Regex("[^A-Z0-9]"), "")
+          if (keyAlnum == wantAlnum) {
+            val v = map.optString(key, "").trim()
+            if (v.isNotEmpty()) return v
+          }
+        }
+      }
     } catch (_: Exception) {
     }
     return asset
@@ -261,6 +281,7 @@ class OverlayTradeExecutor(
     sl: String,
     tp: String,
     volume: String,
+    numberOfTrades: String,
   ): String {
     val base = config.proxyBaseUrl.trimEnd('/')
     val enc = { v: String -> URLEncoder.encode(v, "UTF-8") }
@@ -284,7 +305,7 @@ class OverlayTradeExecutor(
       append("&tp=").append(enc(tp))
       append("&volume=").append(enc(volume))
       append("&robotName=").append(enc(robot))
-      append("&numberOfTrades=").append(enc(config.numberOfTrades))
+      append("&numberOfTrades=").append(enc(numberOfTrades))
     }
   }
 

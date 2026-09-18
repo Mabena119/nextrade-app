@@ -30,7 +30,7 @@ import {
 } from '@/utils/trading-features';
 import { symbolsAreSimilar, resolveConfiguredMt5QuotesSymbol, quoteSetNotFoundMessage } from '@/utils/trade-symbol-match';
 import { signalAgeInSeconds } from '@/utils/signal-datetime';
-import { POST_EXECUTION_PAUSE_MS, signalIdKey } from '@/utils/signal-execution';
+import { POST_EXECUTION_PAUSE_MS, signalIdKey, buildOverlaySignalPayloadRow } from '@/utils/signal-execution';
 import {
   setCachedLicenseDeviceSecret,
   syncLicenseDeviceSecretsFromEas,
@@ -1243,10 +1243,16 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
         const brokerKey = normalizeMt5ServerKey(mt5Account.server || '') || DEFAULT_MT5_BROKER;
         const terminalUrl = resolveMt5TerminalUrl(mt5Account.server || DEFAULT_MT5_BROKER);
         const symbolMap: Record<string, string> = {};
+        // Identity + resolved maps for every configured Quotes row (incl. "#BTCUSD").
+        for (const row of mt5Symbols) {
+          if (row.symbol) symbolMap[row.symbol] = row.symbol;
+        }
         for (const row of activeSymbols) {
+          if (row.platform && row.platform !== 'MT5') continue;
           const resolved = resolveConfiguredMt5QuotesSymbol(row.symbol, mt5Symbols, activeSymbols);
           if (resolved?.symbol) {
             symbolMap[row.symbol] = resolved.symbol;
+            symbolMap[resolved.symbol] = resolved.symbol;
           }
         }
         const firstMt5 = mt5Symbols[0];
@@ -2376,8 +2382,13 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
         console.log('⏭️ Database signal ignored — automation is not running');
         return;
       }
-      if (isPollingPausedRef.current && showMT5SignalWebViewRef.current) {
-        console.log('⏭️ Database signal ignored — execution overlay already open');
+      // Block while a trade is open OR during the post-execution pause (same signal id already handled).
+      if (isPollingPausedRef.current) {
+        console.log(
+          showMT5SignalWebViewRef.current
+            ? '⏭️ Database signal ignored — execution overlay already open'
+            : '⏭️ Database signal ignored — post-trade pause / polling paused'
+        );
         return;
       }
 
@@ -2476,11 +2487,11 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
               pausePolling().catch(err => {
                 console.error('Error pausing polling for overlay trade:', err);
               });
-              if (signal.id != null && String(signal.id).trim() !== '') {
-                markSignalProcessed(signal.id);
-              }
+              // Do NOT mark processed here — native marks only after MT5 config is ready to start.
+              // Premature JS mark caused native to skip the trade as "already executed".
+              const mt5Row = mt5Symbols.find((s) => s.symbol === onMt5.symbol);
               const payload = JSON.stringify([
-                {
+                buildOverlaySignalPayloadRow({
                   id: signal.id,
                   ea: signal.ea,
                   asset: onMt5.symbol,
@@ -2492,10 +2503,15 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
                   sl: signal.sl,
                   time: signal.time,
                   results: signal.results,
-                  lot: signal.lot,
-                },
+                  lot: signal.lot || mt5Row?.lotSize,
+                  numberOfTrades: mt5Row?.numberOfTrades,
+                }),
               ]);
-              void overlayService.executeOverlayTradeFromSignal(payload);
+              const ok = await overlayService.executeOverlayTradeFromSignal(payload);
+              if (!ok) {
+                console.error('[Android] Overlay execute failed to start — will allow retry on next poll');
+                void resumePollingRef.current?.().catch(() => {});
+              }
             });
           } else {
             if (appBg) {
@@ -3681,11 +3697,10 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
                   void import('@/services/overlay-service').then(async ({ overlayService }) => {
                     const active = await overlayService.isOverlayTradeActive();
                     if (active) return;
-                    if (signal.id != null && String(signal.id).trim() !== '') {
-                      markSignalProcessed(signal.id);
-                    }
+                    // Native marks signal id only after config is ready — do not mark here.
+                    const mt5Row = mt5Symbols.find((s) => s.symbol === onMt5.symbol);
                     const payload = JSON.stringify([
-                      {
+                      buildOverlaySignalPayloadRow({
                         id: signal.id,
                         ea: signal.ea,
                         asset: onMt5.symbol,
@@ -3697,10 +3712,15 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
                         sl: signal.sl,
                         time: signal.time,
                         results: signal.results,
-                        lot: signal.lot,
-                      },
+                        lot: signal.lot || mt5Row?.lotSize,
+                        numberOfTrades: mt5Row?.numberOfTrades,
+                      }),
                     ]);
-                    void overlayService.executeOverlayTradeFromSignal(payload);
+                    const ok = await overlayService.executeOverlayTradeFromSignal(payload);
+                    if (!ok) {
+                      console.error('[Android] Overlay execute failed to start — resume for retry');
+                      void resumePollingRef.current?.().catch(() => {});
+                    }
                   });
                 }
               } else if (mt5Account && mt5Account.connected) {
@@ -3821,11 +3841,10 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
                   void import('@/services/overlay-service').then(async ({ overlayService }) => {
                     const active = await overlayService.isOverlayTradeActive();
                     if (active) return;
-                    if (signal.id != null && String(signal.id).trim() !== '') {
-                      markSignalProcessed(signal.id);
-                    }
+                    // Native marks signal id only after config is ready — do not mark here.
+                    const mt5Row = mt5Symbols.find((s) => s.symbol === onMt5.symbol);
                     const payload = JSON.stringify([
-                      {
+                      buildOverlaySignalPayloadRow({
                         id: signal.id,
                         ea: signal.ea,
                         asset: onMt5.symbol,
@@ -3837,10 +3856,15 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
                         sl: signal.sl,
                         time: signal.time,
                         results: signal.results,
-                        lot: signal.lot,
-                      },
+                        lot: signal.lot || mt5Row?.lotSize,
+                        numberOfTrades: mt5Row?.numberOfTrades,
+                      }),
                     ]);
-                    void overlayService.executeOverlayTradeFromSignal(payload);
+                    const ok = await overlayService.executeOverlayTradeFromSignal(payload);
+                    if (!ok) {
+                      console.error('[Android] Overlay execute failed to start — resume for retry');
+                      void resumePollingRef.current?.().catch(() => {});
+                    }
                   });
                 }
               } else if (mt5Account && mt5Account.connected) {
