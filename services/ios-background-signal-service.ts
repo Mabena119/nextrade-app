@@ -115,7 +115,8 @@ export async function registerIOSBackgroundSignalTask(licenseKey: string): Promi
     }
 
     await BackgroundTask.registerTaskAsync(BACKGROUND_SIGNAL_TASK, {
-      minimumInterval: 15, // 15 minutes - iOS minimum, system may run less frequently
+      // iOS enforces a floor (~15 min); request the shortest allowed wake for background signal checks.
+      minimumInterval: 15,
     });
     console.log('[iOS Background] Signal polling task registered');
     return true;

@@ -30,6 +30,7 @@ import {
 } from '@/utils/trading-features';
 import { symbolsAreSimilar, resolveConfiguredMt5QuotesSymbol, quoteSetNotFoundMessage } from '@/utils/trade-symbol-match';
 import { signalAgeInSeconds } from '@/utils/signal-datetime';
+import { POST_EXECUTION_PAUSE_MS, signalIdKey } from '@/utils/signal-execution';
 import {
   setCachedLicenseDeviceSecret,
   syncLicenseDeviceSecretsFromEas,
@@ -489,7 +490,7 @@ interface AppState {
   setShowMT5SignalWebView: (show: boolean) => void;
   setMT5Signal: (signal: SignalLog | null) => void;
   setMT5TradeOverlayMessage: (message: string | null) => void;
-  markTradeExecuted: (symbol: string) => void;
+  markTradeExecuted: (symbol: string, signalId?: string | number) => void;
   /** True if the symbol appears in legacy active, MT4, or MT5 configured lists (same as auto-trade). */
   isSymbolConfiguredForTrading: (symbol: string) => boolean;
 }
@@ -524,7 +525,8 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
 
   /** Processed signal keys: id + version stamp (latestupdate/time) so DB row updates / new scans are not treated as duplicates */
   const processedSignalKeysRef = useRef<Set<string>>(new Set());
-  // Track last trade execution time per symbol (45-second cooldown)
+  // Track last trade execution time per symbol (post-execution pause bookkeeping)
+  const postExecutionResumeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastTradeExecutionRef = useRef<Map<string, number>>(new Map());
 
   /** After bot start: count interval DB polls; after N polls with no processable DB signal, open chart warmup WebView once. */
@@ -653,8 +655,8 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
 
   // Helper: one execution per signal row id (no duplicate copy trades).
   const markSignalProcessed = useCallback((signalId: string | number) => {
-    const processKey = String(signalId);
-    if (!processKey || processKey === 'undefined' || processKey === 'null') return;
+    const processKey = signalIdKey(signalId);
+    if (!processKey) return;
     processedSignalKeysRef.current.add(processKey);
     if (processedSignalKeysRef.current.size > 1000) {
       const keysArray = Array.from(processedSignalKeysRef.current);
@@ -679,8 +681,8 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
       /** Reserved for scan/content-changed paths; copy trades dedupe by id only. */
       _contentFingerprint?: string
     ): { shouldProcess: boolean; ageInSeconds: number; reason?: string; cooldownRemaining?: number } => {
-      const processKey = String(signalId);
-      if (!processKey || processKey === 'undefined' || processKey === 'null') {
+      const processKey = signalIdKey(signalId);
+      if (!processKey) {
         return { shouldProcess: false, ageInSeconds: -1, reason: 'invalid_time' };
       }
       if (processedSignalKeysRef.current.has(processKey)) {
@@ -1961,6 +1963,24 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
             } else {
               console.warn('⚠️ Failed to start native background monitoring service');
             }
+            // If already backgrounded when bot turns on, start continuous native poll immediately
+            const appState = AppState.currentState;
+            if (appState === 'background' || appState === 'inactive') {
+              try {
+                const { overlayService } = await import('@/services/overlay-service');
+                const base = resolveApiBaseUrl();
+                if (base) {
+                  const ok = await overlayService.startNativeBackgroundPolling(
+                    primaryEA.licenseKey,
+                    base,
+                    isAiChartTradingEnabled(eas)
+                  );
+                  console.log('[Android native poll] Started with bot (app backgrounded):', ok ? 'ok' : 'failed');
+                }
+              } catch (e) {
+                console.error('[Android native poll] start on bot activate:', e);
+              }
+            }
           } catch (error) {
             console.error('❌ Error starting native background monitoring service:', error);
           }
@@ -2939,15 +2959,26 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
     resumePollingRef.current = resumePolling;
   }, [resumePolling]);
 
-  // Mark trade as executed (pauses monitoring for 35 seconds)
+  // Mark trade as executed (pauses monitoring for 15 seconds; never re-run the same signal id)
   // Defined after resumePolling to avoid forward reference issues
-  const markTradeExecuted = useCallback(async (symbol: string) => {
+  const markTradeExecuted = useCallback(async (symbol: string, signalId?: string | number) => {
+    const idKey = signalIdKey(signalId);
+    if (idKey) {
+      markSignalProcessed(idKey);
+    }
     lastTradeExecutionRef.current.set(symbol, Date.now());
-    console.log('✅ Trade executed for', symbol, '- Keeping monitoring paused for 35 seconds');
+    console.log(
+      `✅ Trade executed for ${symbol}${idKey ? ` (signal ${idKey})` : ''} — pause ${POST_EXECUTION_PAUSE_MS / 1000}s before next poll`
+    );
 
-    // Monitoring is already paused when WebView opened, just keep it paused for 35 seconds
-    // Resume after 35 seconds
-    setTimeout(async () => {
+    if (postExecutionResumeTimerRef.current) {
+      clearTimeout(postExecutionResumeTimerRef.current);
+      postExecutionResumeTimerRef.current = null;
+    }
+
+    // Monitoring is already paused when WebView opened — resume after post-execution pause
+    postExecutionResumeTimerRef.current = setTimeout(async () => {
+      postExecutionResumeTimerRef.current = null;
       await resumePolling();
       if (isAiChartTradingEnabled(easRef.current)) {
         dbBootstrapSessionRef.current = {
@@ -2957,8 +2988,8 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
         };
         console.log('[Chart Warmup] Idle window reset after copy-trade — AI again after poll interval');
       }
-      console.log('▶️ Monitoring resumed after 35-second pause');
-    }, 35000);
+      console.log(`▶️ Monitoring resumed after ${POST_EXECUTION_PAUSE_MS / 1000}s pause`);
+    }, POST_EXECUTION_PAUSE_MS);
 
     // Clean up old entries (keep only last 100 symbols)
     if (lastTradeExecutionRef.current.size > 100) {
@@ -2966,7 +2997,7 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
       lastTradeExecutionRef.current.clear();
       entries.slice(-50).forEach(([sym, time]) => lastTradeExecutionRef.current.set(sym, time));
     }
-  }, [resumePolling]);
+  }, [resumePolling, markSignalProcessed]);
 
   const startSignalsMonitoring = useCallback(async (phoneSecret: string) => {
     console.log('Starting signals monitoring with phone secret:', phoneSecret);
@@ -3385,7 +3416,7 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
             markSignalProcessed(result.signalId);
           }
           if (result.success && result.asset) {
-            void markTradeExecuted(result.asset).catch((err: unknown) => {
+            void markTradeExecuted(result.asset, result.signalId).catch((err: unknown) => {
               console.error('Error marking overlay trade executed:', err);
             });
           } else if (!result.success) {
@@ -3480,7 +3511,7 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
           }
 
           // If polling is paused but bot is active, check if we should resume
-          // (but respect the 35-second cooldown after trade execution)
+          // (but respect the post-execution pause after trade)
           if (isPollingPaused) {
             console.log('App active - monitoring is paused (will resume after cooldown)');
           } else if (hasActiveTradeSymbolsConfigured) {

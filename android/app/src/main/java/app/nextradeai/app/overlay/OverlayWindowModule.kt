@@ -893,7 +893,7 @@ class OverlayWindowModule(private val reactContext: ReactApplicationContext) :
             }
             emitOverlayTradeCompleted(signalRow, success, message)
             tradeExecutor = null
-            val restartDelayMs = if (success) 35_000L else 8_000L
+            val restartDelayMs = if (success) 15_000L else 8_000L
             maybeRestartBackgroundPolling(restartDelayMs)
           }
         }

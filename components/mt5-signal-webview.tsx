@@ -3493,7 +3493,7 @@ export function MT5SignalWebView({ visible, signal, onClose }: MT5SignalWebViewP
             console.error('Error resuming polling after chart warmup trade:', err);
           });
         } else if (signal?.asset) {
-          void Promise.resolve(markTradeExecuted(signal.asset)).catch((err: unknown) => {
+          void Promise.resolve(markTradeExecuted(signal.asset, signal.id)).catch((err: unknown) => {
             console.error('Error marking trade as executed:', err);
           });
         }
