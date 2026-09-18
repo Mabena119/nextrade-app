@@ -867,18 +867,11 @@ export function MT5SignalWebView({ visible, signal, onClose }: MT5SignalWebViewP
 
         function isTerminalSessionVisible() {
           try {
-            var sb = document.querySelector('input[placeholder*="Search symbol" i]') ||
-                     document.querySelector('input[placeholder*="Search" i]') ||
-                     document.querySelector('input[type="search"]');
+            // Require symbol search — bare Equity/Balance appears on unauthenticated shells (0.00).
+            var sb = document.querySelector('input[placeholder*="Search symbol" i]');
             if (sb && sb.offsetParent) return true;
             var txt = (document.body && document.body.innerText) ? document.body.innerText : '';
-            if (/\\bEquity\\b/i.test(txt) && /\\bBalance\\b/i.test(txt)) return true;
-            if (/\\bBid\\b/i.test(txt) && /\\bAsk\\b/i.test(txt)) return true;
-            var list = document.querySelectorAll('canvas');
-            for (var ci = 0; ci < list.length; ci++) {
-              var c = list[ci];
-              if ((c.width || 0) * (c.height || 0) >= 50000) return true;
-            }
+            if (/\\bBid\\b/i.test(txt) && /\\bAsk\\b/i.test(txt) && /Search symbol/i.test(txt)) return true;
           } catch (e) {}
           return false;
         }
@@ -1840,15 +1833,20 @@ export function MT5SignalWebView({ visible, signal, onClose }: MT5SignalWebViewP
             if (!(await waitPastCloudflare(sendMessage, sleep, isTerminalSessionVisible))) return;
 
             var connectedViaSheet = false;
-            for (var sheetAttempt = 0; sheetAttempt < 30; sheetAttempt++) {
+            for (var sheetAttempt = 0; sheetAttempt < 40; sheetAttempt++) {
               if (connectSheetUiVisible()) {
                 if (mt5LoginFormReady()) {
                   connectedViaSheet = await trySubmitConnectToAccountSheet(sendMessage, sleep);
                   if (connectedViaSheet) break;
                 }
                 sendMessage('step_update', 'Connect form detected — filling credentials...');
+              } else if (sheetAttempt % 3 === 1) {
+                if (tryClickMt5ConnectToAccount()) {
+                  sendMessage('step_update', 'Opening Connect to account...');
+                  await sleep(1200);
+                }
               }
-              if (!connectSheetUiVisible() && isTerminalSessionVisible()) break;
+              if (!connectSheetUiVisible() && isTerminalSessionVisible() && !isAnyLoginModalBlocking()) break;
               await sleep(900);
             }
 
@@ -1920,19 +1918,36 @@ export function MT5SignalWebView({ visible, signal, onClose }: MT5SignalWebViewP
               } else break;
             }
             
-            // Wait for form to be ready
+            // Wait for form to be ready (poll — Android opacity:0 WebViews mount slowly)
             await new Promise(r => setTimeout(r, 2000));
-            
-            // Fill login credentials with enhanced field detection (matching Android)
-            const loginField = document.querySelector('input[name="login"]') || 
-                              document.querySelector('input[type="text"][placeholder*="login" i]') ||
-                              document.querySelector('input[type="number"]') ||
-                              document.querySelector('input#login');
-            
-            const passwordField = document.querySelector('input[name="password"]') || 
-                                 document.querySelector('input[type="password"]') ||
-                                 document.querySelector('input#password');
-            
+
+            var loginField = null;
+            var passwordField = null;
+            for (var __formWait = 0; __formWait < 60; __formWait++) {
+              loginField = (typeof findMt5LoginInput === 'function' ? findMt5LoginInput() : null) ||
+                document.querySelector('input[name="login"]') ||
+                document.querySelector('input[name="Login"]') ||
+                document.querySelector('input[type="number"]') ||
+                document.querySelector('input#login');
+              passwordField = (typeof findMt5PasswordInput === 'function' ? findMt5PasswordInput() : null) ||
+                document.querySelector('input[name="password"]') ||
+                document.querySelector('input[type="password"]') ||
+                document.querySelector('input#password');
+              if (loginField && passwordField) break;
+              if (__formWait > 0 && __formWait % 5 === 0) {
+                tryClickMt5ConnectToAccount();
+              }
+              if (__formWait > 0 && __formWait % 8 === 0) {
+                earlySearch = typeof eaPickVisibleSearchInputDeep === 'function' ? eaPickVisibleSearchInputDeep() : null;
+                if ((earlySearch || isTerminalSessionVisible()) && !isAnyLoginModalBlocking()) {
+                  sendMessage('step_update', 'Session already active — continuing...');
+                  await runPostAuthTradeFlow();
+                  return;
+                }
+              }
+              await new Promise(r => setTimeout(r, 500));
+            }
+
             if (!loginField || !passwordField) {
               earlySearch = typeof eaPickVisibleSearchInputDeep === 'function' ? eaPickVisibleSearchInputDeep() : null;
               if ((earlySearch || isTerminalSessionVisible()) && !isAnyLoginModalBlocking()) {
@@ -1940,7 +1955,9 @@ export function MT5SignalWebView({ visible, signal, onClose }: MT5SignalWebViewP
                 await runPostAuthTradeFlow();
                 return;
               }
-              sendMessage('authentication_failed', !loginField ? 'Login field not found' : 'Password field not found');
+              var inputCount = 0;
+              try { inputCount = document.querySelectorAll('input').length; } catch (eIc) {}
+              sendMessage('authentication_failed', (!loginField ? 'Login field not found' : 'Password field not found') + ' (inputs=' + inputCount + ')');
               return;
             }
             if (!'${loginVal}') {
@@ -2699,6 +2716,7 @@ export function MT5SignalWebView({ visible, signal, onClose }: MT5SignalWebViewP
         // Helper function to simulate mouse click
         const mouseClick = (element) => {
           try {
+            if (!element) return false;
             const rect = element.getBoundingClientRect();
             const x = rect.left + rect.width / 2;
             const y = rect.top + rect.height / 2;
@@ -2744,11 +2762,70 @@ export function MT5SignalWebView({ visible, signal, onClose }: MT5SignalWebViewP
               screenY: y
             });
             element.dispatchEvent(clickEvent);
-            
+
+            // Android WebView / Chromium often only honors touch sequences for MT5 buttons
+            try {
+              if (typeof TouchEvent !== 'undefined' && typeof Touch !== 'undefined') {
+                var touch = new Touch({
+                  identifier: Date.now() % 100000,
+                  target: element,
+                  clientX: x,
+                  clientY: y,
+                  screenX: x,
+                  screenY: y,
+                  pageX: x,
+                  pageY: y,
+                  radiusX: 2.5,
+                  radiusY: 2.5,
+                  force: 0.5
+                });
+                element.dispatchEvent(new TouchEvent('touchstart', {
+                  bubbles: true, cancelable: true,
+                  touches: [touch], targetTouches: [touch], changedTouches: [touch]
+                }));
+                element.dispatchEvent(new TouchEvent('touchend', {
+                  bubbles: true, cancelable: true,
+                  touches: [], targetTouches: [], changedTouches: [touch]
+                }));
+              }
+            } catch (eTouch) {}
+            try { element.click(); } catch (eNative) {}
             return true;
-          } catch(e) {
-            return false;
+          } catch (eMc) {
+            try { element.click(); return true; } catch (e2) { return false; }
           }
+        };
+
+        /** After Buy/Sell — wait for OK / acceptance text; fail on reject (do not fake success). */
+        const waitForOrderAccepted = async (tradeNumber) => {
+          var deadline = Date.now() + 4500;
+          while (Date.now() < deadline) {
+            var bt = '';
+            try { bt = (document.body && (document.body.innerText || document.body.textContent)) || ''; } catch (eBt) {}
+            var tail = bt.slice(Math.max(0, bt.length - 1200));
+            if (/not enough money|not enough funds|invalid volume|invalid stops|trade.*(disabled|context|forbidden)|requote|off quotes|market is closed|no prices|common error|request rejected|order rejected/i.test(tail)) {
+              sendMessage('step_update', '❌ Trade ' + tradeNumber + ' rejected by terminal');
+              return false;
+            }
+            var okButton = Array.from(document.querySelectorAll('button.trade-button.svelte-ailjot, button[class*="trade-button"], button')).find(function(btn) {
+              var text = (btn.innerText || btn.textContent || '').trim();
+              if (/^(buy|sell)/i.test(text)) return false;
+              return text === 'OK' || text === 'Ok' || text === 'Done' || text === 'Close';
+            });
+            if (okButton && okButton.offsetParent !== null) {
+              mouseClick(okButton);
+              sendMessage('step_update', '✅ Trade ' + tradeNumber + ' confirmed (OK clicked)');
+              await new Promise(function(r) { setTimeout(r, 900); });
+              return true;
+            }
+            if (/order.*(placed|executed|done)|deal.*(done|executed)|request.*(executed|accepted|done)|position.*(opened|modified)/i.test(tail)) {
+              sendMessage('step_update', '✅ Trade ' + tradeNumber + ' accepted by terminal');
+              return true;
+            }
+            await new Promise(function(r) { setTimeout(r, 350); });
+          }
+          sendMessage('step_update', '⚠️ Trade ' + tradeNumber + ' — no terminal confirmation (will retry)');
+          return false;
         };
 
         /** Svelte / controlled inputs: direct .value often does not stick; use prototype setter like auth flow. */
@@ -2927,26 +3004,8 @@ export function MT5SignalWebView({ visible, signal, onClose }: MT5SignalWebViewP
               sendMessage('error', '❌ Trade ' + tradeNumber + ' execution failed');
               return false;
             }
-            
-            // Wait for OK button and confirm trade completion
-            sendMessage('step_update', '⏳ Confirming trade ' + tradeNumber + '...');
-            await new Promise(r => setTimeout(r, 1500));
-            
-            // Dismiss post-order confirmation only (never confuse with Buy/Sell)
-            const okButton = Array.from(document.querySelectorAll('button.trade-button.svelte-ailjot, button[class*="trade-button"]')).find(btn => {
-              const text = (btn.innerText || btn.textContent || '').trim();
-              if (/^(buy|sell)/i.test(text)) return false;
-              return text === 'OK' || text === 'ok';
-            });
-            
-            if (okButton) {
-              okButton.click();
-              sendMessage('step_update', '✅ Trade ' + tradeNumber + ' confirmed (OK clicked)');
-              await new Promise(r => setTimeout(r, 1000)); // Wait for confirmation dialog to close
-            } else {
-              sendMessage('step_update', '✅ Trade ' + tradeNumber + ' auto-confirmed');
-            }
-            
+
+            // fillOrderFormAndConfirm already waits for OK / terminal acceptance
             return true;
           } catch(e) {
             sendMessage('error', '❌ Error in trade ' + tradeNumber + ': ' + e.message);
@@ -3040,19 +3099,32 @@ export function MT5SignalWebView({ visible, signal, onClose }: MT5SignalWebViewP
             var actionLower = actionLowerRaw.indexOf('sell') >= 0 ? 'sell' : (actionLowerRaw.indexOf('buy') >= 0 ? 'buy' : actionLowerRaw);
             
             if (actionLower === 'buy' && buyButton) {
-              buyButton.click();
-              sendMessage('step_update', '🚀 Trade ' + tradeNumber + '/' + totalTrades + ': BUY order executed');
+              mouseClick(buyButton);
+              sendMessage('step_update', '🚀 Trade ' + tradeNumber + '/' + totalTrades + ': BUY submitted');
             } else if (actionLower === 'sell' && sellButton) {
-              sellButton.click();
-              sendMessage('step_update', '🚀 Trade ' + tradeNumber + '/' + totalTrades + ': SELL order executed');
+              mouseClick(sellButton);
+              sendMessage('step_update', '🚀 Trade ' + tradeNumber + '/' + totalTrades + ': SELL submitted');
             } else {
               sendMessage('error', '❌ Trade button not found for action: ' + action + ' (normalized: ' + actionLower + ')');
               return false;
             }
-            
-            // Wait for trade to be processed
-            await new Promise(r => setTimeout(r, 1500));
-            
+
+            await new Promise(r => setTimeout(r, 600));
+            var accepted = await waitForOrderAccepted(tradeNumber);
+            if (!accepted) {
+              // One more hard click — Android WebView often drops the first synthetic gesture
+              var retryBtn = actionLower === 'sell' ? sellButton : buyButton;
+              if (retryBtn) {
+                sendMessage('step_update', 'Retrying ' + actionLower.toUpperCase() + ' click...');
+                mouseClick(retryBtn);
+                await new Promise(r => setTimeout(r, 500));
+                accepted = await waitForOrderAccepted(tradeNumber);
+              }
+            }
+            if (!accepted) {
+              sendMessage('error', '❌ Trade ' + tradeNumber + ' was not confirmed by the terminal');
+              return false;
+            }
             return true;
           } catch(e) {
             sendMessage('error', '❌ Error filling order form: ' + e.message);
@@ -3497,10 +3569,16 @@ export function MT5SignalWebView({ visible, signal, onClose }: MT5SignalWebViewP
             console.error('Error marking trade as executed:', err);
           });
         }
-        // Close immediately
+        // Blank the page before unmount — Android Chromium crashes if the sandboxed
+        // renderer is killed mid-paint (code -1) right after trade automation.
+        try {
+          webViewRef.current?.injectJavaScript?.(
+            "(function(){try{window.stop();}catch(e){}try{location.replace('about:blank');}catch(e2){} true;})();"
+          );
+        } catch (eBlank) {}
         setTimeout(() => {
           onClose();
-        }, 500);
+        }, 2200);
       }
     } catch (error) {
       console.error('Error parsing WebView message:', error);
@@ -3575,12 +3653,14 @@ export function MT5SignalWebView({ visible, signal, onClose }: MT5SignalWebViewP
       setChartAiError(null);
       setChartAiAnalyzing(false);
       setWebExternalEval(null);
-      // Reset key when closing to ensure fresh start next time
-      setWebViewKey(prev => prev + 1);
-      // Clear ref
-      if (webViewRef.current) {
-        webViewRef.current = null;
-      }
+      // Defer remount key bump so Chromium can tear down cleanly (avoids renderer code -1).
+      const t = setTimeout(() => {
+        setWebViewKey(prev => prev + 1);
+        if (webViewRef.current) {
+          webViewRef.current = null;
+        }
+      }, 400);
+      return () => clearTimeout(t);
     }
   }, [visible]);
 
@@ -3954,16 +4034,16 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    opacity: 0,
-    zIndex: -1,
-    pointerEvents: 'none' as const,
+    opacity: 0.02,
+    zIndex: 1,
+    elevation: 2,
   },
-  /** Same minHeight as metatrader.tsx invisibleWebView (350). */
+  /** Same minHeight as metatrader.tsx invisibleWebView. */
   hiddenWebView: {
     flex: 1,
     width: '100%',
-    minHeight: 350,
-    opacity: 0,
+    minHeight: 640,
+    opacity: 0.02,
   },
   aiAnalysisPanel: {
     position: 'absolute',

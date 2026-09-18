@@ -317,8 +317,7 @@ export function getMt5LinkShellProbeJs(generation: number, maxWaitMs: number): s
       var bt = document.body ? (document.body.innerText || document.body.textContent || '') : '';
       if (bt.indexOf('Connect to account') >= 0) return true;
       if (bt.indexOf('Enter Login') >= 0 && bt.indexOf('Password') >= 0) return true;
-      if (bt.indexOf('Search symbol') >= 0) return true;
-      if (/\\bEquity\\b/i.test(bt) && /\\bBalance\\b/i.test(bt)) return true;
+      // Do not treat Equity/Balance alone as ready — unauthenticated shells show those labels.
       var login = document.querySelector('input[placeholder*="login" i], input[name="login"], input[name="Login"]');
       var pwd = document.querySelector('input[type="password"], input[placeholder*="password" i], input[name="password"]');
       if (login && pwd) {
@@ -367,16 +366,40 @@ function overlayHasBrokerAccountsText(txt) {
 /** Shared login/password field discovery. */
 export const MT5_FORM_INPUT_HELPERS_JS = `
 function mt5WalkDocs(scan) {
-  try {
-    if (scan(document)) return true;
-  } catch (e0) {}
-  var iframes = document.querySelectorAll('iframe');
-  for (var fi = 0; fi < iframes.length; fi++) {
+  function walk(root) {
     try {
-      var idoc = iframes[fi].contentDocument;
-      if (idoc && scan(idoc)) return true;
-    } catch (eIf) {}
+      if (scan(root)) return true;
+    } catch (e0) {}
+    try {
+      var all = root.querySelectorAll ? root.querySelectorAll('*') : [];
+      for (var si = 0; si < all.length; si++) {
+        if (all[si].shadowRoot && walk(all[si].shadowRoot)) return true;
+      }
+    } catch (eS) {}
+    try {
+      var iframes = root.querySelectorAll ? root.querySelectorAll('iframe') : [];
+      for (var fi = 0; fi < iframes.length; fi++) {
+        try {
+          var idoc = iframes[fi].contentDocument;
+          if (idoc && walk(idoc)) return true;
+        } catch (eIf) {}
+      }
+    } catch (eI) {}
+    return false;
   }
+  return walk(document);
+}
+function tryClickMt5ConnectToAccount() {
+  try {
+    var nodes = document.querySelectorAll('button, a, [role="button"], span, div');
+    for (var i = 0; i < Math.min(nodes.length, 280); i++) {
+      var t = ((nodes[i].innerText || nodes[i].textContent || '') + '').trim().toLowerCase();
+      if (!t || t.length > 48) continue;
+      if (t === 'connect to account' || (t.indexOf('connect') >= 0 && t.indexOf('account') >= 0)) {
+        try { nodes[i].click(); return true; } catch (eC) {}
+      }
+    }
+  } catch (e) {}
   return false;
 }
 function mt5QueryInDocs(selector) {
@@ -517,7 +540,7 @@ function mt5SetInputValue(el, val) {
 }
 `;
 
-/** Wait for terminal shell — proceed only when login inputs or session are actually visible. */
+/** Wait for terminal shell — proceed when login form OR real session is ready. */
 export function getMt5TerminalReadyWaitJs(shellWaitMs = 8000): string {
   return `
 async function waitPastCloudflare(sendMessage, sleep, isTerminalSessionVisible) {
@@ -544,6 +567,38 @@ async function waitPastCloudflare(sendMessage, sleep, isTerminalSessionVisible) 
     return true;
   }
   sendMessage('authentication_failed', 'Terminal did not load in time — try again');
+  return false;
+}
+`;
+}
+
+/**
+ * Link Account only: never treat chart chrome as "already logged in".
+ * Fresh link clears storage — we must wait for the Connect login form.
+ */
+export function getMt5LinkAccountReadyWaitJs(shellWaitMs = 45000): string {
+  return `
+async function waitForMt5LinkLoginForm(sendMessage, sleep) {
+  sendMessage('step_update', 'Loading broker terminal...');
+  var deadline = Date.now() + ${shellWaitMs};
+  var clicks = 0;
+  while (Date.now() < deadline) {
+    if (mt5LoginFormReady() || connectSheetUiVisible()) {
+      sendMessage('step_update', 'Connect form ready');
+      return true;
+    }
+    if (clicks < 12 && (clicks === 0 || clicks % 2 === 0)) {
+      if (typeof tryClickMt5ConnectToAccount === 'function' && tryClickMt5ConnectToAccount()) {
+        sendMessage('step_update', 'Opening Connect to account...');
+        await sleep(1400);
+      }
+    }
+    clicks++;
+    await sleep(700);
+  }
+  var inputCount = 0;
+  try { inputCount = document.querySelectorAll('input').length; } catch (e) {}
+  sendMessage('authentication_failed', 'Login form did not appear (inputs=' + inputCount + ') — try Link Account again');
   return false;
 }
 `;

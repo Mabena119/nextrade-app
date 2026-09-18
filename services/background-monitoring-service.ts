@@ -50,8 +50,8 @@ class BackgroundMonitoringService {
     console.log('[BackgroundMonitoring] Module available:', !!BackgroundMonitoringModule);
 
     if (!BackgroundMonitoringModule) {
-      console.error('[BackgroundMonitoring] ❌ BackgroundMonitoringModule not available!');
-      console.log('[BackgroundMonitoring] This means the native module is not registered or compiled');
+      // JS DB polling + OverlayTradeExecutor cover Android; native module is optional.
+      console.log('[BackgroundMonitoring] Native module not packaged — using JS polling / overlay');
       return false;
     }
 

@@ -30,6 +30,7 @@ import {
   getMt5InnerAuthKickMs,
   getMt5ShellReadyDelayMs,
   getMt5TerminalReadyWaitJs,
+  getMt5LinkAccountReadyWaitJs,
   MT5_BROKER_SHEET_MARKERS_JS,
   MT5_FORM_INPUT_HELPERS_JS,
   normalizeMt5ServerKey,
@@ -2013,7 +2014,7 @@ export default function MetaTraderScreen() {
     const serverValue = escapeValue(resolveMt5TerminalServerCredential(server.trim()));
     const serverKey = normalizeMt5ServerKey(server.trim());
     const authKickMs = getMt5InnerAuthKickMs(serverKey, Platform.OS === 'android');
-    const shellWaitMs = 8000;
+    const shellWaitMs = Platform.OS === 'android' ? 45000 : 25000;
 
     // Validate that required values are provided
     if (!loginValue || !passwordValue) {
@@ -2146,22 +2147,16 @@ export default function MetaTraderScreen() {
 
         ${MT5_BROKER_SHEET_MARKERS_JS}
         ${MT5_FORM_INPUT_HELPERS_JS}
-        ${getMt5TerminalReadyWaitJs(shellWaitMs)}
+        ${getMt5LinkAccountReadyWaitJs(shellWaitMs)}
+        ${getMt5TerminalReadyWaitJs(Math.min(shellWaitMs, 12000))}
 
         function isTerminalSessionVisible() {
           try {
-            var sb = document.querySelector('input[placeholder*="Search symbol" i]') ||
-                     document.querySelector('input[placeholder*="Search" i]') ||
-                     document.querySelector('input[type="search"]');
+            // Require symbol search — bare Equity/Balance appears on unauthenticated shells (0.00).
+            var sb = document.querySelector('input[placeholder*="Search symbol" i]');
             if (sb && sb.offsetParent) return true;
             var txt = (document.body && document.body.innerText) ? document.body.innerText : '';
-            if (/\\bEquity\\b/i.test(txt) && /\\bBalance\\b/i.test(txt)) return true;
-            if (/\\bBid\\b/i.test(txt) && /\\bAsk\\b/i.test(txt)) return true;
-            var list = document.querySelectorAll('canvas');
-            for (var ci = 0; ci < list.length; ci++) {
-              var c = list[ci];
-              if ((c.width || 0) * (c.height || 0) >= 50000) return true;
-            }
+            if (/\\bBid\\b/i.test(txt) && /\\bAsk\\b/i.test(txt) && /Search symbol/i.test(txt)) return true;
           } catch (e) {}
           return false;
         }
@@ -2456,20 +2451,27 @@ export default function MetaTraderScreen() {
         const authenticateMT5 = async () => {
           try {
             sendMessage('step_update', 'Initializing MT5 Account...');
-            if (!(await waitPastCloudflare(sendMessage, sleep, isTerminalSessionVisible))) return;
+            // Link Account always needs the Connect form (storage was cleared). Do not bail on chart chrome.
+            if (!(await waitForMt5LinkLoginForm(sendMessage, sleep))) return;
             if (!connectSheetUiVisible()) await sleep(1200);
 
             var connectedViaSheet = false;
-            for (var sheetAttempt = 0; sheetAttempt < 30; sheetAttempt++) {
+            for (var sheetAttempt = 0; sheetAttempt < 50; sheetAttempt++) {
               if (connectSheetUiVisible()) {
                 if (mt5LoginFormReady()) {
                   connectedViaSheet = await trySubmitConnectToAccountSheet(sendMessage, sleep);
                   if (connectedViaSheet) break;
                 }
                 sendMessage('step_update', 'Connect form detected — filling credentials...');
+              } else if (sheetAttempt % 2 === 0) {
+                if (tryClickMt5ConnectToAccount()) {
+                  sendMessage('step_update', 'Opening Connect to account...');
+                  await sleep(1200);
+                }
               }
-              if (!connectSheetUiVisible() && isTerminalSessionVisible()) break;
-              await sleep(900);
+              // Never skip credential fill on Link Account — chart chrome is not a logged-in session.
+              if (connectedViaSheet) break;
+              await sleep(800);
             }
 
             if (!connectedViaSheet) {
@@ -2508,21 +2510,37 @@ export default function MetaTraderScreen() {
               }
             }
             
-            // Wait for form to be ready
+            // Wait for form to be ready (poll — Android opacity:0 WebViews mount slowly)
             await sleep(2000);
-            
-            // Fill login credentials with enhanced field detection
-            const loginField = document.querySelector('input[name="login"]') || 
-                              document.querySelector('input[type="text"][placeholder*="login" i]') ||
-                              document.querySelector('input[type="number"]') ||
-                              document.querySelector('input#login');
-            
-            const passwordField = document.querySelector('input[name="password"]') || 
-                                 document.querySelector('input[type="password"]') ||
-                                 document.querySelector('input#password');
-            
+
+            var loginField = null;
+            var passwordField = null;
+            for (var __formWait = 0; __formWait < 60; __formWait++) {
+              loginField = (typeof findMt5LoginInput === 'function' ? findMt5LoginInput() : null) ||
+                document.querySelector('input[name="login"]') ||
+                document.querySelector('input[name="Login"]') ||
+                document.querySelector('input[type="number"]') ||
+                document.querySelector('input#login');
+              passwordField = (typeof findMt5PasswordInput === 'function' ? findMt5PasswordInput() : null) ||
+                document.querySelector('input[name="password"]') ||
+                document.querySelector('input[type="password"]') ||
+                document.querySelector('input#password');
+              if (loginField && passwordField) break;
+              if (__formWait > 0 && __formWait % 5 === 0) {
+                tryClickMt5ConnectToAccount();
+              }
+              await sleep(500);
+            }
+
+            if (!loginField || !passwordField) {
+              var inputCount = 0;
+              try { inputCount = document.querySelectorAll('input').length; } catch (eIc) {}
+              sendMessage('authentication_failed', (!loginField ? 'Login field not found' : 'Password field not found') + ' (inputs=' + inputCount + ')');
+              return;
+            }
+
             // Fill login field
-            if (loginField && loginCredential) {
+            if (loginCredential) {
               loginField.focus();
               loginField.value = '';
               loginField.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
@@ -2536,12 +2554,12 @@ export default function MetaTraderScreen() {
                 sendMessage('step_update', 'Login filled');
               }, 100);
             } else {
-              sendMessage('authentication_failed', 'Login field not found');
+              sendMessage('authentication_failed', 'Login not configured');
               return;
             }
             
             // Fill password field
-            if (passwordField && passwordCredential) {
+            if (passwordCredential) {
               setTimeout(() => {
                 passwordField.focus();
                 passwordField.value = '';
@@ -2557,7 +2575,7 @@ export default function MetaTraderScreen() {
                 }, 100);
               }, 300);
             } else {
-              sendMessage('authentication_failed', 'Password field not found');
+              sendMessage('authentication_failed', 'Password not configured');
               return;
             }
             
@@ -4475,24 +4493,24 @@ const styles = StyleSheet.create({
 
   invisibleWebViewContainer: {
     position: 'absolute',
-    // Keep a real layout box so MT5 mounts login inputs (opacity:0 alone can collapse hit-testing).
-    top: Platform.OS === 'web' ? 0 : Platform.OS === 'android' ? -2000 : 0,
+    // Native: on-screen tiny opacity so Chromium mounts login inputs (offscreen/opacity:0 fails on Android).
+    // Web: park off-canvas.
+    top: 0,
     left: Platform.OS === 'web' ? -10000 : 0,
     right: Platform.OS === 'web' ? undefined : 0,
+    bottom: Platform.OS === 'web' ? undefined : 0,
     width: Platform.OS === 'web' ? 480 : '100%',
-    height: Platform.OS === 'web' ? 720 : Platform.OS === 'android' ? 420 : undefined,
-    bottom: Platform.OS === 'android' || Platform.OS === 'web' ? undefined : 0,
-    opacity: Platform.OS === 'web' ? 0.01 : 0,
-    // Keep above theme layers so auth iframe/WKWebView is not buried (EA Trade pattern + Aura chrome)
-    zIndex: 2,
-    pointerEvents: 'none' as const,
+    height: Platform.OS === 'web' ? 720 : undefined,
+    opacity: 0.02,
+    zIndex: Platform.OS === 'web' ? 2 : 1,
+    elevation: Platform.OS === 'android' ? 2 : undefined,
     overflow: 'hidden' as const,
   },
   invisibleWebView: {
     flex: 1,
     width: Platform.OS === 'web' ? 480 : '100%',
-    minHeight: Platform.OS === 'web' ? 720 : 350,
-    height: Platform.OS === 'web' ? 720 : undefined,
-    opacity: Platform.OS === 'web' ? 0.01 : 0,
+    minHeight: Platform.OS === 'web' ? 720 : 640,
+    height: Platform.OS === 'web' ? 720 : '100%',
+    opacity: 0.02,
   },
 });

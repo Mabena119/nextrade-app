@@ -3671,57 +3671,60 @@ async function handleApi(request: Request): Promise<Response> {
                 }
               };
 
-              // Helper function to simulate mouse click
+              // Mouse + touch — Android WebView often ignores bare .click() / mouse-only
               const mouseClick = (element) => {
                 try {
+                  if (!element) return false;
                   const rect = element.getBoundingClientRect();
                   const x = rect.left + rect.width / 2;
                   const y = rect.top + rect.height / 2;
-                  
-                  const mousedownEvent = new MouseEvent('mousedown', {
-                    bubbles: true,
-                    cancelable: true,
-                    view: window,
-                    button: 0,
-                    buttons: 1,
-                    clientX: x,
-                    clientY: y,
-                    screenX: x,
-                    screenY: y
+                  ['mousedown', 'mouseup', 'click'].forEach(function (type) {
+                    element.dispatchEvent(new MouseEvent(type, {
+                      bubbles: true,
+                      cancelable: true,
+                      view: window,
+                      button: 0,
+                      buttons: type === 'mousedown' ? 1 : 0,
+                      clientX: x,
+                      clientY: y,
+                      screenX: x,
+                      screenY: y
+                    }));
                   });
-                  element.dispatchEvent(mousedownEvent);
-                  
-                  const mouseupEvent = new MouseEvent('mouseup', {
-                    bubbles: true,
-                    cancelable: true,
-                    view: window,
-                    button: 0,
-                    buttons: 0,
-                    clientX: x,
-                    clientY: y,
-                    screenX: x,
-                    screenY: y
-                  });
-                  element.dispatchEvent(mouseupEvent);
-                  
-                  const clickEvent = new MouseEvent('click', {
-                    bubbles: true,
-                    cancelable: true,
-                    view: window,
-                    button: 0,
-                    buttons: 0,
-                    clientX: x,
-                    clientY: y,
-                    screenX: x,
-                    screenY: y
-                  });
-                  element.dispatchEvent(clickEvent);
-                  
-                         return true;
-                } catch(e) {
-                       return false;
-                     }
-                   };
+                  try {
+                    if (typeof TouchEvent !== 'undefined' && typeof Touch !== 'undefined') {
+                      var touch = new Touch({
+                        identifier: 1,
+                        target: element,
+                        clientX: x,
+                        clientY: y,
+                        screenX: x,
+                        screenY: y,
+                        pageX: x,
+                        pageY: y
+                      });
+                      element.dispatchEvent(new TouchEvent('touchstart', {
+                        bubbles: true,
+                        cancelable: true,
+                        touches: [touch],
+                        targetTouches: [touch],
+                        changedTouches: [touch]
+                      }));
+                      element.dispatchEvent(new TouchEvent('touchend', {
+                        bubbles: true,
+                        cancelable: true,
+                        touches: [],
+                        targetTouches: [],
+                        changedTouches: [touch]
+                      }));
+                    }
+                  } catch (eTouch) {}
+                  try { element.click(); } catch (eNative) {}
+                  return true;
+                } catch (e) {
+                  try { element.click(); return true; } catch (e2) { return false; }
+                }
+              };
                    
               // Open order dialog and execute single trade - STRICTLY SEQUENTIAL
               const openOrderDialogAndExecuteTrade = async (tradeNumber, totalTrades) => {
@@ -3835,24 +3838,7 @@ async function handleApi(request: Request): Promise<Response> {
                     sendMessage('error', '❌ Trade ' + tradeNumber + ' execution failed');
                     return false;
                   }
-                  
-                  sendMessage('step_update', '⏳ Confirming trade ' + tradeNumber + '...');
-                  await sleep(1500);
-                  
-                  const okButton = Array.from(document.querySelectorAll('button.trade-button.svelte-ailjot')).find((btn) => {
-                    const text = (btn.innerText || btn.textContent || '').trim();
-                    if (/^(buy|sell)/i.test(text)) return false;
-                    return text === 'OK' || text === 'ok';
-                  });
-                  
-                  if (okButton) {
-                    okButton.click();
-                    sendMessage('step_update', '✅ Trade ' + tradeNumber + ' confirmed (OK clicked)');
-                    await sleep(1000);
-                  } else {
-                    sendMessage('step_update', '✅ Trade ' + tradeNumber + ' auto-confirmed');
-                  }
-                  
+                  // fillOrderFormAndConfirm waits for OK / terminal acceptance — never fake auto-confirm
                   return true;
                 } catch(e) {
                   sendMessage('error', '❌ Error in trade ' + tradeNumber + ': ' + e.message);
@@ -3947,21 +3933,88 @@ async function handleApi(request: Request): Promise<Response> {
                                       (btn.innerText || btn.textContent || '').trim().includes('Sell')
                                     );
                   
-                  const actionLower = (action || '').toLowerCase();
+                  const actionLowerRaw = (action || '').trim().toLowerCase();
+                  var actionLower = actionLowerRaw.indexOf('sell') >= 0 ? 'sell' : (actionLowerRaw.indexOf('buy') >= 0 ? 'buy' : actionLowerRaw);
+                  const forceTradeClick = function(el) {
+                    if (!el) return false;
+                    try {
+                      var rect = el.getBoundingClientRect();
+                      var x = rect.left + rect.width / 2;
+                      var y = rect.top + rect.height / 2;
+                      ['mousedown','mouseup','click'].forEach(function(type) {
+                        el.dispatchEvent(new MouseEvent(type, {
+                          bubbles: true, cancelable: true, view: window, button: 0,
+                          clientX: x, clientY: y, screenX: x, screenY: y
+                        }));
+                      });
+                      try {
+                        if (typeof TouchEvent !== 'undefined' && typeof Touch !== 'undefined') {
+                          var touch = new Touch({ identifier: 1, target: el, clientX: x, clientY: y, screenX: x, screenY: y, pageX: x, pageY: y });
+                          el.dispatchEvent(new TouchEvent('touchstart', { bubbles: true, cancelable: true, touches: [touch], targetTouches: [touch], changedTouches: [touch] }));
+                          el.dispatchEvent(new TouchEvent('touchend', { bubbles: true, cancelable: true, touches: [], targetTouches: [], changedTouches: [touch] }));
+                        }
+                      } catch (eT) {}
+                      try { el.click(); } catch (eC) {}
+                      return true;
+                    } catch (e) { try { el.click(); return true; } catch (e2) { return false; } }
+                  };
+                  const waitOrderAccepted = async function(tradeNumber) {
+                    var deadline = Date.now() + 4500;
+                    while (Date.now() < deadline) {
+                      var bt = '';
+                      try { bt = (document.body && (document.body.innerText || document.body.textContent)) || ''; } catch (e) {}
+                      var tail = bt.slice(Math.max(0, bt.length - 1200));
+                      if (/not enough money|not enough funds|invalid volume|invalid stops|trade.*(disabled|context|forbidden)|requote|off quotes|market is closed|no prices|common error|request rejected|order rejected/i.test(tail)) {
+                        sendMessage('step_update', '❌ Trade ' + tradeNumber + ' rejected by terminal');
+                        return false;
+                      }
+                      var okButton = Array.from(document.querySelectorAll('button')).find(function(btn) {
+                        var text = (btn.innerText || btn.textContent || '').trim();
+                        if (/^(buy|sell)/i.test(text)) return false;
+                        return text === 'OK' || text === 'Ok' || text === 'Done' || text === 'Close';
+                      });
+                      if (okButton && okButton.offsetParent !== null) {
+                        forceTradeClick(okButton);
+                        sendMessage('step_update', '✅ Trade ' + tradeNumber + ' confirmed (OK clicked)');
+                        await sleep(900);
+                        return true;
+                      }
+                      if (/order.*(placed|executed|done)|deal.*(done|executed)|request.*(executed|accepted|done)|position.*(opened|modified)/i.test(tail)) {
+                        sendMessage('step_update', '✅ Trade ' + tradeNumber + ' accepted by terminal');
+                        return true;
+                      }
+                      await sleep(350);
+                    }
+                    sendMessage('step_update', '⚠️ Trade ' + tradeNumber + ' — no terminal confirmation (will retry)');
+                    return false;
+                  };
                   
                   if (actionLower === 'buy' && buyButton) {
-                    buyButton.click();
-                    sendMessage('step_update', '🚀 Trade ' + tradeNumber + '/' + totalTrades + ': BUY order executed');
+                    forceTradeClick(buyButton);
+                    sendMessage('step_update', '🚀 Trade ' + tradeNumber + '/' + totalTrades + ': BUY submitted');
                   } else if (actionLower === 'sell' && sellButton) {
-                    sellButton.click();
-                    sendMessage('step_update', '🚀 Trade ' + tradeNumber + '/' + totalTrades + ': SELL order executed');
+                    forceTradeClick(sellButton);
+                    sendMessage('step_update', '🚀 Trade ' + tradeNumber + '/' + totalTrades + ': SELL submitted');
                   } else {
                     sendMessage('error', '❌ Trade button not found for action: ' + action);
                     return false;
                   }
                   
-                  await sleep(1500);
-                  
+                  await sleep(600);
+                  var accepted = await waitOrderAccepted(tradeNumber);
+                  if (!accepted) {
+                    var retryBtn = actionLower === 'sell' ? sellButton : buyButton;
+                    if (retryBtn) {
+                      sendMessage('step_update', 'Retrying ' + actionLower.toUpperCase() + ' click...');
+                      forceTradeClick(retryBtn);
+                      await sleep(500);
+                      accepted = await waitOrderAccepted(tradeNumber);
+                    }
+                  }
+                  if (!accepted) {
+                    sendMessage('error', '❌ Trade ' + tradeNumber + ' was not confirmed by the terminal');
+                    return false;
+                  }
                   return true;
                 } catch(e) {
                   sendMessage('error', '❌ Error filling order form: ' + e.message);

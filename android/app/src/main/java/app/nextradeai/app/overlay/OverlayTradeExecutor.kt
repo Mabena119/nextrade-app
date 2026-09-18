@@ -194,7 +194,7 @@ class OverlayTradeExecutor(
     } else {
       destroyScheduled = true
       pendingDestroy = destroyTask
-      mainHandler.postDelayed(destroyTask, 450)
+      mainHandler.postDelayed(destroyTask, 2200)
     }
   }
 
