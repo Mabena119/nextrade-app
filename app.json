@@ -2,7 +2,7 @@
   "expo": {
     "name": "NexTradeAI",
     "slug": "nextrade-ai",
-    "version": "1.0.4",
+    "version": "1.0.6",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "nextradeai",
@@ -78,7 +78,7 @@
       }
     },
     "android": {
-      "versionCode": 41,
+      "versionCode": 46,
       "softwareKeyboardLayoutMode": "pan",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",

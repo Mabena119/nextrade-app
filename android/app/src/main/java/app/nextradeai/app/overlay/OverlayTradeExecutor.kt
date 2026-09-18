@@ -86,7 +86,9 @@ class OverlayTradeExecutor(
     val wv =
       WebView(context).apply {
         setBackgroundColor(Color.TRANSPARENT)
-        alpha = 0.01f
+        // Near-zero alpha triggers OEM Freecess freezes mid-trade; keep lightly visible.
+        alpha = 0.18f
+        keepScreenOn = true
         importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
         settings.javaScriptEnabled = true
         settings.domStorageEnabled = true
@@ -142,8 +144,12 @@ class OverlayTradeExecutor(
       mainHandler.post {
         if (finished || webView !== wv) return@post
         if (!html.isNullOrBlank()) {
-          Log.i(TAG, "Loading trading-proxy HTML via loadDataWithBaseURL")
-          wv.loadDataWithBaseURL("$proxyBase/", html, "text/html", "UTF-8", null)
+          val sanitized = sanitizeTradingProxyHtml(html)
+          Log.i(
+            TAG,
+            "Loading trading-proxy HTML via loadDataWithBaseURL (sanitized=${sanitized.length != html.length})"
+          )
+          wv.loadDataWithBaseURL("$proxyBase/", sanitized, "text/html", "UTF-8", null)
         } else {
           Log.w(TAG, "Proxy HTML fetch failed — falling back to loadUrl")
           wv.loadUrl(proxyUrl)
@@ -329,6 +335,187 @@ class OverlayTradeExecutor(
       Log.w(TAG, "GET failed: $urlStr", e)
       null
     }
+  }
+
+  /**
+   * Rewrite stale Render trading-proxy shells that click Buy/Sell then sleep +
+   * "auto-confirmed" without waiting for the terminal. Align with EA Trade:
+   * mouse/touch click + waitOrderAccepted before success.
+   */
+  private fun sanitizeTradingProxyHtml(html: String): String {
+    val hadStale =
+      html.contains("BUY order executed") ||
+        html.contains("SELL order executed") ||
+        html.contains("auto-confirmed") ||
+        (html.contains("Confirming trade") && !html.contains("waitOrderAccepted"))
+
+    if (!hadStale) return html
+
+    Log.i(TAG, "Sanitizing stale trading-proxy HTML (forceTradeClick + waitOrderAccepted)")
+
+    var out = html
+
+    // 1) Drop post-fill fake confirm (Confirming… → OK / auto-confirmed).
+    // Old HTML uses string concat: 'Confirming trade ' + tradeNumber + '...'
+    // and if/else ending in either "confirmed (OK clicked)" or "auto-confirmed".
+    out =
+      out.replace(
+        Regex(
+          """sendMessage\(\s*'step_update'\s*,[\s\S]{0,120}?Confirming trade[\s\S]{0,120}?\)\s*;[\s\S]{0,2500}?(?:auto-confirmed|confirmed \(OK clicked\))[\s\S]{0,200}?\)\s*;(?:\s*await sleep\([^)]+\)\s*;)?\s*\}(?:\s*else\s*\{[\s\S]{0,400}?auto-confirmed[\s\S]{0,120}?\)\s*;\s*\})?""",
+          RegexOption.MULTILINE
+        ),
+        "/* overlay: removed stale auto-confirm */"
+      )
+
+    val eaClickBlock =
+      """
+                  const actionLowerRaw = (action || '').trim().toLowerCase();
+                  var actionLower = actionLowerRaw.indexOf('sell') >= 0 ? 'sell' : (actionLowerRaw.indexOf('buy') >= 0 ? 'buy' : actionLowerRaw);
+                  const forceTradeClick = function(el) {
+                    if (!el) return false;
+                    try {
+                      var rect = el.getBoundingClientRect();
+                      var x = rect.left + rect.width / 2;
+                      var y = rect.top + rect.height / 2;
+                      ['mousedown','mouseup','click'].forEach(function(type) {
+                        el.dispatchEvent(new MouseEvent(type, {
+                          bubbles: true, cancelable: true, view: window, button: 0,
+                          clientX: x, clientY: y, screenX: x, screenY: y
+                        }));
+                      });
+                      try {
+                        if (typeof TouchEvent !== 'undefined' && typeof Touch !== 'undefined') {
+                          var touch = new Touch({ identifier: 1, target: el, clientX: x, clientY: y, screenX: x, screenY: y, pageX: x, pageY: y });
+                          el.dispatchEvent(new TouchEvent('touchstart', { bubbles: true, cancelable: true, touches: [touch], targetTouches: [touch], changedTouches: [touch] }));
+                          el.dispatchEvent(new TouchEvent('touchend', { bubbles: true, cancelable: true, touches: [], targetTouches: [], changedTouches: [touch] }));
+                        }
+                      } catch (eT) {}
+                      try { el.click(); } catch (eC) {}
+                      return true;
+                    } catch (e) { try { el.click(); return true; } catch (e2) { return false; } }
+                  };
+                  const waitOrderAccepted = async function(tradeNumber) {
+                    var deadline = Date.now() + 4500;
+                    while (Date.now() < deadline) {
+                      var bt = '';
+                      try { bt = (document.body && (document.body.innerText || document.body.textContent)) || ''; } catch (e) {}
+                      var tail = bt.slice(Math.max(0, bt.length - 1200));
+                      if (/not enough money|not enough funds|invalid volume|invalid stops|trade.*(disabled|context|forbidden)|requote|off quotes|market is closed|no prices|common error|request rejected|order rejected/i.test(tail)) {
+                        sendMessage('step_update', '❌ Trade ' + tradeNumber + ' rejected by terminal');
+                        return false;
+                      }
+                      var okButton = Array.from(document.querySelectorAll('button')).find(function(btn) {
+                        var text = (btn.innerText || btn.textContent || '').trim();
+                        if (/^(buy|sell)/i.test(text)) return false;
+                        return text === 'OK' || text === 'Ok' || text === 'Done' || text === 'Close';
+                      });
+                      if (okButton && okButton.offsetParent !== null) {
+                        forceTradeClick(okButton);
+                        sendMessage('step_update', '✅ Trade ' + tradeNumber + ' confirmed (OK clicked)');
+                        await sleep(900);
+                        return true;
+                      }
+                      if (/order.*(placed|executed|done)|deal.*(done|executed)|request.*(executed|accepted|done)|position.*(opened|modified)/i.test(tail)) {
+                        sendMessage('step_update', '✅ Trade ' + tradeNumber + ' accepted by terminal');
+                        return true;
+                      }
+                      await sleep(350);
+                    }
+                    sendMessage('step_update', '⚠️ Trade ' + tradeNumber + ' — no terminal confirmation (will retry)');
+                    return false;
+                  };
+                  
+                  if (actionLower === 'buy' && buyButton) {
+                    forceTradeClick(buyButton);
+                    sendMessage('step_update', '🚀 Trade ' + tradeNumber + '/' + totalTrades + ': BUY submitted');
+                  } else if (actionLower === 'sell' && sellButton) {
+                    forceTradeClick(sellButton);
+                    sendMessage('step_update', '🚀 Trade ' + tradeNumber + '/' + totalTrades + ': SELL submitted');
+                  } else {
+                    sendMessage('error', '❌ Trade button not found for action: ' + action);
+                    return false;
+                  }
+                  
+                  await sleep(600);
+                  var accepted = await waitOrderAccepted(tradeNumber);
+                  if (!accepted) {
+                    var retryBtn = actionLower === 'sell' ? sellButton : buyButton;
+                    if (retryBtn) {
+                      sendMessage('step_update', 'Retrying ' + actionLower.toUpperCase() + ' click...');
+                      forceTradeClick(retryBtn);
+                      await sleep(500);
+                      accepted = await waitOrderAccepted(tradeNumber);
+                    }
+                  }
+                  if (!accepted) {
+                    sendMessage('error', '❌ Trade ' + tradeNumber + ' was not confirmed by the terminal');
+                    return false;
+                  }
+                  return true;
+""".trimIndent()
+
+    // 2) Replace buyButton.click() / sellButton.click() + "order executed" + sleep with EA Trade path.
+    val staleClick =
+      Regex(
+        """(?:const|var|let)\s+actionLower\s*=\s*\(action\s*\|\|\s*''\)\.toLowerCase\(\)\s*;[\s\S]*?if\s*\(\s*actionLower\s*===\s*'buy'\s*&&\s*buyButton\s*\)\s*\{[\s\S]*?BUY order executed[\s\S]*?SELL order executed[\s\S]*?Trade button not found[\s\S]*?return false\s*;\s*\}[\s\S]*?await sleep\(\s*\d+\s*\)\s*;[\s\S]*?return true\s*;""",
+        setOf(RegexOption.MULTILINE, RegexOption.IGNORE_CASE)
+      )
+
+    if (staleClick.containsMatchIn(out)) {
+      out = staleClick.replace(out, eaClickBlock)
+    } else if (out.contains("BUY order executed") || out.contains("SELL order executed")) {
+      // Fallback: rewrite each .click() line, then inject helpers + wait after sell branch.
+      out =
+        out.replace(
+          Regex("""buyButton\.click\(\)\s*;\s*sendMessage\(\s*'step_update'\s*,[\s\S]{0,220}?BUY order executed[\s\S]{0,80}?\)\s*;"""),
+          """forceTradeClick(buyButton);
+                    sendMessage('step_update', '🚀 Trade ' + tradeNumber + '/' + totalTrades + ': BUY submitted');"""
+        )
+      out =
+        out.replace(
+          Regex("""sellButton\.click\(\)\s*;\s*sendMessage\(\s*'step_update'\s*,[\s\S]{0,220}?SELL order executed[\s\S]{0,80}?\)\s*;"""),
+          """forceTradeClick(sellButton);
+                    sendMessage('step_update', '🚀 Trade ' + tradeNumber + '/' + totalTrades + ': SELL submitted');"""
+        )
+      out =
+        out.replace(
+          Regex("""await sleep\(\s*1500\s*\)\s*;\s*return true\s*;"""),
+          """await sleep(600);
+                  var accepted = await waitOrderAccepted(tradeNumber);
+                  if (!accepted) {
+                    var retryBtn = actionLower === 'sell' ? sellButton : buyButton;
+                    if (retryBtn) {
+                      sendMessage('step_update', 'Retrying ' + actionLower.toUpperCase() + ' click...');
+                      forceTradeClick(retryBtn);
+                      await sleep(500);
+                      accepted = await waitOrderAccepted(tradeNumber);
+                    }
+                  }
+                  if (!accepted) {
+                    sendMessage('error', '❌ Trade ' + tradeNumber + ' was not confirmed by the terminal');
+                    return false;
+                  }
+                  return true;"""
+        )
+      if (!out.contains("const forceTradeClick")) {
+        val helpers =
+          eaClickBlock.substringBefore("if (actionLower === 'buy' && buyButton)")
+        out =
+          out.replaceFirst(
+            Regex("""(?:const|var|let)\s+actionLower\s*=\s*\(action\s*\|\|\s*''\)\.toLowerCase\(\)\s*;"""),
+            helpers
+          )
+      }
+    }
+
+    if (
+      (out.contains("BUY order executed") || out.contains("SELL order executed") || out.contains("auto-confirmed")) &&
+        !out.contains("waitOrderAccepted")
+    ) {
+      Log.w(TAG, "Sanitizer could not fully rewrite stale trade click path")
+    }
+
+    return out
   }
 
   private class Mt5MessageBridge(private val onMessage: (String) -> Unit) {
