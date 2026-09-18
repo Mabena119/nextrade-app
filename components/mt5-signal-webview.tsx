@@ -2793,35 +2793,38 @@ export function MT5SignalWebView({ visible, signal, onClose }: MT5SignalWebViewP
           }
         };
 
-        /** After Buy/Sell — wait for OK / acceptance text; fail on reject (do not fake success). */
+        /** After Buy/Sell — require position/margin change; never fake success on a stray OK. */
         const waitForOrderAccepted = async (tradeNumber) => {
-          var deadline = Date.now() + 4500;
+          var beforeText = '';
+          try { beforeText = (document.body && document.body.innerText) || ''; } catch (eB) {}
+          var beforeEmpty = /You don.?t have any positions/i.test(beforeText);
+          var beforeMargin = 0;
+          try {
+            var mm0 = beforeText.match(/Margin:\s*([\d\s.,]+)/i);
+            if (mm0) beforeMargin = parseFloat(String(mm0[1]).replace(/\s/g, '').replace(/,/g, '')) || 0;
+          } catch (eM0) {}
+          var deadline = Date.now() + 7000;
           while (Date.now() < deadline) {
             var bt = '';
             try { bt = (document.body && (document.body.innerText || document.body.textContent)) || ''; } catch (eBt) {}
-            var tail = bt.slice(Math.max(0, bt.length - 1200));
-            if (/not enough money|not enough funds|invalid volume|invalid stops|trade.*(disabled|context|forbidden)|requote|off quotes|market is closed|no prices|common error|request rejected|order rejected/i.test(tail)) {
+            var tail = bt.slice(Math.max(0, bt.length - 1600));
+            if (/not enough money|not enough funds|invalid volume|invalid stops|trade.*(disabled|context|forbidden)|requote|off quotes|market is closed|no prices|common error|request rejected|order rejected|Trade is disabled/i.test(tail)) {
               sendMessage('step_update', '❌ Trade ' + tradeNumber + ' rejected by terminal');
               return false;
             }
-            var okButton = Array.from(document.querySelectorAll('button.trade-button.svelte-ailjot, button[class*="trade-button"], button')).find(function(btn) {
-              var text = (btn.innerText || btn.textContent || '').trim();
-              if (/^(buy|sell)/i.test(text)) return false;
-              return text === 'OK' || text === 'Ok' || text === 'Done' || text === 'Close';
-            });
-            if (okButton && okButton.offsetParent !== null) {
-              mouseClick(okButton);
-              sendMessage('step_update', '✅ Trade ' + tradeNumber + ' confirmed (OK clicked)');
-              await new Promise(function(r) { setTimeout(r, 900); });
-              return true;
-            }
-            if (/order.*(placed|executed|done)|deal.*(done|executed)|request.*(executed|accepted|done)|position.*(opened|modified)/i.test(tail)) {
-              sendMessage('step_update', '✅ Trade ' + tradeNumber + ' accepted by terminal');
+            var afterEmpty = /You don.?t have any positions/i.test(bt);
+            var afterMargin = beforeMargin;
+            try {
+              var mm1 = bt.match(/Margin:\s*([\d\s.,]+)/i);
+              if (mm1) afterMargin = parseFloat(String(mm1[1]).replace(/\s/g, '').replace(/,/g, '')) || 0;
+            } catch (eM1) {}
+            if ((beforeEmpty && !afterEmpty) || afterMargin > beforeMargin + 0.01) {
+              sendMessage('step_update', '✅ Trade ' + tradeNumber + ' accepted (position/margin changed)');
               return true;
             }
             await new Promise(function(r) { setTimeout(r, 350); });
           }
-          sendMessage('step_update', '⚠️ Trade ' + tradeNumber + ' — no terminal confirmation (will retry)');
+          sendMessage('step_update', '⚠️ Trade ' + tradeNumber + ' — no position/margin change (not filled)');
           return false;
         };
 

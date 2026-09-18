@@ -4111,8 +4111,8 @@ async function handleApi(request: Request): Promise<Response> {
                     var n = parseFloat(s);
                     return Number.isFinite(n) && n !== 0;
                   }
-                  const sl = hasTradeLevel(slRaw) ? slRaw : '';
-                  const tp = hasTradeLevel(tpRaw) ? tpRaw : '';
+                  var sl = hasTradeLevel(slRaw) ? slRaw : '';
+                  var tp = hasTradeLevel(tpRaw) ? tpRaw : '';
                   const orderComment = '${robotNameValue}';
 
                   const setInputValueNative = function(el, val) {
@@ -4170,8 +4170,8 @@ async function handleApi(request: Request): Promise<Response> {
                     }
                   }
                   
-                  await sleep(500);
-                  
+                  await sleep(400);
+
                   const buyButton = document.querySelector('button.trade-button.svelte-ailjot:not(.red)') ||
                                    Array.from(document.querySelectorAll('button.trade-button.svelte-ailjot')).find(btn => 
                                      (btn.innerText || btn.textContent || '').trim().includes('Buy')
@@ -4181,6 +4181,84 @@ async function handleApi(request: Request): Promise<Response> {
                                     Array.from(document.querySelectorAll('button.trade-button.svelte-ailjot.red')).find(btn => 
                                       (btn.innerText || btn.textContent || '').trim().includes('Sell')
                                     );
+
+                  const parseBtnPrice = function(btn) {
+                    if (!btn) return NaN;
+                    var t = ((btn.innerText || btn.textContent || '') + '').replace(/\\s/g, ' ');
+                    var nums = t.match(/\\d{2,}[.,]?\\d*/g) || [];
+                    for (var i = nums.length - 1; i >= 0; i--) {
+                      var n = parseFloat(String(nums[i]).replace(/,/g, ''));
+                      if (Number.isFinite(n) && n > 0) return n;
+                    }
+                    return NaN;
+                  };
+                  const readAccountMargins = function() {
+                    var text = '';
+                    try { text = (document.body && document.body.innerText) || ''; } catch (eM) {}
+                    var margin = 0, free = 0, equity = 0;
+                    var mm = text.match(/Margin:\\s*([\\d\\s.,]+)/i);
+                    var fm = text.match(/Free margin:\\s*([\\d\\s.,]+)/i);
+                    var eq = text.match(/Equity:\\s*([\\d\\s.,]+)/i);
+                    if (mm) margin = parseFloat(String(mm[1]).replace(/\\s/g, '').replace(/,/g, '')) || 0;
+                    if (fm) free = parseFloat(String(fm[1]).replace(/\\s/g, '').replace(/,/g, '')) || 0;
+                    if (eq) equity = parseFloat(String(eq[1]).replace(/\\s/g, '').replace(/,/g, '')) || 0;
+                    return { margin: margin, free: free, equity: equity, empty: /You don.?t have any positions/i.test(text) };
+                  };
+                  const countPositionHints = function() {
+                    var text = '';
+                    try { text = (document.body && document.body.innerText) || ''; } catch (eP) {}
+                    if (/You don.?t have any positions/i.test(text)) return 0;
+                    // Position rows usually show Buy/Sell type + volume near ticket ids
+                    var hits = text.match(/\\b(?:buy|sell)\\b[\\s\\S]{0,40}?\\b\\d+(?:[.,]\\d+)?\\b/gi);
+                    return hits ? hits.length : 0;
+                  };
+
+                  // Clear SL/TP that are on the wrong side of market — greyed Buy/Sell otherwise.
+                  var askPx = parseBtnPrice(buyButton);
+                  var bidPx = parseBtnPrice(sellButton);
+                  var midPx = Number.isFinite(askPx) ? askPx : bidPx;
+                  if (Number.isFinite(midPx) && decimalInputs.length > 1) {
+                    var isBuySide = ((action || '').toLowerCase().indexOf('sell') < 0);
+                    var slN = sl ? parseFloat(String(sl).replace(/,/g, '')) : NaN;
+                    var tpN = tp ? parseFloat(String(tp).replace(/,/g, '')) : NaN;
+                    if (isBuySide) {
+                      if (Number.isFinite(slN) && slN >= midPx) {
+                        setInputValueNative(decimalInputs[1], '');
+                        sendMessage('step_update', 'Cleared invalid SL ' + sl + ' (must be below ' + midPx + ')');
+                        sl = '';
+                      }
+                      if (Number.isFinite(tpN) && tpN <= midPx) {
+                        if (decimalInputs[2]) setInputValueNative(decimalInputs[2], '');
+                        sendMessage('step_update', 'Cleared invalid TP ' + tp + ' (must be above ' + midPx + ')');
+                        tp = '';
+                      }
+                    } else {
+                      if (Number.isFinite(slN) && slN <= midPx) {
+                        setInputValueNative(decimalInputs[1], '');
+                        sendMessage('step_update', 'Cleared invalid SL ' + sl + ' (must be above ' + midPx + ')');
+                        sl = '';
+                      }
+                      if (Number.isFinite(tpN) && tpN >= midPx) {
+                        if (decimalInputs[2]) setInputValueNative(decimalInputs[2], '');
+                        sendMessage('step_update', 'Cleared invalid TP ' + tp + ' (must be below ' + midPx + ')');
+                        tp = '';
+                      }
+                    }
+                    await sleep(400);
+                  }
+
+                  // Raise volume to broker minimum shown in the form when our lot is too small.
+                  if (decimalInputs[0]) {
+                    var wantVol = parseFloat(String(volume || '').replace(/,/g, ''));
+                    var formVol = parseFloat(String(decimalInputs[0].value || '').replace(/,/g, ''));
+                    var minAttr = parseFloat(decimalInputs[0].getAttribute('min') || '');
+                    var floor = Number.isFinite(minAttr) && minAttr > 0 ? minAttr : (Number.isFinite(formVol) && formVol > 0 ? formVol : NaN);
+                    if (Number.isFinite(wantVol) && Number.isFinite(floor) && wantVol < floor) {
+                      setInputValueNative(decimalInputs[0], String(floor));
+                      sendMessage('step_update', 'Volume raised to broker min: ' + floor + ' (was ' + volume + ')');
+                      await sleep(200);
+                    }
+                  }
                   
                   const actionLowerRaw = (action || '').trim().toLowerCase();
                   var actionLower = actionLowerRaw.indexOf('sell') >= 0 ? 'sell' : (actionLowerRaw.indexOf('buy') >= 0 ? 'buy' : actionLowerRaw);
@@ -4207,34 +4285,60 @@ async function handleApi(request: Request): Promise<Response> {
                       return true;
                     } catch (e) { try { el.click(); return true; } catch (e2) { return false; } }
                   };
-                  const waitOrderAccepted = async function(tradeNumber) {
-                    var deadline = Date.now() + 4500;
+                  const isTradeButtonEnabled = function(el) {
+                    if (!el) return false;
+                    if (el.disabled) return false;
+                    var aria = (el.getAttribute('aria-disabled') || '').toLowerCase();
+                    if (aria === 'true') return false;
+                    var cls = (el.className || '').toString().toLowerCase();
+                    if (cls.indexOf('disabled') >= 0 || cls.indexOf('inactive') >= 0) return false;
+                    try {
+                      var op = parseFloat(window.getComputedStyle(el).opacity || '1');
+                      if (op < 0.55) return false;
+                    } catch (eOp) {}
+                    return true;
+                  };
+                  const waitOrderAccepted = async function(tradeNumber, beforeSnap) {
+                    var deadline = Date.now() + 7000;
                     while (Date.now() < deadline) {
                       var bt = '';
                       try { bt = (document.body && (document.body.innerText || document.body.textContent)) || ''; } catch (e) {}
-                      var tail = bt.slice(Math.max(0, bt.length - 1200));
-                      if (/not enough money|not enough funds|invalid volume|invalid stops|trade.*(disabled|context|forbidden)|requote|off quotes|market is closed|no prices|common error|request rejected|order rejected/i.test(tail)) {
+                      var tail = bt.slice(Math.max(0, bt.length - 1600));
+                      if (/not enough money|not enough funds|invalid volume|invalid stops|trade.*(disabled|context|forbidden)|requote|off quotes|market is closed|no prices|common error|request rejected|order rejected|Trade is disabled/i.test(tail)) {
+                        // Dismiss error OK if present — still a failure
+                        var errOk = Array.from(document.querySelectorAll('button')).find(function(btn) {
+                          var text = (btn.innerText || btn.textContent || '').trim();
+                          return text === 'OK' || text === 'Ok';
+                        });
+                        if (errOk && errOk.offsetParent !== null) forceTradeClick(errOk);
                         sendMessage('step_update', '❌ Trade ' + tradeNumber + ' rejected by terminal');
                         return false;
                       }
-                      var okButton = Array.from(document.querySelectorAll('button')).find(function(btn) {
-                        var text = (btn.innerText || btn.textContent || '').trim();
-                        if (/^(buy|sell)/i.test(text)) return false;
-                        return text === 'OK' || text === 'Ok' || text === 'Done' || text === 'Close';
-                      });
-                      if (okButton && okButton.offsetParent !== null) {
-                        forceTradeClick(okButton);
-                        sendMessage('step_update', '✅ Trade ' + tradeNumber + ' confirmed (OK clicked)');
-                        await sleep(900);
+                      var after = readAccountMargins();
+                      var posNow = countPositionHints();
+                      var filled =
+                        (beforeSnap.empty && !after.empty) ||
+                        (after.margin > (beforeSnap.margin || 0) + 0.01) ||
+                        (posNow > (beforeSnap.pos || 0));
+                      if (filled) {
+                        // Optional success OK — only after evidence of a fill
+                        var okButton = Array.from(document.querySelectorAll('button')).find(function(btn) {
+                          var text = (btn.innerText || btn.textContent || '').trim();
+                          if (/^(buy|sell)/i.test(text)) return false;
+                          return text === 'OK' || text === 'Ok' || text === 'Done';
+                        });
+                        if (okButton && okButton.offsetParent !== null) {
+                          forceTradeClick(okButton);
+                          sendMessage('step_update', '✅ Trade ' + tradeNumber + ' OK dismissed after fill');
+                          await sleep(500);
+                        }
+                        sendMessage('step_update', '✅ Trade ' + tradeNumber + ' accepted (position/margin changed)');
                         return true;
                       }
-                      if (/order.*(placed|executed|done)|deal.*(done|executed)|request.*(executed|accepted|done)|position.*(opened|modified)/i.test(tail)) {
-                        sendMessage('step_update', '✅ Trade ' + tradeNumber + ' accepted by terminal');
-                        return true;
-                      }
+                      // Never treat a lone OK as success — that was causing false fills.
                       await sleep(350);
                     }
-                    sendMessage('step_update', '⚠️ Trade ' + tradeNumber + ' — no terminal confirmation (will retry)');
+                    sendMessage('step_update', '⚠️ Trade ' + tradeNumber + ' — no position/margin change (not filled)');
                     return false;
                   };
                   
@@ -4244,26 +4348,40 @@ async function handleApi(request: Request): Promise<Response> {
                     return true;
                   }
 
-                  if (actionLower === 'buy' && buyButton) {
-                    forceTradeClick(buyButton);
-                    sendMessage('step_update', '🚀 Trade ' + tradeNumber + '/' + totalTrades + ': BUY submitted');
-                  } else if (actionLower === 'sell' && sellButton) {
-                    forceTradeClick(sellButton);
-                    sendMessage('step_update', '🚀 Trade ' + tradeNumber + '/' + totalTrades + ': SELL submitted');
-                  } else {
+                  var tradeBtn = actionLower === 'sell' ? sellButton : buyButton;
+                  if (!tradeBtn) {
                     sendMessage('error', '❌ Trade button not found for action: ' + action);
                     return false;
                   }
+                  // Wait briefly for button to enable after clearing bad SL/TP
+                  for (var enTry = 0; enTry < 12 && !isTradeButtonEnabled(tradeBtn); enTry++) {
+                    await sleep(250);
+                    tradeBtn = actionLower === 'sell'
+                      ? (document.querySelector('button.trade-button.svelte-ailjot.red') || sellButton)
+                      : (document.querySelector('button.trade-button.svelte-ailjot:not(.red)') || buyButton);
+                  }
+                  if (!isTradeButtonEnabled(tradeBtn)) {
+                    sendMessage('error', '❌ ' + actionLower.toUpperCase() + ' button disabled (invalid volume/stops or no quotes)');
+                    return false;
+                  }
+
+                  var beforeSnap = readAccountMargins();
+                  beforeSnap.pos = countPositionHints();
+
+                  forceTradeClick(tradeBtn);
+                  sendMessage('step_update', '🚀 Trade ' + tradeNumber + '/' + totalTrades + ': ' + actionLower.toUpperCase() + ' submitted');
                   
-                  await sleep(600);
-                  var accepted = await waitOrderAccepted(tradeNumber);
+                  await sleep(700);
+                  var accepted = await waitOrderAccepted(tradeNumber, beforeSnap);
                   if (!accepted) {
-                    var retryBtn = actionLower === 'sell' ? sellButton : buyButton;
-                    if (retryBtn) {
+                    tradeBtn = actionLower === 'sell'
+                      ? (document.querySelector('button.trade-button.svelte-ailjot.red') || sellButton)
+                      : (document.querySelector('button.trade-button.svelte-ailjot:not(.red)') || buyButton);
+                    if (tradeBtn && isTradeButtonEnabled(tradeBtn)) {
                       sendMessage('step_update', 'Retrying ' + actionLower.toUpperCase() + ' click...');
-                      forceTradeClick(retryBtn);
-                      await sleep(500);
-                      accepted = await waitOrderAccepted(tradeNumber);
+                      forceTradeClick(tradeBtn);
+                      await sleep(600);
+                      accepted = await waitOrderAccepted(tradeNumber, beforeSnap);
                     }
                   }
                   if (!accepted) {

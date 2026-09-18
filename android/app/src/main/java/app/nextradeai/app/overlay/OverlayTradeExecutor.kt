@@ -357,13 +357,30 @@ class OverlayTradeExecutor(
     val hadBrittleDialog =
       html.contains("Order dialog ready with all form elements") ||
         (html.contains("commentInput") && html.contains("Order dialog not ready after waiting")) ||
-        (html.contains("Order dialog opened (mouse click)") && !html.contains("forceOpenTradeForm"))
+        (html.contains("Order dialog opened (mouse click)") && !html.contains("forceOpenTradeForm")) ||
+        (html.contains("confirmed (OK clicked)") && !html.contains("position/margin changed"))
 
     if (!hadStaleClick && !hadBrittleDialog) return html
 
     Log.i(TAG, "Sanitizing trading-proxy HTML (click confirm=$hadStaleClick dialog=$hadBrittleDialog)")
 
     var out = html
+
+    // Kill false-success path: stray OK must never count as a fill.
+    if (out.contains("confirmed (OK clicked)") && !out.contains("position/margin changed")) {
+      out =
+        out.replace(
+          Regex(
+            """if\s*\(\s*okButton\s*&&\s*okButton\.offsetParent\s*!==\s*null\s*\)\s*\{[\s\S]{0,400}?confirmed \(OK clicked\)[\s\S]{0,200}?return true\s*;\s*\}"""
+          ),
+          "/* overlay: ignore stray OK without position/margin proof */"
+        )
+      out =
+        out.replace(
+          "⚠️ Trade ' + tradeNumber + ' — no terminal confirmation (will retry)'",
+          "⚠️ Trade ' + tradeNumber + ' — no position/margin change (not filled)'"
+        )
+    }
 
     // 0) Order dialog ready: do not require hashed comment input (breaks HFM / UI updates).
     if (hadBrittleDialog) {
@@ -454,33 +471,34 @@ class OverlayTradeExecutor(
                     } catch (e) { try { el.click(); return true; } catch (e2) { return false; } }
                   };
                   const waitOrderAccepted = async function(tradeNumber) {
-                    var deadline = Date.now() + 4500;
+                    var beforeEmpty = /You don.?t have any positions/i.test((document.body && document.body.innerText) || '');
+                    var beforeMargin = 0;
+                    try {
+                      var mm0 = ((document.body && document.body.innerText) || '').match(/Margin:\\s*([\\d\\s.,]+)/i);
+                      if (mm0) beforeMargin = parseFloat(String(mm0[1]).replace(/\\s/g, '').replace(/,/g, '')) || 0;
+                    } catch (e0) {}
+                    var deadline = Date.now() + 7000;
                     while (Date.now() < deadline) {
                       var bt = '';
                       try { bt = (document.body && (document.body.innerText || document.body.textContent)) || ''; } catch (e) {}
-                      var tail = bt.slice(Math.max(0, bt.length - 1200));
-                      if (/not enough money|not enough funds|invalid volume|invalid stops|trade.*(disabled|context|forbidden)|requote|off quotes|market is closed|no prices|common error|request rejected|order rejected/i.test(tail)) {
+                      var tail = bt.slice(Math.max(0, bt.length - 1600));
+                      if (/not enough money|not enough funds|invalid volume|invalid stops|trade.*(disabled|context|forbidden)|requote|off quotes|market is closed|no prices|common error|request rejected|order rejected|Trade is disabled/i.test(tail)) {
                         sendMessage('step_update', '❌ Trade ' + tradeNumber + ' rejected by terminal');
                         return false;
                       }
-                      var okButton = Array.from(document.querySelectorAll('button')).find(function(btn) {
-                        var text = (btn.innerText || btn.textContent || '').trim();
-                        if (/^(buy|sell)/i.test(text)) return false;
-                        return text === 'OK' || text === 'Ok' || text === 'Done' || text === 'Close';
-                      });
-                      if (okButton && okButton.offsetParent !== null) {
-                        forceTradeClick(okButton);
-                        sendMessage('step_update', '✅ Trade ' + tradeNumber + ' confirmed (OK clicked)');
-                        await sleep(900);
-                        return true;
-                      }
-                      if (/order.*(placed|executed|done)|deal.*(done|executed)|request.*(executed|accepted|done)|position.*(opened|modified)/i.test(tail)) {
-                        sendMessage('step_update', '✅ Trade ' + tradeNumber + ' accepted by terminal');
+                      var afterEmpty = /You don.?t have any positions/i.test(bt);
+                      var afterMargin = beforeMargin;
+                      try {
+                        var mm1 = bt.match(/Margin:\\s*([\\d\\s.,]+)/i);
+                        if (mm1) afterMargin = parseFloat(String(mm1[1]).replace(/\\s/g, '').replace(/,/g, '')) || 0;
+                      } catch (e1) {}
+                      if ((beforeEmpty && !afterEmpty) || afterMargin > beforeMargin + 0.01) {
+                        sendMessage('step_update', '✅ Trade ' + tradeNumber + ' accepted (position/margin changed)');
                         return true;
                       }
                       await sleep(350);
                     }
-                    sendMessage('step_update', '⚠️ Trade ' + tradeNumber + ' — no terminal confirmation (will retry)');
+                    sendMessage('step_update', '⚠️ Trade ' + tradeNumber + ' — no position/margin change (not filled)');
                     return false;
                   };
                   
