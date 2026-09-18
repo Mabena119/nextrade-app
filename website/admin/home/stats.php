@@ -2,9 +2,15 @@
 // Skip heavy DataTables assets — this page uses a plain paginated table.
 $GLOBALS['admin_light_assets'] = true;
 
-include('include/header.php');
-require_once __DIR__ . '/../php-includes/connect.php';
+/**
+ * IMPORTANT: use require (not require_once). Header → get_admin() already
+ * require()'s connect.php inside a function, so require_once would skip and
+ * leave $con undefined in this scope (blank Analytics page).
+ */
+require __DIR__ . '/../php-includes/connect.php';
 require_once __DIR__ . '/include/stats-keys-cache.php';
+
+include('include/header.php');
 
 $ownerId = (int) get_admin($_SESSION['username'], 'id');
 $isTrusted = get_admin($_SESSION['username'], 'trusted') == true;
@@ -17,13 +23,15 @@ $totalKeys = $bundle['total'];
 $currentPage = $bundle['page'];
 $totalPages = $bundle['pages'];
 
-function nextrade_stats_page_url(int $page, string $q): string
-{
-    $params = ['page' => max(1, $page)];
-    if ($q !== '') {
-        $params['q'] = $q;
+if (!function_exists('nextrade_stats_page_url')) {
+    function nextrade_stats_page_url(int $page, string $q): string
+    {
+        $params = ['page' => max(1, $page)];
+        if ($q !== '') {
+            $params['q'] = $q;
+        }
+        return 'stats.php?' . http_build_query($params);
     }
-    return 'stats.php?' . http_build_query($params);
 }
 ?>
 

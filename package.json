@@ -19,6 +19,8 @@
     "android:bump": "node scripts/bump-apk-version.mjs",
     "android:bump:patch": "node scripts/bump-apk-version.mjs --patch",
     "android:apk": "node scripts/bump-apk-version.mjs && cd android && ./gradlew assembleRelease",
+    "android:apk:local": "cd android && ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a -x lintVitalRelease",
+    "android:install:local": "cd android && ./gradlew installRelease -PreactNativeArchitectures=arm64-v8a -x lintVitalRelease",
     "ios": "expo run:ios"
   },
   "dependencies": {

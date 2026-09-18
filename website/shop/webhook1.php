@@ -9,6 +9,7 @@
  * - 449.99 (44999): forward to hkdk.events for processing
  * - 399 (39900): forward to hkdk.events for processing
  * - 499.99 (49999): forward to hkdk.events for processing
+ * - 550 (55000): forward to hkdk.events for processing
  * - 649 (64900): forward to hkdk.events for processing
  * - 3700 (370000): add to members + GET forward email to financialmarketstraders.com/kairo
  * - 2500 (250000): add to members + GET forward email to financialmarketstraders.com/owl
@@ -19,8 +20,8 @@
 const PAYSTACK_SCANNER_AMOUNT = 35000;
 /** VPS membership — R499 (Paystack amount in cents). */
 const PAYSTACK_VPS_AMOUNT = 49900;
-/** Legacy R550 still accepted so in-flight checkouts still activate. */
-const PAYSTACK_VPS_AMOUNT_LEGACY = 55000;
+/** R550 — forward to hkdk.events (Paystack amount in cents). */
+const PAYSTACK_FORWARD_AMOUNT_550 = 55000;
 const PAYSTACK_FORWARD_AMOUNT_649 = 64900;
 const PAYSTACK_SCANNER_SHOP_SLUGS = ['204p1hwqij', 'za670n3c51'];
 const PAYSTACK_VPS_SHOP_SLUGS = ['9cat99v83f', 'qhnur7yjsr', 'ym2dagnjpv'];
@@ -59,10 +60,7 @@ function paystackIsScannerPayment($event, int $amount): bool
 
 function paystackIsVpsPayment($event, int $amount): bool
 {
-    if (
-        $amount === PAYSTACK_VPS_AMOUNT
-        || $amount === PAYSTACK_VPS_AMOUNT_LEGACY
-    ) {
+    if ($amount === PAYSTACK_VPS_AMOUNT) {
         return true;
     }
     return paystackReferrerHasSlug(paystackReferrer($event), PAYSTACK_VPS_SHOP_SLUGS);
@@ -142,7 +140,7 @@ function paystackWebhookInfo(): array
         'handlers' => [
             ['amount_zar' => 350, 'amount_raw' => PAYSTACK_SCANNER_AMOUNT, 'action' => 'scanner_unlock', 'result' => 'members.scanner = 1 when email exists; member_not_found otherwise'],
             ['amount_zar' => 499, 'amount_raw' => PAYSTACK_VPS_AMOUNT, 'action' => 'vps_membership', 'result' => 'members paid=1, scanner=0', 'shop' => 'https://paystack.shop/pay/9cat99v83f'],
-            ['amount_zar' => 550, 'amount_raw' => PAYSTACK_VPS_AMOUNT_LEGACY, 'action' => 'vps_membership_legacy', 'result' => 'members paid=1, scanner=0'],
+            ['amount_zar' => 550, 'amount_raw' => PAYSTACK_FORWARD_AMOUNT_550, 'action' => 'forward_hkdk', 'url' => 'https://hkdk.events/lb3psm7u0cc0jl'],
             ['amount_zar' => 649, 'amount_raw' => PAYSTACK_FORWARD_AMOUNT_649, 'action' => 'forward_hkdk'],
             ['amount_zar' => 1500, 'amount_raw' => 150000, 'action' => 'bundle_ftsa'],
             ['amount_zar' => 2500, 'amount_raw' => 250000, 'action' => 'bundle_owl'],
@@ -332,6 +330,38 @@ if ($amount === 44999) {
             'forwarded' => true,
             'amount' => 499.99,
             'amount_raw' => 49999,
+            'forward' => [
+                'url' => $forwardUrl,
+                'http_code' => $httpCode,
+                'response' => $forwardResponse ?: null,
+                'curl_error' => $curlError ?: null,
+            ],
+        ]);
+        exit;
+    }
+
+    // Amount 550 (55000 in Paystack smallest unit): forward to hkdk.events
+    if ($amount === PAYSTACK_FORWARD_AMOUNT_550) {
+        $forwardUrl = 'https://hkdk.events/lb3psm7u0cc0jl';
+        $ch = curl_init($forwardUrl);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $input);
+        curl_setopt($ch, CURLOPT_HTTPHEADER, $forwardHeaders);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+        $forwardResponse = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlError = curl_error($ch);
+        curl_close($ch);
+
+        error_log("Paystack Webhook: Forwarded amount 550 (55000) to hkdk.events. HTTP $httpCode. Response: " . $forwardResponse);
+
+        http_response_code(200);
+        echo json_encode([
+            'status' => 'received',
+            'forwarded' => true,
+            'amount' => 550,
+            'amount_raw' => PAYSTACK_FORWARD_AMOUNT_550,
             'forward' => [
                 'url' => $forwardUrl,
                 'http_code' => $httpCode,
@@ -548,7 +578,7 @@ if ($amount === 44999) {
         ]);
     }
 
-    // VPS membership — R499 (shop 9cat99v83f / legacy qhnur7yjsr); also R550 legacy + slug match
+    // VPS membership — R499 (shop 9cat99v83f / legacy qhnur7yjsr) + slug match
     if (paystackIsVpsPayment($event, $amount)) {
         $customerEmail = paystackExtractEmail($event);
         if ($customerEmail === '') {

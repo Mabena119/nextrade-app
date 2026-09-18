@@ -3,16 +3,23 @@
  * Whop webhook endpoint (notifyb.php).
  * Ozow uses notify.php — do not point Whop here.
  *
- * Whop dashboard URL: https://nextradeai.io/shop/notifyb.php
+ * Whop dashboard URL: https://www.nextradeai.io/shop/notifyb.php
+ * Company: biz_1dqEi47Dd9V33m
  * Events: membership.activated, payment.succeeded
  *
  * Product routing (membership.activated / payment.succeeded):
- *   NexTradeAI     (prod_Qhg225hmLDoay) → add/update member (paid = 1)
- *   NexTradeAI Scanner (prod_2ZlqLG9vBe3tF) → set scanner = 1 (create member if missing)
+ *   NexTradeAI     (prod_6NsYylkl5Nfwr) → add/update member (paid = 1)
+ *   NexTradeAI Scanner (prod_2ZlqLG9vBe3tF) → set scanner = 1 (existing member only)
  */
 
 if (file_exists(__DIR__ . '/whop_config.php')) {
     require __DIR__ . '/whop_config.php';
+}
+if (!defined('WHOP_COMPANY_ID')) {
+    define('WHOP_COMPANY_ID', 'biz_1dqEi47Dd9V33m');
+}
+if (!defined('WHOP_PRODUCT_VPS_ID')) {
+    define('WHOP_PRODUCT_VPS_ID', 'prod_6NsYylkl5Nfwr');
 }
 if (!defined('WHOP_WEBHOOK_SECRET')) {
     define('WHOP_WEBHOOK_SECRET', getenv('WHOP_WEBHOOK_SECRET') ?: 'whsec_YOUR_SECRET_HERE');
@@ -405,16 +412,22 @@ function resolveWhopProductAction($data): ?string
         $planId = (string) ($data->plan->id ?? '');
     }
 
-    $vpsId = defined('WHOP_PRODUCT_VPS_ID') ? WHOP_PRODUCT_VPS_ID : 'prod_Qhg225hmLDoay';
+    $vpsId = defined('WHOP_PRODUCT_VPS_ID') ? WHOP_PRODUCT_VPS_ID : 'prod_6NsYylkl5Nfwr';
     $scannerId = defined('WHOP_PRODUCT_SCANNER_ID') ? WHOP_PRODUCT_SCANNER_ID : 'prod_2ZlqLG9vBe3tF';
     $vpsTitle = defined('WHOP_PRODUCT_VPS_TITLE') ? WHOP_PRODUCT_VPS_TITLE : 'NexTradeAI';
     $scannerTitle = defined('WHOP_PRODUCT_SCANNER_TITLE') ? WHOP_PRODUCT_SCANNER_TITLE : 'NexTradeAI Scanner';
-    $vpsPlanId = 'plan_jj2FYMM2A6gbf';
+    // Current + legacy VPS product / plan IDs (AgentlyAI / older checkouts).
+    $vpsProductIds = array_values(array_unique(array_filter([
+        $vpsId,
+        'prod_6NsYylkl5Nfwr',
+        'prod_Qhg225hmLDoay',
+    ])));
+    $vpsPlanIds = ['plan_jj2FYMM2A6gbf'];
 
-    if ($product['id'] !== '' && $product['id'] === $vpsId) {
+    if ($product['id'] !== '' && in_array($product['id'], $vpsProductIds, true)) {
         return 'vps';
     }
-    if ($planId !== '' && $planId === $vpsPlanId) {
+    if ($planId !== '' && in_array($planId, $vpsPlanIds, true)) {
         return 'vps';
     }
     if ($product['id'] !== '' && $product['id'] === $scannerId) {

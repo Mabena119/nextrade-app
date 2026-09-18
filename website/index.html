@@ -166,6 +166,25 @@
         .btn-ghost:hover { border-color: rgba(255,255,255,0.22); }
 
         section { padding: 5.5rem 0; border-top: 1px solid var(--line); }
+        section[id] { scroll-margin-top: calc(var(--nav) + 0.75rem); }
+        .tut-frame {
+            position: relative;
+            width: 100%;
+            max-width: 920px;
+            margin: 0 auto;
+            aspect-ratio: 16 / 9;
+            border-radius: 22px;
+            overflow: hidden;
+            border: 1px solid var(--line);
+            background: #070708;
+        }
+        .tut-frame iframe {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            border: 0;
+        }
         .sec-head {
             text-align: center;
             max-width: 36rem;
@@ -392,6 +411,7 @@
                 <li><a href="#flow">How it works</a></li>
                 <li><a href="#download">Download</a></li>
                 <li><a href="/how-to-install/">Install</a></li>
+                <li><a href="#tutorial">Tutorial</a></li>
             </ul>
             <button class="menu-btn" id="menu-btn" type="button" aria-label="Open menu">
                 <span></span>
@@ -405,6 +425,7 @@
         <a href="#flow">How it works</a>
         <a href="#download">Download</a>
         <a href="/how-to-install/">Install</a>
+        <a href="#tutorial">Tutorial</a>
     </div>
 
     <main>
@@ -415,6 +436,7 @@
                 <p>Keep automations online 24/7. Manage licenses. Watch signals. All from your phone.</p>
                 <div class="hero__actions">
                     <a class="btn btn-primary" href="#download">Download</a>
+                    <a class="btn btn-ghost" href="#tutorial">Watch tutorial</a>
                 </div>
             </div>
         </section>
@@ -586,6 +608,26 @@
                         </div>
                         <em class="go">Guide →</em>
                     </a>
+                </div>
+            </div>
+        </section>
+
+        <section id="tutorial">
+            <div class="wrap">
+                <header class="sec-head">
+                    <p class="kicker">Tutorial</p>
+                    <h2>See it in action</h2>
+                    <p>A short walkthrough of the app — download, connect, and go live.</p>
+                </header>
+                <div class="tut-frame">
+                    <iframe
+                        src="https://www.youtube.com/embed/kcyxip_TNgA"
+                        title="NexTradeAI tutorial"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                        allowfullscreen
+                        loading="lazy"
+                        referrerpolicy="strict-origin-when-cross-origin"
+                    ></iframe>
                 </div>
             </div>
         </section>

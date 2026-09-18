@@ -1,6 +1,6 @@
 <?php
 /**
- * Shared marketing nav — Product · How it works · Download · Install
+ * Shared marketing nav — Product · How it works · Download · Install · Tutorial
  */
 require_once __DIR__ . '/site-config.php';
 
@@ -13,6 +13,7 @@ if (!function_exists('nextrade_public_nav_items')) {
             ['key' => 'flow', 'href' => '/#flow', 'label' => 'How it works'],
             ['key' => 'download', 'href' => '/#download', 'label' => 'Download'],
             ['key' => 'install', 'href' => '/how-to-install/', 'label' => 'Install'],
+            ['key' => 'tutorial', 'href' => '/#tutorial', 'label' => 'Tutorial'],
         ];
     }
 

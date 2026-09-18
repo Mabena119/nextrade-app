@@ -9,7 +9,7 @@ if (!function_exists('nextrade_shop_head')) {
     function nextrade_shop_head(string $title = 'Access · NexTradeAI'): void
     {
         $titleEsc = htmlspecialchars($title, ENT_QUOTES, 'UTF-8');
-        $price = (int) NEXTRADE_SHOP_PRICE_ZAR;
+        $price = htmlspecialchars((string) NEXTRADE_SHOP_PRICE_ZAR, ENT_QUOTES, 'UTF-8');
         $canonical = htmlspecialchars(NEXTRADE_SHOP_URL, ENT_QUOTES, 'UTF-8');
         echo '<meta charset="UTF-8" />' . "\n";
         echo '<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />' . "\n";

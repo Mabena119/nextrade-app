@@ -244,6 +244,7 @@ const CustomWebView: React.FC<CustomWebViewProps> = ({
         sharedCookiesEnabled={true}
         thirdPartyCookiesEnabled={true}
         setSupportMultipleWindows={false}
+        androidLayerType="hardware"
         onError={(syntheticEvent) => {
           const { nativeEvent } = syntheticEvent;
           console.log('WebView error:', nativeEvent);

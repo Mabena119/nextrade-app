@@ -43,6 +43,7 @@ if ($email !== '') {
 
 $shopPriceDisplay = (string) NEXTRADE_SHOP_PRICE_ZAR;
 $paystackCheckoutBase = 'https://paystack.shop/pay/9cat99v83f';
+$whopCheckoutBase = 'https://whop.com/agentlyai/reset-messages-basic/';
 $paystackCheckoutUrl = $paystackCheckoutBase;
 if ($email !== '') {
     $paystackCheckoutUrl .= '?email=' . rawurlencode($email);
@@ -51,6 +52,10 @@ if ($email !== '') {
     }
 } elseif ($affiliateRef !== '') {
     $paystackCheckoutUrl .= '?ref=' . rawurlencode($affiliateRef);
+}
+$whopCheckoutUrl = $whopCheckoutBase;
+if ($email !== '') {
+    $whopCheckoutUrl .= (str_contains($whopCheckoutBase, '?') ? '&' : '?') . 'email=' . rawurlencode($email);
 }
 $emailEsc = htmlspecialchars($email, ENT_QUOTES, 'UTF-8');
 $appUrlEsc = htmlspecialchars(NEXTRADE_APP_URL, ENT_QUOTES, 'UTF-8');
@@ -105,7 +110,7 @@ $supportEsc = htmlspecialchars(NEXTRADE_SUPPORT_EMAIL, ENT_QUOTES, 'UTF-8');
           <div class="shop-checkout__head">
             <div>
               <h2 id="checkout-title">Checkout</h2>
-              <small>Secure payment via Paystack</small>
+              <small>Secure payment via Paystack or Whop</small>
             </div>
             <div class="shop-checkout__due">
               Due today
@@ -132,10 +137,18 @@ $supportEsc = htmlspecialchars(NEXTRADE_SUPPORT_EMAIL, ENT_QUOTES, 'UTF-8');
               </label>
             </div>
 
-            <button type="button" class="shop-pay-btn payment-gate-btn" id="paystackBtn"
-              data-base-url="<?php echo htmlspecialchars($paystackCheckoutBase); ?>">
-              Pay R<?php echo htmlspecialchars($shopPriceDisplay); ?>
-            </button>
+            <div class="shop-pay-stack">
+              <button type="button" class="shop-pay-btn payment-gate-btn" id="paystackBtn"
+                data-provider="paystack"
+                data-base-url="<?php echo htmlspecialchars($paystackCheckoutBase); ?>">
+                Pay with Card/EFT · R<?php echo htmlspecialchars($shopPriceDisplay); ?>
+              </button>
+              <button type="button" class="shop-pay-btn shop-pay-btn--secondary payment-gate-btn" id="whopBtn"
+                data-provider="whop"
+                data-base-url="<?php echo htmlspecialchars($whopCheckoutBase); ?>">
+                Pay with Card/Crypto · R<?php echo htmlspecialchars($shopPriceDisplay); ?>
+              </button>
+            </div>
             <p class="shop-secure">Encrypted checkout · Card payments</p>
           </div>
         </section>
@@ -174,11 +187,13 @@ $supportEsc = htmlspecialchars(NEXTRADE_SUPPORT_EMAIL, ENT_QUOTES, 'UTF-8');
       var affiliateRef = <?php echo json_encode($affiliateRef); ?>;
       var visitorId = <?php echo json_encode($visitorId); ?>;
       var paystackBtn = document.getElementById('paystackBtn');
+      var whopBtn = document.getElementById('whopBtn');
       var checkoutOverlay = document.getElementById('checkoutOverlay');
       var checkoutBackBtn = document.getElementById('checkoutBackBtn');
       var checkoutLoading = document.getElementById('checkoutLoading');
       var paystackFrame = document.getElementById('paystackFrame');
       var checkoutUrl = <?php echo json_encode($paystackCheckoutUrl); ?>;
+      var whopCheckoutUrl = <?php echo json_encode($whopCheckoutUrl); ?>;
 
       if (topbar) {
         window.addEventListener('scroll', function () {
@@ -190,16 +205,21 @@ $supportEsc = htmlspecialchars(NEXTRADE_SUPPORT_EMAIL, ENT_QUOTES, 'UTF-8');
         return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
       }
 
-      function buildCheckoutUrl() {
+      function buildCheckoutUrl(btn) {
         var email = String(emailInput.value || '').trim();
-        var base = paystackBtn ? paystackBtn.getAttribute('data-base-url') : '';
-        if (!base) return checkoutUrl;
+        var base = btn ? btn.getAttribute('data-base-url') : '';
+        var provider = btn ? btn.getAttribute('data-provider') : 'paystack';
+        if (!base) {
+          return provider === 'whop' ? whopCheckoutUrl : checkoutUrl;
+        }
         var params = new URLSearchParams();
         if (email) params.set('email', email);
-        if (affiliateRef) params.set('ref', affiliateRef);
+        if (provider === 'paystack' && affiliateRef) params.set('ref', affiliateRef);
         var qs = params.toString();
-        checkoutUrl = qs ? base + '?' + qs : base;
-        return checkoutUrl;
+        var url = qs ? base + (base.indexOf('?') >= 0 ? '&' : '?') + qs : base;
+        if (provider === 'whop') whopCheckoutUrl = url;
+        else checkoutUrl = url;
+        return url;
       }
 
       function trackAffiliate(email) {
@@ -224,7 +244,8 @@ $supportEsc = htmlspecialchars(NEXTRADE_SUPPORT_EMAIL, ENT_QUOTES, 'UTF-8');
       function toggleButton() {
         var emailOk = isValidEmail(emailInput.value);
         emailInput.classList.toggle('is-invalid', emailInput.value.trim() !== '' && !emailOk);
-        buildCheckoutUrl();
+        if (paystackBtn) buildCheckoutUrl(paystackBtn);
+        if (whopBtn) buildCheckoutUrl(whopBtn);
         var ready = canProceedToPay();
         gateBtns.forEach(function (btn) {
           btn.classList.toggle('is-ready', ready);
@@ -235,8 +256,8 @@ $supportEsc = htmlspecialchars(NEXTRADE_SUPPORT_EMAIL, ENT_QUOTES, 'UTF-8');
         return window.matchMedia('(max-width: 820px)').matches || /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
       }
 
-      function openCheckout(url) {
-        if (isMobileCheckout()) {
+      function openCheckout(url, provider) {
+        if (provider === 'whop' || isMobileCheckout()) {
           window.location.assign(url);
           return;
         }
@@ -288,8 +309,9 @@ $supportEsc = htmlspecialchars(NEXTRADE_SUPPORT_EMAIL, ENT_QUOTES, 'UTF-8');
             emailInput.focus();
             return;
           }
-          var url = buildCheckoutUrl();
-          trackAffiliate(email).finally(function () { openCheckout(url); });
+          var provider = btn.getAttribute('data-provider') || 'paystack';
+          var url = buildCheckoutUrl(btn);
+          trackAffiliate(email).finally(function () { openCheckout(url, provider); });
         });
       });
 

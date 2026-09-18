@@ -293,6 +293,10 @@ body.shop-page {
 .shop-agree input { margin-top: 0.15rem; accent-color: var(--shop-blue); }
 .shop-agree a { color: var(--shop-blue); }
 
+.shop-pay-stack {
+  display: grid;
+  gap: 0.65rem;
+}
 .shop-pay-btn {
   width: 100%;
   border: 0;
@@ -307,7 +311,7 @@ body.shop-page {
   color: #000;
   opacity: 0.4;
   pointer-events: none;
-  transition: opacity 0.2s ease, transform 0.2s ease;
+  transition: opacity 0.2s ease, transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
 }
 .shop-pay-btn.is-ready {
   opacity: 1;
@@ -315,6 +319,15 @@ body.shop-page {
   cursor: pointer;
 }
 .shop-pay-btn.is-ready:hover { transform: translateY(-1px); }
+.shop-pay-btn--secondary {
+  background: transparent;
+  color: var(--shop-ink);
+  border: 1px solid var(--shop-line);
+}
+.shop-pay-btn--secondary.is-ready:hover {
+  border-color: rgba(255, 255, 255, 0.28);
+  background: rgba(255, 255, 255, 0.04);
+}
 .shop-secure {
   margin: 0.85rem 0 0;
   text-align: center;

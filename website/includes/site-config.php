@@ -27,7 +27,7 @@ if (!defined('NEXTRADE_SUPPORT_EMAIL')) {
     define('NEXTRADE_SUPPORT_EMAIL', 'nextradeaiapp@gmail.com');
 }
 if (!defined('NEXTRADE_SHOP_PRICE_ZAR')) {
-    define('NEXTRADE_SHOP_PRICE_ZAR', 499);
+    define('NEXTRADE_SHOP_PRICE_ZAR', '499.99');
 }
 if (!defined('NEXTRADE_LOGO_URL')) {
     define('NEXTRADE_LOGO_URL', '/assets/img/sitelogo.png');

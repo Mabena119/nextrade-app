@@ -14,5 +14,5 @@ fi
 
 echo "Uploading $(basename "$APK") ($(du -h "$APK" | cut -f1)) → https://nextradeai.io/admin/downloads/nextradeai.apk"
 deploy_scp "$APK" "$DEST"
-ssh "$REMOTE" "ls -lh '$DEST'"
+ssh "$REMOTE" "sudo ls -lh '$DEST'"
 echo "Done. Test: https://nextradeai.io/admin/downloads/nextradeai.apk"
