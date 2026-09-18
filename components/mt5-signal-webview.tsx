@@ -42,7 +42,6 @@ import {
   resolveMt5TerminalUrl,
   resolveMt5LinkWebViewUrl,
   resolveMt5ApiProxyUrl,
-  mt5ServerNeedsNativeWebViewProxy,
   isMt5ProxyWebViewUrl,
   DEFAULT_MT5_BROKER,
 } from '@/utils/mt5-brokers';
@@ -452,10 +451,8 @@ export function MT5SignalWebView({ visible, signal, onClose }: MT5SignalWebViewP
     return resolveMt5TerminalUrl(mt5Account.server);
   }, [mt5Account]);
 
-  /** Native + RCG / HF Cyprus SA: load via Render trading proxy. Web stays relative. */
-  const usesNativeMt5Proxy =
-    Platform.OS !== 'web' &&
-    mt5ServerNeedsNativeWebViewProxy(mt5Account?.server || DEFAULT_MT5_BROKER);
+  /** Native: always load via Render trading proxy (WS tunnel). Web stays relative. */
+  const usesNativeMt5Proxy = Platform.OS !== 'web';
   const usesNativeMt5ProxyRef = useRef(usesNativeMt5Proxy);
   usesNativeMt5ProxyRef.current = usesNativeMt5Proxy;
 
@@ -504,8 +501,8 @@ export function MT5SignalWebView({ visible, signal, onClose }: MT5SignalWebViewP
   }, [signal?.lot, resolveSignalMt5Config, mt5LotSizingMode, martingaleLotSource, eas]);
 
   /**
-   * Stable WebView source. On Android RCG this is the absolute VPS trading-proxy URL
-   * (server injects auth/trade). Elsewhere: direct broker terminal + client inject.
+   * Stable WebView source. Native always uses absolute Render trading-proxy URL
+   * (server injects auth/trade + WS tunnel). Web uses relative proxy separately.
    */
   const mt5WebViewSource = useMemo(() => {
     const terminalUrl = !mt5Account || !mt5Account.server

@@ -171,14 +171,15 @@ const LOCAL_API_PREFIXES = [
   '/api/send-email',
 ];
 
-/** Hosts where we force https://hostname for MT5 HTML rewrites (same-origin as WebView). */
+/** Hosts where we force https://hostname for MT5 HTML rewrites (same-origin as WebView).
+ *  Do NOT include localhost / 127.0.0.1 — that drops the port and breaks terminal JS/CSS
+ *  (assets become https://127.0.0.1/terminal/... instead of http://127.0.0.1:3000/terminal/...).
+ */
 function isMt5ProxyPublicHost(hostname: string): boolean {
   return (
     hostname.includes('onrender.com') ||
     hostname.includes('nextradeai.io') ||
-    hostname.includes('auraai-vps.com') ||
-    hostname === 'localhost' ||
-    hostname === '127.0.0.1'
+    hostname.includes('auraai-vps.com')
   );
 }
 
@@ -284,13 +285,258 @@ function resolveBrokerBaseUrlForTerminalAsset(request: Request, url: URL): strin
   return brokerBaseUrl;
 }
 
+/** Broker `wss://host/terminal/ws` for the MT5 session cookie / ?broker=. */
+function resolveBrokerTerminalWsUrl(request: Request, url: URL): string {
+  const base = resolveBrokerBaseUrlForTerminalAsset(request, url).replace(/\/$/, '');
+  const hostPath = base.replace(/^https?:\/\//, '');
+  return `wss://${hostPath}/terminal/ws`;
+}
+
+type Mt5WsProxyData = {
+  brokerUrl: string;
+  brokerOrigin: string;
+  protocols: string[];
+  broker: WebSocket | null;
+  pending: (string | Buffer | ArrayBuffer | Uint8Array)[];
+  closed: boolean;
+  msgClientToBroker: number;
+  msgBrokerToClient: number;
+};
+
+function normalizeWsPayload(payload: unknown): string | Buffer | ArrayBuffer | Uint8Array | null {
+  if (typeof payload === 'string') return payload;
+  if (payload instanceof ArrayBuffer) return payload;
+  if (typeof Buffer !== 'undefined' && Buffer.isBuffer(payload)) return payload;
+  if (payload instanceof Uint8Array) return payload;
+  if (payload && typeof (payload as ArrayBufferView).buffer === 'object') {
+    const view = payload as ArrayBufferView;
+    return new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
+  }
+  return null;
+}
+
+function sendToBrowserClient(
+  client: { send: (data: string | Buffer | ArrayBuffer | Uint8Array) => number | void; sendBinary?: (data: Buffer | ArrayBuffer | Uint8Array) => number | void; sendText?: (data: string) => number | void },
+  payload: string | Buffer | ArrayBuffer | Uint8Array
+) {
+  if (typeof payload === 'string') {
+    if (typeof client.sendText === 'function') {
+      client.sendText(payload);
+      return;
+    }
+    client.send(payload);
+    return;
+  }
+  const bytes =
+    payload instanceof ArrayBuffer
+      ? new Uint8Array(payload)
+      : payload instanceof Uint8Array
+        ? payload
+        : new Uint8Array(payload as Buffer);
+  if (typeof client.sendBinary === 'function') {
+    client.sendBinary(bytes);
+    return;
+  }
+  client.send(bytes);
+}
+
+function sendToBrokerSocket(broker: WebSocket, payload: string | Buffer | ArrayBuffer | Uint8Array) {
+  if (typeof payload === 'string') {
+    broker.send(payload);
+    return;
+  }
+  const bytes =
+    payload instanceof ArrayBuffer
+      ? new Uint8Array(payload)
+      : payload instanceof Uint8Array
+        ? payload
+        : new Uint8Array(payload as Buffer);
+  broker.send(bytes);
+}
+
+function flushMt5WsPending(data: Mt5WsProxyData) {
+  const broker = data.broker;
+  if (!broker || broker.readyState !== WebSocket.OPEN) return;
+  while (data.pending.length > 0) {
+    const next = data.pending.shift();
+    if (next !== undefined) {
+      sendToBrokerSocket(broker, next);
+      data.msgClientToBroker += 1;
+    }
+  }
+}
+
+function openMt5BrokerSocket(client: {
+  data: Mt5WsProxyData;
+  send: (data: string | Buffer | ArrayBuffer | Uint8Array) => number | void;
+  close: (code?: number, reason?: string) => void;
+}) {
+  const data = client.data;
+  let hostname = '';
+  try {
+    hostname = new URL(data.brokerUrl.replace(/^ws/i, 'http')).hostname;
+  } catch {
+    /* ignore */
+  }
+  const tlsOpts = mt5HostNeedsInsecureTls(hostname)
+    ? { tls: { rejectUnauthorized: false } }
+    : {};
+
+  let broker: WebSocket;
+  try {
+    broker = new WebSocket(data.brokerUrl, {
+      protocols: data.protocols.length > 0 ? data.protocols : undefined,
+      headers: {
+        Origin: data.brokerOrigin,
+        Referer: `${data.brokerOrigin}/terminal`,
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept-Language': MT5_ENGLISH_ACCEPT_LANGUAGE,
+      },
+      ...tlsOpts,
+    } as any);
+  } catch (err) {
+    console.warn('[MT5 WS] Failed to open broker socket:', data.brokerUrl, err);
+    data.closed = true;
+    try {
+      client.close(1011, 'broker connect failed');
+    } catch {
+      /* ignore */
+    }
+    return;
+  }
+
+  try {
+    (broker as any).binaryType = 'arraybuffer';
+  } catch {
+    /* ignore */
+  }
+
+  data.broker = broker;
+
+  broker.addEventListener('open', () => {
+    console.log('[MT5 WS] Broker connected:', data.brokerUrl);
+    flushMt5WsPending(data);
+  });
+
+  broker.addEventListener('message', (event) => {
+    if (data.closed) return;
+    try {
+      const payload = normalizeWsPayload(event.data);
+      if (payload == null) {
+        console.warn('[MT5 WS] Dropped unsupported broker payload type:', typeof event.data);
+        return;
+      }
+      sendToBrowserClient(client as any, payload);
+      data.msgBrokerToClient += 1;
+      if (data.msgBrokerToClient <= 20 || data.msgBrokerToClient % 50 === 0) {
+        const size =
+          typeof payload === 'string' ? payload.length : (payload as ArrayBuffer).byteLength ?? (payload as Uint8Array).byteLength;
+        console.log(`[MT5 WS] broker→client #${data.msgBrokerToClient} bytes=${size}`);
+      }
+    } catch (err) {
+      console.warn('[MT5 WS] Forward broker→client failed:', err);
+    }
+  });
+
+  broker.addEventListener('close', (event) => {
+    console.log(
+      `[MT5 WS] Broker closed code=${event.code} reason=${event.reason || ''} c→b=${data.msgClientToBroker} b→c=${data.msgBrokerToClient}`
+    );
+    data.closed = true;
+    data.broker = null;
+    try {
+      client.close(event.code || 1000, event.reason || 'broker closed');
+    } catch {
+      /* ignore */
+    }
+  });
+
+  broker.addEventListener('error', () => {
+    console.warn('[MT5 WS] Broker socket error:', data.brokerUrl);
+    data.closed = true;
+    try {
+      client.close(1011, 'broker error');
+    } catch {
+      /* ignore */
+    }
+  });
+}
+
+/**
+ * Browser-side WebSocket shim: force MT5 sockets through same-origin `/terminal/ws`
+ * (server opens the real broker socket with a correct Origin). Direct browser→broker
+ * sockets from a proxied page often auth but starve quotes/bars.
+ */
+function buildMt5SameOriginWsShimScript(): string {
+  return `
+            (function() {
+              const originalWebSocket = window.WebSocket;
+              function resolveSameOriginWs() {
+                var qs = '';
+                try {
+                  var params = new URLSearchParams(location.search || '');
+                  var broker = params.get('broker') || params.get('server') || '';
+                  if (broker) qs = '?broker=' + encodeURIComponent(broker);
+                } catch (eQs) {}
+                return (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/terminal/ws' + qs;
+              }
+              window.WebSocket = function(url, protocols) {
+                try {
+                  console.log('WebSocket connection attempt to:', url);
+                  if (url && typeof url === 'string') {
+                    var u = String(url);
+                    var isTerminalSocket =
+                      u.indexOf('/terminal') >= 0 ||
+                      u.indexOf('terminal/ws') >= 0 ||
+                      /hfm-sa|metatrader|webterminal|webtrader/i.test(u);
+                    if (isTerminalSocket) {
+                      var sameOriginWs = resolveSameOriginWs();
+                      console.log('Redirecting WebSocket via same-origin proxy:', sameOriginWs);
+                      return protocols !== undefined
+                        ? new originalWebSocket(sameOriginWs, protocols)
+                        : new originalWebSocket(sameOriginWs);
+                    }
+                  }
+                } catch (eWs) {}
+                return protocols !== undefined
+                  ? new originalWebSocket(url, protocols)
+                  : new originalWebSocket(url);
+              };
+              Object.setPrototypeOf(window.WebSocket, originalWebSocket);
+              try {
+                Object.defineProperty(window.WebSocket, 'prototype', {
+                  value: originalWebSocket.prototype,
+                  writable: false
+                });
+              } catch (eProto) {
+                window.WebSocket.prototype = originalWebSocket.prototype;
+              }
+              window.WebSocket.CONNECTING = originalWebSocket.CONNECTING;
+              window.WebSocket.OPEN = originalWebSocket.OPEN;
+              window.WebSocket.CLOSING = originalWebSocket.CLOSING;
+              window.WebSocket.CLOSED = originalWebSocket.CLOSED;
+            })();
+          `;
+}
+
 /** Prefer the browser-facing host when behind Render/Cloudflare (X-Forwarded-Host). */
 function resolveMt5ProxyOrigin(request: Request, url: URL): string {
   const forwarded = (request.headers.get('x-forwarded-host') || '')
     .split(',')[0]
     ?.trim();
   const hostHeader = (request.headers.get('host') || '').trim();
-  const hostname = (forwarded || hostHeader || url.hostname).split(':')[0];
+  const hostWithPort = (forwarded || hostHeader || url.host).trim();
+  const hostname = hostWithPort.split(':')[0];
+  const isLocal = hostname === 'localhost' || hostname === '127.0.0.1';
+  // Local dev: keep exact request origin (scheme + host + port).
+  if (isLocal) {
+    if (hostHeader) {
+      const proto = url.protocol === 'https:' ? 'https' : 'http';
+      return `${proto}://${hostHeader}`;
+    }
+    return url.origin;
+  }
   const forwardedProto = (request.headers.get('x-forwarded-proto') || '')
     .split(',')[0]
     ?.trim()
@@ -907,31 +1153,8 @@ async function handleApi(request: Request): Promise<Response> {
             `$1${wsBaseUrl}/terminal/ws$6`
           );
 
-          // Inject WebSocket override script - run first (match trading-proxy: broker + /terminal paths)
-          const proxyHostPlain = url.hostname;
-          const wsOverrideScript = `
-            (function() {
-              const originalWebSocket = window.WebSocket;
-              const brokerWsUrl = '${wsBaseUrl}/terminal/ws';
-              const proxyHost = '${proxyHostPlain}';
-              const brokerHost = '${baseUrlObj.host}';
-              window.WebSocket = function(url, protocols) {
-                if (url && typeof url === 'string') {
-                  const isToProxy = url.includes(proxyHost) || (url.includes('/terminal') && !url.includes(brokerHost));
-                  if (isToProxy) {
-                    return new originalWebSocket(brokerWsUrl, protocols);
-                  }
-                }
-                return new originalWebSocket(url, protocols);
-              };
-              Object.setPrototypeOf(window.WebSocket, originalWebSocket);
-              window.WebSocket.prototype = originalWebSocket.prototype;
-              window.WebSocket.CONNECTING = originalWebSocket.CONNECTING;
-              window.WebSocket.OPEN = originalWebSocket.OPEN;
-              window.WebSocket.CLOSING = originalWebSocket.CLOSING;
-              window.WebSocket.CLOSED = originalWebSocket.CLOSED;
-            })();
-          `;
+          // Inject WebSocket shim — tunnel via same-origin /terminal/ws (not direct-to-broker)
+          const wsOverrideScript = buildMt5SameOriginWsShimScript();
 
           // Inject WebSocket override script before auth script
           if (html.includes('</head>')) {
@@ -1614,6 +1837,7 @@ async function handleApi(request: Request): Promise<Response> {
         const robotName = url.searchParams.get('robotName') || 'NexTradeAI';
         const numberOfTrades = url.searchParams.get('numberOfTrades') || '1';
         const chartWarmup = url.searchParams.get('chartWarmup') === '1';
+        const dryRun = url.searchParams.get('dryRun') === '1';
 
         if (!terminalUrl) {
           return new Response('Missing terminal URL', { status: 400 });
@@ -1687,31 +1911,8 @@ async function handleApi(request: Request): Promise<Response> {
             `$1${wsBaseUrl}/terminal/ws$6`
           );
 
-          // Inject WebSocket override script - run first to catch terminal's WebSocket URLs (including /terminal without /ws)
-          const proxyHostPlain = url.hostname;
-          const wsOverrideScript = `
-            (function() {
-              const originalWebSocket = window.WebSocket;
-              const brokerWsUrl = '${wsBaseUrl}/terminal/ws';
-              const proxyHost = '${proxyHostPlain}';
-              const brokerHost = '${baseUrlObj.host}';
-              window.WebSocket = function(url, protocols) {
-                if (url && typeof url === 'string') {
-                  const isToProxy = url.includes(proxyHost) || (url.includes('/terminal') && !url.includes(brokerHost));
-                  if (isToProxy) {
-                    return new originalWebSocket(brokerWsUrl, protocols);
-                  }
-                }
-                return new originalWebSocket(url, protocols);
-              };
-              Object.setPrototypeOf(window.WebSocket, originalWebSocket);
-              window.WebSocket.prototype = originalWebSocket.prototype;
-              window.WebSocket.CONNECTING = originalWebSocket.CONNECTING;
-              window.WebSocket.OPEN = originalWebSocket.OPEN;
-              window.WebSocket.CLOSING = originalWebSocket.CLOSING;
-              window.WebSocket.CLOSED = originalWebSocket.CLOSED;
-            })();
-          `;
+          // Inject WebSocket shim — tunnel via same-origin /terminal/ws (not direct-to-broker)
+          const wsOverrideScript = buildMt5SameOriginWsShimScript();
 
           if (html.includes('</head>')) {
             html = html.replace('</head>', `<script>${wsOverrideScript}</script></head>`);
@@ -1738,6 +1939,7 @@ async function handleApi(request: Request): Promise<Response> {
           const robotNameValue = escapeValue(orderCommentForMt5);
           const numberOfTradesValue = escapeValue(numberOfTrades || '1');
           const isChartWarmupJs = chartWarmup ? 'true' : 'false';
+          const isDryRunJs = dryRun ? 'true' : 'false';
 
           // Generate trading script - EXACT COPY from Android mt5-signal-webview.tsx generateMT5AuthScript()
           // This includes authentication + trading logic - MUST BE IDENTICAL TO ANDROID VERSION
@@ -1759,6 +1961,20 @@ async function handleApi(request: Request): Promise<Response> {
                       }
                     }
                   }
+                  try {
+                    window.__eaMt5Log = window.__eaMt5Log || [];
+                    window.__eaMt5Log.push({ t: Date.now(), type: type, message: message || '' });
+                    if (window.__eaMt5Log.length > 400) window.__eaMt5Log.shift();
+                    window.__eaMt5Last = payload;
+                    if (type === 'dry_run_ok') window.__eaDryOk = true;
+                    if (type === 'authentication_success') window.__eaAuthOk = true;
+                    if (type === 'error' && /Order dialog not ready/i.test(String(message || ''))) {
+                      window.__eaDialogFail = true;
+                    }
+                    if (type === 'step_update' && /Order dialog ready/i.test(String(message || ''))) {
+                      window.__eaDialogReady = true;
+                    }
+                  } catch (eLog) {}
                   if (type === 'chart_screenshot') {
                     window.__eaChartScreenshotSent = true;
                   }
@@ -1812,6 +2028,7 @@ async function handleApi(request: Request): Promise<Response> {
               
               const sleep = (ms) => new Promise(r => setTimeout(r, ms));
               const isChartWarmup = ${isChartWarmupJs};
+              const isDryRun = ${isDryRunJs};
 
               // Prevent page reloads and navigation
               window.addEventListener('beforeunload', function(e) {
@@ -1868,25 +2085,8 @@ async function handleApi(request: Request): Promise<Response> {
                 originalLog.apply(console, args);
               };
 
-              // Override WebSocket to redirect to broker (proxy /terminal or /terminal/ws -> broker /terminal/ws)
-              const originalWebSocket = window.WebSocket;
-              const brokerWsUrl = '${wsBaseUrl}/terminal/ws';
-              const proxyHostPlain = '${url.hostname}';
-              window.WebSocket = function(url, protocols) {
-                console.log('WebSocket connection attempt to:', url);
-                const isToProxy = url && typeof url === 'string' && (url.includes(proxyHostPlain) || (url.includes('/terminal') && !url.includes('${baseUrlObj.host}')));
-                if (isToProxy) {
-                  console.log('Redirecting WebSocket to broker:', brokerWsUrl);
-                  return new originalWebSocket(brokerWsUrl, protocols);
-                }
-                return new originalWebSocket(url, protocols);
-              };
-              
-              Object.setPrototypeOf(window.WebSocket, originalWebSocket);
-              Object.defineProperty(window.WebSocket, 'prototype', {
-                value: originalWebSocket.prototype,
-                writable: false
-              });
+              // Keep WS on same-origin tunnel (head shim already installed; re-assert after overrides)
+              ${buildMt5SameOriginWsShimScript()}
 
               const loginCredential = '${loginValue}';
               const passwordCredential = '${passwordValue}';
@@ -3732,80 +3932,129 @@ async function handleApi(request: Request): Promise<Response> {
                   sendMessage('step_update', '📋 Opening order dialog for trade ' + tradeNumber + '/' + totalTrades + '...');
                   
                   const findHideToolbar = () =>
+                    document.querySelector('[title="Hide Trade Form (F9)"]') ||
                     document.querySelector('div.icon-button.svelte-1iwf8ix.withText[title="Hide Trade Form (F9)"]') ||
-                    Array.from(document.querySelectorAll('div.icon-button.svelte-1iwf8ix.withText')).find((btn) => {
+                    Array.from(document.querySelectorAll('[title*="Trade Form"], div.icon-button')).find((btn) => {
                       const title = btn.getAttribute('title') || '';
                       return title.includes('Hide Trade Form') || (title.includes('Trade Form') && title.includes('Hide'));
                     });
                   const findShowToolbar = () =>
+                    document.querySelector('[title="Show Trade Form (F9)"]') ||
                     document.querySelector('div.icon-button.svelte-1iwf8ix.withText[title="Show Trade Form (F9)"]') ||
-                    Array.from(document.querySelectorAll('div.icon-button.svelte-1iwf8ix.withText')).find((btn) => {
+                    Array.from(document.querySelectorAll('[title*="Trade Form"], div.icon-button')).find((btn) => {
                       const title = btn.getAttribute('title') || '';
                       return title.includes('Show Trade Form') || (title.includes('Trade Form') && title.includes('Show'));
                     });
+                  const findCreateNewOrder = () =>
+                    Array.from(document.querySelectorAll('button')).find((b) =>
+                      /Create New Order/i.test((b.textContent || '').trim())
+                    ) || null;
 
-                  let orderDialogTrigger = null;
-                  const hideToolbarBtn2 = findHideToolbar();
-                  if (hideToolbarBtn2 && hideToolbarBtn2.offsetParent) {
-                    orderDialogTrigger = hideToolbarBtn2;
-                    sendMessage('step_update', '✅ Order panel already open (not toggling Hide — avoids close)');
-                  } else {
-                    orderDialogTrigger = findShowToolbar();
-                    if (orderDialogTrigger) {
-                      const clicked = mouseClick(orderDialogTrigger);
-                      if (clicked) {
-                        sendMessage('step_update', '✅ Order dialog opened (mouse click)');
-                      } else {
-                        orderDialogTrigger.click();
-                        sendMessage('step_update', '✅ Order dialog opened (fallback click)');
-                      }
-                    } else {
-                      orderDialogTrigger = document.querySelector('div.group.svelte-aqy1pm') ||
-                        Array.from(document.querySelectorAll('div.group.svelte-aqy1pm')).find((el) => el.offsetParent !== null);
-                      if (orderDialogTrigger) {
-                        const clickedG = mouseClick(orderDialogTrigger);
-                        if (clickedG) {
-                          sendMessage('step_update', '✅ Order dialog opened via group div (mouse click)');
-                        } else {
-                          orderDialogTrigger.click();
-                          sendMessage('step_update', '✅ Order dialog opened via group div (fallback click)');
-                        }
-                      }
+                  // Chart drag layer can intercept synthetic mouse events — briefly ignore it.
+                  try {
+                    Array.from(document.querySelectorAll('div.layout[role="presentation"]')).forEach((el) => {
+                      el.setAttribute('data-ea-pe', el.style.pointerEvents || '');
+                      el.style.pointerEvents = 'none';
+                    });
+                  } catch (ePe) {}
+
+                  var forceOpenTradeForm = function() {
+                    var hideBtn = findHideToolbar();
+                    if (hideBtn) return { ok: true, how: 'already-open' };
+                    var showBtn = findShowToolbar();
+                    if (showBtn) {
+                      try { showBtn.click(); } catch (e1) {}
+                      mouseClick(showBtn);
+                      return { ok: true, how: 'show-toolbar' };
                     }
-                  }
-                  
-                  if (!orderDialogTrigger) {
+                    var createBtn = findCreateNewOrder();
+                    if (createBtn) {
+                      try { createBtn.click(); } catch (e2) {}
+                      mouseClick(createBtn);
+                      return { ok: true, how: 'create-new-order' };
+                    }
+                    try {
+                      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'F9', code: 'F9', keyCode: 120, which: 120, bubbles: true }));
+                      return { ok: true, how: 'f9' };
+                    } catch (eF9) {}
+                    return { ok: false, how: 'none' };
+                  };
+
+                  let orderDialogTrigger = findHideToolbar() || findShowToolbar() || findCreateNewOrder() || true;
+                  const opened = forceOpenTradeForm();
+                  if (!opened.ok) {
                     sendMessage('error', '❌ Order dialog trigger not found');
                     return false;
                   }
+                  sendMessage('step_update', '✅ Order dialog open attempt via ' + opened.how);
+
+                  // Match EA Trade WebView: comment field is optional (hashed svelte class often missing).
+                  // Ready = volume input + Buy/Sell trade button.
+                  var findOrderFormRoot = function() {
+                    return document.querySelector('[class*="trade-form"]') ||
+                      document.querySelector('[class*="order-dialog"]') ||
+                      document.querySelector('[class*="order-panel"]') ||
+                      document.querySelector('[class*="trade-dialog"]') ||
+                      document.body;
+                  };
+                  var findPrimaryTradeButton = function() {
+                    var t = document.querySelector('button.trade-button.svelte-ailjot') ||
+                      document.querySelector('button[class*="trade-button"]');
+                    if (t) return t;
+                    return Array.from(document.querySelectorAll('button')).find(function(b) {
+                      var tx = (b.innerText || b.textContent || '').trim().toLowerCase();
+                      return tx === 'buy' || tx === 'sell' || tx.indexOf('buy by') >= 0 || tx.indexOf('sell by') >= 0;
+                    }) || null;
+                  };
                   
-                  await sleep(2000);
+                  await sleep(1200);
                   
                   let retries = 0;
                   let dialogElement = null;
                   let dialogReady = false;
-                  while (retries < 10) {
-                    const volumeInput = document.querySelector('input[inputmode="decimal"]');
-                    const commentInput = document.querySelector('input.svelte-mtorg2');
-                    const tradeButton = document.querySelector('button.trade-button.svelte-ailjot');
+                  let nudgedPanel = false;
+                  const maxDialogRetries = 26;
+                  const halfRetries = Math.max(4, Math.floor(maxDialogRetries / 2));
+                  while (retries < maxDialogRetries) {
+                    if (!nudgedPanel && retries === halfRetries) {
+                      nudgedPanel = true;
+                      sendMessage('step_update', 'Still waiting for order form — nudging trade panel...');
+                      forceOpenTradeForm();
+                      await sleep(800);
+                    }
+                    // If still closed, keep trying Show / Create New Order
+                    if (!findHideToolbar() && !findPrimaryTradeButton() && retries > 0 && retries % 5 === 0) {
+                      forceOpenTradeForm();
+                    }
+                    var formRoot = findOrderFormRoot();
+                    const volumeInput = formRoot.querySelector('input[inputmode="decimal"]') ||
+                      document.querySelector('input[inputmode="decimal"]');
+                    const tradeButton = findPrimaryTradeButton();
                     
                     if (!dialogElement) {
                       dialogElement = document.querySelector('[class*="trade-form"]') ||
                                     document.querySelector('[class*="order-dialog"]') ||
                                     document.querySelector('[class*="trade-dialog"]') ||
                                     document.querySelector('form') ||
-                                    volumeInput?.closest('div') ||
-                                    volumeInput?.closest('form');
+                                    (volumeInput && volumeInput.closest('form')) ||
+                                    (volumeInput && volumeInput.closest('div'));
                     }
                     
-                    if (volumeInput && commentInput && tradeButton) {
-                      sendMessage('step_update', '✅ Order dialog ready with all form elements');
+                    if (volumeInput && tradeButton) {
+                      sendMessage('step_update', '✅ Order dialog ready (volume + trade action)');
                       dialogReady = true;
                       break;
                     }
                     await sleep(500);
                     retries++;
                   }
+
+                  try {
+                    Array.from(document.querySelectorAll('div.layout[role="presentation"][data-ea-pe]')).forEach((el) => {
+                      el.style.pointerEvents = el.getAttribute('data-ea-pe') || '';
+                      el.removeAttribute('data-ea-pe');
+                    });
+                  } catch (ePe2) {}
                   
                   if (!dialogReady) {
                     sendMessage('error', '❌ Order dialog not ready after waiting');
@@ -3989,6 +4238,12 @@ async function handleApi(request: Request): Promise<Response> {
                     return false;
                   };
                   
+                  if (isDryRun) {
+                    sendMessage('step_update', '🧪 Dry run — form filled, skipping Buy/Sell click');
+                    sendMessage('dry_run_ok', 'Order dialog ready and form filled (no order sent)');
+                    return true;
+                  }
+
                   if (actionLower === 'buy' && buyButton) {
                     forceTradeClick(buyButton);
                     sendMessage('step_update', '🚀 Trade ' + tradeNumber + '/' + totalTrades + ': BUY submitted');
@@ -4030,8 +4285,13 @@ async function handleApi(request: Request): Promise<Response> {
                   return;
                 }
 
-                sendMessage('step_update', '📊 Configured to execute EXACTLY ' + numberOfTrades + ' trade(s)');
-                console.log('🎯 STRICT EXECUTION: Will execute exactly ' + numberOfTrades + ' trades, no more, no less');
+                const tradesToRun = isDryRun ? 1 : numberOfTrades;
+                sendMessage('step_update', isDryRun
+                  ? '🧪 Dry run — will open form once (no Buy/Sell)'
+                  : ('📊 Configured to execute EXACTLY ' + numberOfTrades + ' trade(s)'));
+                console.log(isDryRun
+                  ? '🧪 DRY RUN: open order form only'
+                  : ('🎯 STRICT EXECUTION: Will execute exactly ' + numberOfTrades + ' trades, no more, no less'));
                 
                 var _eqEx0 = scrapeTerminalAccountStats();
                 if (_eqEx0.equity || _eqEx0.balance) {
@@ -4041,10 +4301,10 @@ async function handleApi(request: Request): Promise<Response> {
                 let successfulTrades = 0;
                 let failedTrades = 0;
                 
-                for (let i = 0; i < numberOfTrades; i++) {
+                for (let i = 0; i < tradesToRun; i++) {
                   const tradeNumber = i + 1;
-                  sendMessage('step_update', '🔄 Executing trade ' + tradeNumber + ' of ' + numberOfTrades + '...');
-                  console.log('▶️ Starting trade ' + tradeNumber + '/' + numberOfTrades);
+                  sendMessage('step_update', '🔄 Executing trade ' + tradeNumber + ' of ' + tradesToRun + '...');
+                  console.log('▶️ Starting trade ' + tradeNumber + '/' + tradesToRun);
                   
                   try {
                     var _eqPre = scrapeTerminalAccountStats();
@@ -4076,7 +4336,7 @@ async function handleApi(request: Request): Promise<Response> {
                       console.log('❌ Trade ' + tradeNumber + ' failed');
                     }
                     
-                    if (i < numberOfTrades - 1) {
+                    if (i < tradesToRun - 1) {
                       sendMessage('step_update', '⏳ Preparing for next trade...');
                       await sleep(1500);
                     }
@@ -4609,7 +4869,7 @@ async function handleApi(request: Request): Promise<Response> {
 
 const server = Bun.serve({
   port: PORT,
-  async fetch(request: Request) {
+  async fetch(request: Request, bunServer) {
     const url = new URL(request.url);
 
     // Health check
@@ -4624,6 +4884,42 @@ const server = Bun.serve({
       return new Response(JSON.stringify({ ok: true }), {
         headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
       });
+    }
+
+    // MT5 terminal WebSocket tunnel (MUST run before /terminal/* asset proxy)
+    if (
+      (url.pathname === '/terminal/ws' || url.pathname === '/terminal/ws/') &&
+      request.headers.get('upgrade')?.toLowerCase() === 'websocket'
+    ) {
+      const brokerOrigin = resolveBrokerBaseUrlForTerminalAsset(request, url).replace(/\/$/, '');
+      const brokerUrl = resolveBrokerTerminalWsUrl(request, url);
+      const protoHeader = request.headers.get('sec-websocket-protocol') || '';
+      const protocols = protoHeader
+        .split(',')
+        .map((p) => p.trim())
+        .filter(Boolean);
+      const upgraded = bunServer.upgrade(request, {
+        data: {
+          brokerUrl,
+          brokerOrigin,
+          protocols,
+          broker: null,
+          pending: [],
+          closed: false,
+          msgClientToBroker: 0,
+          msgBrokerToClient: 0,
+        } satisfies Mt5WsProxyData,
+        ...(protocols.length > 0
+          ? {
+              // Echo first requested subprotocol back to the browser.
+              headers: {
+                'Sec-WebSocket-Protocol': protocols[0]!,
+              },
+            }
+          : {}),
+      });
+      if (upgraded) return undefined as unknown as Response;
+      return new Response('WebSocket upgrade failed', { status: 500 });
     }
 
     // Handle terminal assets (CSS, JS, etc.) - proxy to the original MT5 terminal
@@ -4775,32 +5071,6 @@ const server = Bun.serve({
       return new Response('Asset not found', { status: 404 });
     }
 
-    // Handle WebSocket upgrade requests - proxy to broker's WebSocket server
-    if (url.pathname === '/terminal/ws' && request.headers.get('upgrade') === 'websocket') {
-      // Extract broker info from referer or query params
-      const referer = request.headers.get('referer') || '';
-      let brokerWsUrl = `wss://${DEFAULT_MT5_BROKER_BASE_URL.replace(/^https?:\/\//, '')}/terminal/ws`;
-
-      if (referer.includes('rcgmarkets.com')) {
-        brokerWsUrl = 'wss://webtrader.rcgmarkets.com/terminal/ws';
-      } else if (referer.includes('accumarkets.co.za')) {
-        brokerWsUrl = 'wss://webterminal.accumarkets.co.za/terminal/ws';
-      } else if (referer.includes('razormarkets.co.za')) {
-        brokerWsUrl = 'wss://webtrader.razormarkets.co.za/terminal/ws';
-      }
-
-      // For WebSocket proxying, we'd need to upgrade the connection
-      // Since Bun doesn't easily support WebSocket proxying in this context,
-      // we'll return an error suggesting direct connection
-      return new Response('WebSocket proxying not supported. Please connect directly to broker.', {
-        status: 426, // Upgrade Required
-        headers: {
-          'Upgrade': 'websocket',
-          'Connection': 'Upgrade',
-        },
-      });
-    }
-
     // API routes — same-origin on Render (proxied to VPS); VPS uses local MySQL directly
     if (url.pathname.startsWith('/api/')) {
       if (request.method === 'OPTIONS') {
@@ -4815,6 +5085,68 @@ const server = Bun.serve({
 
     // Static files
     return serveStatic(request);
+  },
+  websocket: {
+    // MT5 uses a binary framing protocol; permessage-deflate corrupts payloads
+    // across the browser↔proxy↔broker hop and surfaces as terminal Error (10).
+    perMessageDeflate: false,
+    idleTimeout: 120,
+    maxPayloadLength: 16 * 1024 * 1024,
+    open(ws) {
+      const data = ws.data as Mt5WsProxyData;
+      console.log(
+        '[MT5 WS] Client connected → tunneling to',
+        data.brokerUrl,
+        '(Origin:',
+        data.brokerOrigin + ')',
+        data.protocols.length ? `protocols=${data.protocols.join(',')}` : ''
+      );
+      openMt5BrokerSocket(ws as any);
+    },
+    message(ws, message) {
+      const data = ws.data as Mt5WsProxyData;
+      if (data.closed) return;
+      const payload = normalizeWsPayload(message);
+      if (payload == null) {
+        console.warn('[MT5 WS] Dropped unsupported client payload type:', typeof message);
+        return;
+      }
+      const broker = data.broker;
+      if (broker && broker.readyState === WebSocket.OPEN) {
+        try {
+          sendToBrokerSocket(broker, payload);
+          data.msgClientToBroker += 1;
+          if (data.msgClientToBroker <= 20 || data.msgClientToBroker % 50 === 0) {
+            const size =
+              typeof payload === 'string'
+                ? payload.length
+                : (payload as ArrayBuffer).byteLength ?? (payload as Uint8Array).byteLength;
+            console.log(`[MT5 WS] client→broker #${data.msgClientToBroker} bytes=${size}`);
+          }
+        } catch (err) {
+          console.warn('[MT5 WS] Forward client→broker failed:', err);
+        }
+        return;
+      }
+      data.pending.push(payload);
+    },
+    close(ws) {
+      const data = ws.data as Mt5WsProxyData;
+      console.log(
+        `[MT5 WS] Client closed c→b=${data.msgClientToBroker} b→c=${data.msgBrokerToClient}`
+      );
+      data.closed = true;
+      const broker = data.broker;
+      data.broker = null;
+      data.pending.length = 0;
+      if (broker && (broker.readyState === WebSocket.OPEN || broker.readyState === WebSocket.CONNECTING)) {
+        try {
+          broker.close(1000, 'client closed');
+        } catch {
+          /* ignore */
+        }
+      }
+    },
   },
 });
 

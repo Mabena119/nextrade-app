@@ -129,13 +129,26 @@ export function mt5HostNeedsInsecureTls(hostname: string): boolean {
   return host === 'webtrader.rcgmarkets.com' || host.endsWith('.rcgmarkets.com');
 }
 
-/** HF Cyprus SA terminals (Live 2 / Demo 2) — slow shell on native WebView; use same Render proxy as web. */
+/**
+ * Native WebView must load the Render MT5 HTML proxy for trading.
+ * Direct broker sockets from a non-broker origin starve quotes/bars
+ * ("Trade is disabled"); the proxy tunnels `/terminal/ws` with a broker Origin.
+ * Also covers incomplete TLS (RCG) and slow Cyprus SA shells.
+ */
 export function mt5HostNeedsNativeWebViewProxy(hostname: string): boolean {
   const host = (hostname || '').toLowerCase();
+  if (!host) return true;
   if (mt5HostNeedsInsecureTls(host)) return true;
-  return host.includes('hfm-sa-cy.com');
+  // All HF Markets web terminals we ship
+  return (
+    host.includes('hfm-sa') ||
+    host.includes('webterminal-hfm') ||
+    host.includes('hfm.com') ||
+    host.includes('metatrader')
+  );
 }
 
+/** HF Cyprus SA terminals (Live 2 / Demo 2) — slow shell on native WebView. */
 export function mt5ServerUsesHfmSaCyHost(server: string): boolean {
   try {
     const hostname = new URL(resolveMt5TerminalUrl(server || DEFAULT_MT5_BROKER)).hostname;
@@ -152,13 +165,18 @@ export function resolveMt5TerminalServerCredential(server: string): string {
   return cfg?.name?.trim() || key;
 }
 
-/** True when native must load this broker via the Render MT5 HTML proxy (TLS or Cyprus SA). */
+/**
+ * True when native must load this broker via the Render MT5 HTML proxy.
+ * Always on for configured HF servers so Android gets the same WS tunnel as web.
+ */
 export function mt5ServerNeedsNativeWebViewProxy(server: string): boolean {
+  const key = normalizeMt5ServerKey(server || DEFAULT_MT5_BROKER);
+  if (MT5_BROKER_URLS[key] || HF_MARKETS_SERVERS[key]) return true;
   try {
     const hostname = new URL(resolveMt5TerminalUrl(server || DEFAULT_MT5_BROKER)).hostname;
     return mt5HostNeedsNativeWebViewProxy(hostname);
   } catch {
-    return false;
+    return true;
   }
 }
 
@@ -205,9 +223,8 @@ export function resolveMt5ApiProxyUrl(relativePath: string, platformOs: string):
 
 /**
  * Link/trade WebView URL:
- * - web → relative same-origin proxy (Render / local) — do not change
- * - Android + incomplete-TLS brokers (RCG) → absolute VPS proxy
- * - other native → direct broker terminal (e.g. Razor, like EA Trade)
+ * - web → relative same-origin proxy (Render / local)
+ * - Android / iOS → absolute Render trading proxy (WS tunnel + injected trade script)
  */
 export function resolveMt5LinkWebViewUrl(
   server: string,
@@ -217,10 +234,7 @@ export function resolveMt5LinkWebViewUrl(
   if (platformOs === 'web') {
     return proxyPath;
   }
-  if (
-    (platformOs === 'android' || platformOs === 'ios') &&
-    mt5ServerNeedsNativeWebViewProxy(server)
-  ) {
+  if (platformOs === 'android' || platformOs === 'ios') {
     return resolveMt5NativeProxyWebViewUrl(proxyPath);
   }
   return resolveMt5TerminalUrl(server);

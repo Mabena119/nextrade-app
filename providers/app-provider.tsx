@@ -2310,6 +2310,16 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
   const scheduleOpenMT5ExecutionOverlay = useCallback((signal: SignalLog) => {
     // MT5 auto-trade only for symbols on MT5 Quotes — never fall back to an unlisted ticker.
     if (signal.type !== 'CHART_WARMUP') {
+      if (!isSymbolConfiguredForTrading(signal.asset)) {
+        console.log(
+          '⏭️ Symbol not configured — MT5 overlay not opened:',
+          signal.asset
+        );
+        setMt5TradeOverlayMessage(
+          `Symbol ${signal.asset || '(empty)'} is not configured on Quotes`
+        );
+        return;
+      }
       const onQuotes = resolveConfiguredMt5QuotesSymbol(
         signal.asset,
         mt5Symbols,
@@ -2338,7 +2348,7 @@ export const [AppProvider, useApp] = createContextHook<AppState>(() => {
     InteractionManager.runAfterInteractions(() => {
       requestAnimationFrame(open);
     });
-  }, [mt5Symbols, activeSymbols, markSignalProcessed]);
+  }, [mt5Symbols, activeSymbols, markSignalProcessed, isSymbolConfiguredForTrading]);
 
   const startDatabaseSignalPolling = useCallback(async () => {
     const primaryEA = Array.isArray(eas) && eas.length > 0 ? eas[0] : null;

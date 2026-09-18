@@ -247,10 +247,15 @@ class OverlayTradeExecutor(
     }
   }
 
+  /**
+   * Only trade symbols present in the synced Quotes map. Never fall back to a raw
+   * signal ticker — unconfigured symbols must not load / execute.
+   */
   private fun resolveExecutionSymbol(asset: String, symbolMapJson: String): String {
     if (asset.isEmpty()) return ""
     try {
       val map = JSONObject(symbolMapJson.ifBlank { "{}" })
+      if (map.length() == 0) return ""
       val direct = map.optString(asset, "").trim()
       if (direct.isNotEmpty()) return direct
       val upper = asset.uppercase()
@@ -277,7 +282,7 @@ class OverlayTradeExecutor(
       }
     } catch (_: Exception) {
     }
-    return asset
+    return ""
   }
 
   private fun buildTradingProxyUrl(
@@ -341,19 +346,73 @@ class OverlayTradeExecutor(
    * Rewrite stale Render trading-proxy shells that click Buy/Sell then sleep +
    * "auto-confirmed" without waiting for the terminal. Align with EA Trade:
    * mouse/touch click + waitOrderAccepted before success.
+   * Also fix brittle order-dialog readiness (comment field / hashed svelte classes).
    */
   private fun sanitizeTradingProxyHtml(html: String): String {
-    val hadStale =
+    val hadStaleClick =
       html.contains("BUY order executed") ||
         html.contains("SELL order executed") ||
         html.contains("auto-confirmed") ||
         (html.contains("Confirming trade") && !html.contains("waitOrderAccepted"))
+    val hadBrittleDialog =
+      html.contains("Order dialog ready with all form elements") ||
+        (html.contains("commentInput") && html.contains("Order dialog not ready after waiting")) ||
+        (html.contains("Order dialog opened (mouse click)") && !html.contains("forceOpenTradeForm"))
 
-    if (!hadStale) return html
+    if (!hadStaleClick && !hadBrittleDialog) return html
 
-    Log.i(TAG, "Sanitizing stale trading-proxy HTML (forceTradeClick + waitOrderAccepted)")
+    Log.i(TAG, "Sanitizing trading-proxy HTML (click confirm=$hadStaleClick dialog=$hadBrittleDialog)")
 
     var out = html
+
+    // 0) Order dialog ready: do not require hashed comment input (breaks HFM / UI updates).
+    if (hadBrittleDialog) {
+      out =
+        out.replace(
+          Regex(
+            """const volumeInput = document\.querySelector\('input\[inputmode="decimal"\]'\);\s*const commentInput = document\.querySelector\('input\.svelte-mtorg2'\);\s*const tradeButton = document\.querySelector\('button\.trade-button\.svelte-ailjot'\);"""
+          ),
+          """const volumeInput = document.querySelector('input[inputmode="decimal"]');
+                    const tradeButton = document.querySelector('button.trade-button.svelte-ailjot') || document.querySelector('button[class*="trade-button"]') || Array.from(document.querySelectorAll('button')).find(function(b){ var t=(b.innerText||b.textContent||'').trim().toLowerCase(); return t==='buy'||t==='sell'||t.indexOf('buy by')>=0||t.indexOf('sell by')>=0; });"""
+        )
+      out =
+        out.replace(
+          "if (volumeInput && commentInput && tradeButton)",
+          "if (volumeInput && tradeButton)"
+        )
+      out =
+        out.replace(
+          "✅ Order dialog ready with all form elements",
+          "✅ Order dialog ready (volume + trade action)"
+        )
+      out =
+        out.replace(
+          Regex("""while\s*\(\s*retries\s*<\s*10\s*\)"""),
+          "while (retries < 26)"
+        )
+      // Chart drag layer intercepts synthetic clicks — disable while opening the form.
+      if (!out.contains("data-ea-pe") && out.contains("Opening order dialog for trade")) {
+        out =
+          out.replace(
+            "sendMessage('step_update', '📋 Opening order dialog for trade '",
+            """try{Array.from(document.querySelectorAll('div.layout[role="presentation"]')).forEach(function(el){el.setAttribute('data-ea-pe',el.style.pointerEvents||'');el.style.pointerEvents='none';});}catch(ePe){}
+                  sendMessage('step_update', '📋 Opening order dialog for trade '"""
+          )
+      }
+      // Prefer native .click() before mouseClick (more reliable on Android WebView).
+      out =
+        out.replace(
+          "const clicked = mouseClick(orderDialogTrigger);",
+          "try { orderDialogTrigger.click(); } catch (eNativeOpen) {}\n                      const clicked = mouseClick(orderDialogTrigger);"
+        )
+      out =
+        out.replace(
+          "title=\"Show Trade Form (F9)\"]') ||",
+          "title=\"Show Trade Form (F9)\"]') ||\n                    document.querySelector('[title=\"Show Trade Form (F9)\"]') ||"
+        )
+    }
+
+    if (!hadStaleClick) return out
 
     // 1) Drop post-fill fake confirm (Confirming… → OK / auto-confirmed).
     // Old HTML uses string concat: 'Confirming trade ' + tradeNumber + '...'
